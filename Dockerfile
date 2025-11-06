@@ -1,17 +1,16 @@
-# Dockerfile untuk folder server (sudah include built frontend di public/)
-FROM node:20-alpine
+FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Copy package.json dan install dependencies
 COPY package*.json ./
 RUN npm ci --only=production
 
-# Copy semua file server (termasuk public/ yang sudah ada built frontend)
+FROM node:18-alpine
+WORKDIR /app
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package*.json ./
 COPY . .
 
-# Set environment & port
-ENV NODE_ENV=production
-EXPOSE 1997
+EXPOSE 3000
 
-# Jalankan server
-CMD ["node", "server.js"]
+CMD ["node", "src/server.js"]
