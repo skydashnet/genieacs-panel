@@ -1,4 +1,3 @@
-import { useParams } from 'next/navigation'
 import DeviceDetailClient from './device-detail-client'
 
 // Generate static params for dynamic routes
@@ -7,9 +6,7 @@ export function generateStaticParams() {
   return []
 }
 
-export default function DeviceDetail() {
-  const params = useParams()
-  const deviceId = params.id as string
-
-  return <DeviceDetailClient deviceId={deviceId} />
+// This is a Server Component that receives params as props
+export default function DeviceDetail({ params }: { params: { id: string } }) {
+  return <DeviceDetailClient deviceId={params.id} />
 }
