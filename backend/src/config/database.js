@@ -4,16 +4,20 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'genieacs_panel',
+  host: process.env.DB_HOST,
+  port: Number(process.env.DB_PORT) || 3306,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
   charset: 'utf8mb4',
-  connectionLimit: 10,
-  acquireTimeout: 60000,
-  timeout: 60000,
-  reconnect: true,
+  // Pool options (valid for mysql2)
+  waitForConnections: true,
+  connectionLimit: Number(process.env.DB_POOL_MAX) || 10,
+  queueLimit: 0,
+  // Connection options (valid for mysql2)
+  connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 60000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0,
   multipleStatements: false
 };
 
@@ -37,14 +41,24 @@ function getPool() {
   return pool;
 }
 
-async function getConnection() {
-  try {
-    const connection = await getPool().getConnection();
-    return connection;
-  } catch (error) {
-    console.error('Error getting database connection:', error);
-    throw error;
+async function getConnection(retries = 5, delayMs = 3000) {
+  let lastError;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const connection = await getPool().getConnection();
+      return connection;
+    } catch (error) {
+      lastError = error;
+      const code = error && (error.code || error.errno) ? (error.code || error.errno) : error?.message;
+      if (attempt === retries) {
+        console.error('Error getting database connection:', error);
+        break;
+      }
+      console.warn(`DB connection attempt ${attempt} failed (${code}). Retrying in ${delayMs}ms...`);
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
   }
+  throw lastError;
 }
 
 async function executeQuery(query, params = []) {
@@ -91,8 +105,9 @@ async function executeTransaction(queries) {
 }
 
 async function testConnection() {
+  let connection;
   try {
-    const connection = await getConnection();
+    connection = await getConnection();
     await connection.ping();
     console.log('Database connection successful');
     return true;

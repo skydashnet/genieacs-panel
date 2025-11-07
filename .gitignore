@@ -38,3 +38,7 @@ Thumbs.db
 # Coverage
 coverage/
 .nyc_output/
+
+# Misc
+import-csv-to-mariadb.mjs
+**/exported_all_db

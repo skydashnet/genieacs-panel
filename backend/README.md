@@ -42,7 +42,6 @@ Backend/
 ├── .env.example
 ├── .gitignore
 ├── Dockerfile
-├── migrate_db.js
 ├── package.json
 └── README.md
 ```
@@ -129,12 +128,6 @@ npm run dev
 cd Backend
 docker build -t genieacs-panel-api .
 docker run -p 3000:3000 -e DB_HOST=your_db_host -e DB_PASSWORD=your_db_password -e DB_NAME=your_db_name -e DB_USER=your_db_user genieacs-panel-api
-```
-
-### Migrasi Database
-```bash
-cd Backend
-node migrate_db.js
 ```
 
 ## Environment Variables
