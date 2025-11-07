@@ -156,34 +156,54 @@ export const settingsAPI = {
     apiClient.post('/settings/test-genieacs', { url }),
 }
 
-// Vendors API
+/* Vendors API */
 export const vendorsAPI = {
   getAll: () =>
     apiClient.get('/vendor-management'),
-  
+
   get: (id: number) =>
     apiClient.get(`/vendor-management/${id}`),
-  
+
   create: (vendorData: any) =>
     apiClient.post('/vendor-management', vendorData),
-  
+
   update: (id: number, vendorData: any) =>
     apiClient.put(`/vendor-management/${id}`, vendorData),
-  
+
   delete: (id: number) =>
     apiClient.delete(`/vendor-management/${id}`),
-  
+
+  // WiFi security mappings per vendor
   getWifiSecurityMappings: (vendorId: number) =>
     apiClient.get(`/vendor-management/${vendorId}/wifi-security`),
-  
-  createWifiSecurityMapping: (mappingData: any) =>
-    apiClient.post('/vendor-management/wifi-security', mappingData),
-  
+
+  createWifiSecurityMapping: (vendorId: number, mappingData: any) =>
+    apiClient.post(`/vendor-management/${vendorId}/wifi-security`, mappingData),
+
   updateWifiSecurityMapping: (id: number, mappingData: any) =>
     apiClient.put(`/vendor-management/wifi-security/${id}`, mappingData),
-  
+
   deleteWifiSecurityMapping: (id: number) =>
     apiClient.delete(`/vendor-management/wifi-security/${id}`),
+
+  // WiFi security configs (by product class)
+  getAllWifiSecurityConfigs: () =>
+    apiClient.get('/vendor-management/wifi-security-configs'),
+
+  getWifiSecurityConfig: (id: number) =>
+    apiClient.get(`/vendor-management/wifi-security-configs/${id}`),
+
+  getWifiSecurityConfigByProductClass: (productClass: string) =>
+    apiClient.get(`/vendor-management/wifi-security-configs/by-product-class/${encodeURIComponent(productClass)}`),
+
+  createWifiSecurityConfig: (configData: any) =>
+    apiClient.post('/vendor-management/wifi-security-configs', configData),
+
+  updateWifiSecurityConfig: (id: number, configData: any) =>
+    apiClient.put(`/vendor-management/wifi-security-configs/${id}`, configData),
+
+  deleteWifiSecurityConfig: (id: number) =>
+    apiClient.delete(`/vendor-management/wifi-security-configs/${id}`),
 }
 
 // Mapping API

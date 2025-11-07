@@ -53,16 +53,14 @@ export function cleanGenieACSData(data) {
   return cleaned;
 }
 
-export function createResponse(success, message, data = null, statusCode = 200) {
+export function createResponse(message, data = null) {
   const response = {
-    success,
+    success: true,
     message
   };
-  
   if (data !== null) {
     response.data = data;
   }
-  
   return response;
 }
 

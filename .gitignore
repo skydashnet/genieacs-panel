@@ -42,3 +42,4 @@ coverage/
 # Misc
 import-csv-to-mariadb.mjs
 **/exported_all_db
+**/scripts

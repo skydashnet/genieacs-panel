@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/contexts/theme-context'
+import { mappingAPI, mapSettingsAPI } from '@/lib/api'
+import { useLoading } from '@/components/ui/loading'
 
 interface MapNode {
   id: number
@@ -23,7 +25,10 @@ export default function NetworkMap() {
   const [selectedNode, setSelectedNode] = useState<MapNode | null>(null)
   const [mapView, setMapView] = useState<'map' | 'list'>('map')
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
+  const [mapCenter, setMapCenter] = useState<[number, number]>([-6.2088, 106.8456])
+  const [defaultZoom, setDefaultZoom] = useState<number>(12)
   const { isDarkMode } = useTheme()
+  const loadingCtl = useLoading()
 
   // Leaflet map refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
@@ -34,83 +39,58 @@ export default function NetworkMap() {
   const refreshTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      const mockNodes: MapNode[] = [
-        {
-          id: 1,
-          node_id: 'SRV-001',
-          type: 'server',
-          name: 'Main Server',
-          latitude: -6.2088,
-          longitude: 106.8456,
-          status: 'online'
-        },
-        {
-          id: 2,
-          node_id: 'ODC-001',
-          type: 'odc',
-          name: 'Central Distribution Cabinet',
-          latitude: -6.2108,
-          longitude: 106.8476,
-          capacity: 144,
-          status: 'online'
-        },
-        {
-          id: 3,
-          node_id: 'ODP-001',
-          type: 'odp',
-          name: 'Distribution Point A',
-          latitude: -6.2128,
-          longitude: 106.8496,
-          splitter: '1:16',
-          status: 'online'
-        },
-        {
-          id: 4,
-          node_id: 'ODP-002',
-          type: 'odp',
-          name: 'Distribution Point B',
-          latitude: -6.2148,
-          longitude: 106.8436,
-          splitter: '1:8',
-          status: 'warning'
-        },
-        {
-          id: 5,
-          node_id: 'ONT-001',
-          type: 'ont',
-          name: 'Customer A',
-          latitude: -6.2138,
-          longitude: 106.8506,
-          pppoe: 'customer-a@isp.com',
-          status: 'online'
-        },
-        {
-          id: 6,
-          node_id: 'ONT-002',
-          type: 'ont',
-          name: 'Customer B',
-          latitude: -6.2158,
-          longitude: 106.8426,
-          pppoe: 'customer-b@isp.com',
-          status: 'offline'
-        },
-        {
-          id: 7,
-          node_id: 'ONT-003',
-          type: 'ont',
-          name: 'Customer C',
-          latitude: -6.2118,
-          longitude: 106.8516,
-          pppoe: 'customer-c@isp.com',
-          status: 'online'
-        }
-      ]
-      setNodes(mockNodes)
-      setLoading(false)
-    }, 1500)
+    let cancelled = false
+    ;(async () => {
+      try {
+        setLoading(true)
+        loadingCtl.show('Loading network map...')
+        const [nodesRes, settingsRes] = await Promise.all([
+          mappingAPI.getNodes(),
+          mapSettingsAPI.get()
+        ])
 
-    return () => clearTimeout(timer)
+        if (!cancelled) {
+          const nodesData = Array.isArray(nodesRes.data) ? nodesRes.data : []
+          setNodes(
+            (nodesData as any[]).map(n => ({
+              id: n.id,
+              node_id: n.node_id,
+              type: n.type,
+              name: n.name,
+              latitude: Number(n.latitude),
+              longitude: Number(n.longitude),
+              capacity: n.capacity || undefined,
+              splitter: n.splitter || undefined,
+              pppoe: n.pppoe || undefined,
+              status: (n.status as any) || 'online'
+            }))
+          )
+
+          const ms = settingsRes.data as any
+          if (ms && typeof ms === 'object') {
+            const lat = Number(ms.center_lat ?? -6.2088)
+            const lng = Number(ms.center_lng ?? 106.8456)
+            const zoom = Number(ms.default_zoom ?? 12)
+            if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
+              setMapCenter([lat, lng])
+            }
+            if (!Number.isNaN(zoom)) {
+              setDefaultZoom(zoom)
+            }
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Failed loading map data', e)
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+        loadingCtl.hide()
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
   useEffect(() => {
     const link = document.createElement('link')
@@ -218,10 +198,10 @@ export default function NetworkMap() {
       if (!mapContainerRef.current) return
 
       if (!mapRef.current) {
-        const center: [number, number] = [-6.2088, 106.8456] // Jakarta
+        const center: [number, number] = mapCenter // from Map Settings
         const map = L.map(mapContainerRef.current, {
           center,
-          zoom: 12,
+          zoom: defaultZoom,
         })
         mapRef.current = map
         updateTileLayer()
@@ -255,6 +235,7 @@ export default function NetworkMap() {
 
   const handleRefresh = () => {
     setLoading(true)
+    loadingCtl.show('Refreshing map...')
     setLastRefresh(new Date())
     // Simulate API call to refresh network nodes
     if (refreshTimerRef.current) {
@@ -334,6 +315,7 @@ export default function NetworkMap() {
       ]
       setNodes(mockNodes)
       setLoading(false)
+      loadingCtl.hide()
       refreshTimerRef.current = null
     }, 1000)
   }

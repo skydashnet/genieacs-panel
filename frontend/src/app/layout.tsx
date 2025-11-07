@@ -2,6 +2,8 @@ import './globals.css'
 import Sidebar from '@/components/sidebar'
 import { ThemeProvider } from '@/contexts/theme-context'
 import { AuthProvider } from '@/contexts/auth-context'
+import { ToastProvider } from '@/components/ui/toast'
+import { LoadingProvider, RouteChangeLoader } from '@/components/ui/loading'
 
 export const metadata = {
   title: 'GenieACS Panel - Network Management',
@@ -18,14 +20,24 @@ export default function RootLayout({
       <body className="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
         <AuthProvider>
           <ThemeProvider>
-            <div className="flex h-screen overflow-hidden">
-              <Sidebar />
-              <div className="flex-1 overflow-y-auto">
-                <main className="min-h-full">
-                  {children}
-                </main>
-              </div>
-            </div>
+            <LoadingProvider>
+              <ToastProvider>
+                <RouteChangeLoader />
+                <div className="flex h-screen overflow-hidden">
+                  <Sidebar />
+                  <div className="flex-1 overflow-y-auto">
+                    <div className="min-h-full flex flex-col">
+                      <main className="flex-1">
+                        {children}
+                      </main>
+                      <footer className="mt-auto px-6 py-3 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700">
+                        © {new Date().getFullYear()} SkydashNET. All rights reserved.
+                      </footer>
+                    </div>
+                  </div>
+                </div>
+              </ToastProvider>
+            </LoadingProvider>
           </ThemeProvider>
         </AuthProvider>
       </body>

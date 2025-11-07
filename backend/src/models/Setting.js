@@ -2,7 +2,7 @@ import { executeQuery } from '../config/database.js';
 
 class Setting {
   static async getAll() {
-    const query = 'SELECT key, value FROM settings';
+    const query = 'SELECT `key`, `value` FROM settings';
     const rows = await executeQuery(query);
     
     const settings = {};
@@ -14,19 +14,19 @@ class Setting {
   }
 
   static async getByKey(key) {
-    const query = 'SELECT value FROM settings WHERE key = ?';
+    const query = 'SELECT `value` FROM settings WHERE `key` = ?';
     const rows = await executeQuery(query, [key]);
     return rows.length > 0 ? rows[0].value : null;
   }
 
   static async create(key, value) {
-    const query = 'INSERT INTO settings (key, value) VALUES (?, ?)';
+    const query = 'INSERT INTO settings (`key`, `value`) VALUES (?, ?)';
     await executeQuery(query, [key, value]);
     return true;
   }
 
   static async update(key, value) {
-    const query = 'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?';
+    const query = 'UPDATE settings SET `value` = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?';
     const result = await executeQuery(query, [value, key]);
     return result.affectedRows > 0;
   }
@@ -41,7 +41,7 @@ class Setting {
   }
 
   static async delete(key) {
-    const query = 'DELETE FROM settings WHERE key = ?';
+    const query = 'DELETE FROM settings WHERE `key` = ?';
     const result = await executeQuery(query, [key]);
     return result.affectedRows > 0;
   }

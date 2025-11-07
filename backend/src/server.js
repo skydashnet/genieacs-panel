@@ -14,7 +14,7 @@ import mapSettingsRoutes from './routes/mapSettings.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.APP_PORT;
+const PORT = Number(process.env.APP_PORT) || 3001;
 const APP_ENV = process.env.APP_ENV || 'development';
 
 app.use(cors());

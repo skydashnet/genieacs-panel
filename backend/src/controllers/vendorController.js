@@ -297,8 +297,8 @@ class VendorController {
 
   static async getWifiSecurityConfigByProductClass(req, res) {
     try {
-      const { productClass } = req.query;
-      
+      const { productClass } = req.params;
+
       if (!productClass) {
         return res.status(400).json(
           createErrorResponse('Product class is required')
@@ -306,14 +306,16 @@ class VendorController {
       }
 
       const config = await WifiSecurityConfig.getByProductClass(productClass);
-      
+
       if (!config) {
         return res.status(404).json(
           createErrorResponse('WiFi security config not found for this product class')
         );
       }
 
-      return res.json(config);
+      return res.json(
+        createResponse('WiFi security config retrieved successfully', config)
+      );
     } catch (error) {
       console.error('Get WiFi security config by product class error:', error);
       return res.status(500).json(

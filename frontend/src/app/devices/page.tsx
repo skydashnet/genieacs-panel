@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { debounce } from '@/lib/utils'
+import { devicesAPI } from '@/lib/api'
+import { useToast } from '@/components/ui/toast'
+import { useLoading } from '@/components/ui/loading'
 
 interface Device {
   _id: string
@@ -24,56 +27,27 @@ export default function Devices() {
   const [searchTerm, setSearchTerm] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
+  const toast = useToast()
+  const loadingCtl = useLoading()
 
   useEffect(() => {
-    // Simulate API call
-    const timer = setTimeout(() => {
-      const mockDevices = [
-        {
-          _id: 'ONT-001',
-          SerialNumber: 'SN123456789',
-          productclass: 'HG8245H',
-          pppoe: 'user123@isp.com',
-          wanbridge: 'Enabled',
-          rxpower: -25,
-          temperature: 45,
-          activedevices: 12,
-          ssid1: 'HomeNetwork_5G',
-          ssid2: 'GuestNetwork',
-          _lastInform: '2024-01-15 14:30:25'
-        },
-        {
-          _id: 'ONT-002',
-          SerialNumber: 'SN987654321',
-          productclass: 'F660',
-          pppoe: 'user456@isp.com',
-          wanbridge: 'Enabled',
-          rxpower: -35,
-          temperature: 52,
-          activedevices: 8,
-          ssid1: 'Office_WiFi',
-          ssid2: 'IoT_Devices',
-          _lastInform: '2024-01-15 14:25:18'
-        },
-        {
-          _id: 'ONT-003',
-          SerialNumber: 'SN456789123',
-          productclass: 'EG8145V5',
-          pppoe: 'user789@isp.com',
-          wanbridge: 'Disabled',
-          rxpower: -45,
-          temperature: 58,
-          activedevices: 15,
-          ssid1: 'SmartHome',
-          ssid2: 'SecurityCam',
-          _lastInform: '2024-01-15 13:45:12'
+    let cancelled = false
+    ;(async () => {
+      setLoading(true)
+      loadingCtl.show('Loading devices...')
+      const res = await devicesAPI.getDevices()
+      if (!cancelled) {
+        if (res.success && Array.isArray(res.data)) {
+          setDevices(res.data as any)
+        } else {
+          toast.error(res.message || 'Failed to load devices')
+          setDevices([])
         }
-      ]
-      setDevices(mockDevices)
-      setLoading(false)
-    }, 1500)
-
-    return () => clearTimeout(timer)
+        setLoading(false)
+        loadingCtl.hide()
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   const filteredDevices = devices.filter((device: any) =>
@@ -115,13 +89,34 @@ export default function Devices() {
     }
   }
 
+
+  const handleSummon = async (deviceId: string) => {
+    const res = await devicesAPI.summonDevice(deviceId)
+    if (res.success) {
+      toast.success(res.message || 'Summon sent')
+    } else {
+      toast.error(res.message || 'Failed to send summon')
+    }
+  }
+
+  const handleDelete = async (deviceId: string) => {
+    if (!confirm('Delete this device?')) return
+    const res = await devicesAPI.deleteDevice(deviceId)
+    if (res.success) {
+      setDevices(prev => prev.filter(d => d._id !== deviceId))
+      toast.success('Device deleted')
+    } else {
+      toast.error(res.message || 'Failed to delete device')
+    }
+  }
+
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Device Management</h1>
+            <h1 className="handwritter text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Device Management</h1>
             <p className="text-gray-600 dark:text-gray-400">Manage and monitor your network devices</p>
           </div>
           <div className="flex items-center space-x-2">
@@ -182,16 +177,14 @@ export default function Devices() {
             <table className="modern-table">
               <thead>
                 <tr>
-                  <th>Device ID</th>
-                  <th>Serial Number</th>
-                  <th>Model</th>
-                  <th>PPPoE</th>
-                  <th>Signal</th>
-                  <th>Temperature</th>
-                  <th>Active Devices</th>
-                  <th>SSIDs</th>
-                  <th>Last Seen</th>
+                  <th>Product Type</th>
+                  <th>RxPower</th>
                   <th>Status</th>
+                  <th>PPPoE</th>
+                  <th>SSID</th>
+                  <th>Total Connected</th>
+                  <th>Wan Bridge</th>
+                  <th>Last Inform</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -211,30 +204,40 @@ export default function Devices() {
                   </tr>
                 ) : currentItems.map((device: Device) => (
                   <tr key={device._id}>
-                    <td className="font-mono text-sm">{device._id}</td>
-                    <td className="font-mono text-sm">{device.SerialNumber}</td>
                     <td>{device.productclass}</td>
-                    <td className="text-sm">{device.pppoe}</td>
                     <td className={`text-sm font-medium ${getSignalStrengthColor(device.rxpower)}`}>
                       {device.rxpower} dBm
                     </td>
-                    <td className="text-sm">{device.temperature}°C</td>
-                    <td className="text-sm">{device.activedevices}</td>
+                    <td>{getStatusBadge(device._lastInform)}</td>
+                    <td className="text-sm">{device.pppoe}</td>
                     <td>
                       <div className="space-y-1">
                         {device.ssid1 && <div className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-1 rounded">{device.ssid1}</div>}
                         {device.ssid2 && <div className="text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 px-2 py-1 rounded">{device.ssid2}</div>}
                       </div>
                     </td>
+                    <td className="text-sm">{device.activedevices}</td>
+                    <td className="text-sm">{device.wanbridge}</td>
                     <td className="text-sm">{device._lastInform}</td>
-                    <td>{getStatusBadge(device._lastInform)}</td>
                     <td>
-                      <div className="flex space-x-2">
-                        <button className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 text-sm" title="Configure">⚙️</button>
-                        <Link href={`/devices/${device._id}`}>
-                          <button className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 text-sm" title="View Details">📊</button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleSummon(device._id)}
+                          className="px-2 py-1 rounded-md text-blue-600 border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-xs"
+                          title="Summon"
+                        >
+                          Summon
+                        </button>
+                        <Link href={`/devices/${device._id}`} className="px-2 py-1 rounded-md text-green-600 border border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-xs" title="View Details">
+                          Details
                         </Link>
-                        <button className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 text-sm" title="Reboot">🔄</button>
+                        <button
+                          onClick={() => handleDelete(device._id)}
+                          className="px-2 py-1 rounded-md text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs"
+                          title="Delete"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>

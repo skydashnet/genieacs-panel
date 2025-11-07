@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useToast } from '@/components/ui/toast'
 
 interface DeviceDetail {
   _id: string
@@ -62,6 +63,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [rebooting, setRebooting] = useState(false)
+  const toast = useToast()
 
   useEffect(() => {
     const fetchDeviceDetails = async () => {
@@ -157,7 +159,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
     // Simulate reboot command
     setTimeout(() => {
       setRebooting(false)
-      alert('Device reboot command sent successfully!')
+      toast.success('Device reboot command sent successfully!')
     }, 3000)
   }
 
@@ -247,6 +249,13 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
             </button>
             <button className="modern-button">
               Edit Configuration
+            </button>
+            <button
+              onClick={() => toast.success('Summon Device sent')}
+              className="modern-button"
+              title="Summon Device"
+            >
+              🛎 Summon
             </button>
           </div>
         </div>
@@ -379,34 +388,31 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
             </div>
 
             <div className="modern-card p-6">
-              <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Connected Devices</h2>
-              <div className="overflow-x-auto">
-                <table className="modern-table">
-                  <thead>
-                    <tr>
-                      <th>Host Name</th>
-                      <th>IP Address</th>
-                      <th>MAC Address</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {device.InternetGatewayDevice.LANDevice.Hosts.Host.map((host, index) => (
-                      <tr key={index}>
-                        <td>{host.HostName}</td>
-                        <td className="font-mono text-sm">{host.IPAddress}</td>
-                        <td className="font-mono text-sm">{host.MACAddress}</td>
-                        <td>
-                          {host.Active ? (
-                            <span className="modern-badge-success">Active</span>
-                          ) : (
-                            <span className="modern-badge-error">Inactive</span>
-                          )}
-                        </td>
-                      </tr>
+              <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">WAN Service & Interface Bindings</h2>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">WAN Bridge</span>
+                  <span className="font-medium">{device.wanbridge}</span>
+                </div>
+                <div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">Interface Bindings</div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {['LAN1','LAN2','LAN3','LAN4'].map((ifc, idx) => (
+                      <div key={idx} className={`rounded-md p-2 text-center ${idx % 2 === 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-gray-100 dark:bg-gray-800'}`}>
+                        <div className="text-xs">{ifc}</div>
+                        <div className="text-sm font-semibold">{idx % 2 === 0 ? 'ON' : 'OFF'}</div>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">NAT</span>
+                  <span className="font-medium">Enabled</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-600 dark:text-gray-400">Type WAN</span>
+                  <span className="font-medium">PPPoE</span>
+                </div>
               </div>
             </div>
           </div>
@@ -553,18 +559,44 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
             <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Advanced Configuration</h2>
             <div className="space-y-6">
               <div>
-                <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">Device Identification</h3>
+                <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">System Control</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">OUI</h4>
-                    <p className="font-mono text-sm">{device.oui}</p>
+                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Firewall Level</h4>
+                    <select className="modern-input w-full">
+                      <option>Low</option>
+                      <option>Medium</option>
+                      <option>High</option>
+                    </select>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Manufacturer</h4>
-                    <p className="text-sm">{device.InternetGatewayDevice.DeviceInfo.Manufacturer}</p>
+                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">HTTP WAN Status</h4>
+                    <select className="modern-input w-full">
+                      <option>Disabled</option>
+                      <option>Enabled</option>
+                    </select>
                   </div>
                 </div>
               </div>
+
+              <div>
+                <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">Change Credentials</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Superadmin (ISP)</h4>
+                    <input className="modern-input w-full" placeholder="New Username" />
+                    <input className="modern-input w-full mt-2" type="password" placeholder="New Password" />
+                    <button className="modern-button mt-3">Update Superadmin</button>
+                  </div>
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Useradmin (Client)</h4>
+                    <input className="modern-input w-full" placeholder="New Username" />
+                    <input className="modern-input w-full mt-2" type="password" placeholder="New Password" />
+                    <button className="modern-button mt-3">Update Useradmin</button>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">System Information</h3>
                 <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">

@@ -1,5 +1,6 @@
 import Setting from '../models/Setting.js';
 import VendorService from './vendorService.js';
+import Vendor from '../models/Vendor.js';
 
 class DeviceService {
   static async getGenieAcsUrl() {

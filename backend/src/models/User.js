@@ -8,7 +8,7 @@ class User {
   }
 
   static async findById(id) {
-    const query = 'SELECT id, username, role, created_at, updated_at FROM users WHERE id = ?';
+    const query = 'SELECT id, username, role, password, created_at, updated_at FROM users WHERE id = ?';
     const rows = await executeQuery(query, [id]);
     return rows.length > 0 ? rows[0] : null;
   }

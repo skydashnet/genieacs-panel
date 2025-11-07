@@ -15,7 +15,6 @@ export default function Sidebar() {
   const { isDarkMode = false, toggleDarkMode = () => {} } = themeContext || {}
 
   useEffect(() => {
-    // Check if mobile
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768)
       if (window.innerWidth < 768) {
@@ -32,14 +31,16 @@ export default function Sidebar() {
   const menuItems = [
     { href: '/dashboard', label: 'Dashboard', icon: '📊' },
     { href: '/devices', label: 'Devices', icon: '📡' },
-    { href: '/vendors', label: 'Vendors', icon: '🏢' },
     { href: '/network-map', label: 'Network Map', icon: '🗺️' },
     { href: '/settings', label: 'Settings', icon: '⚙️' },
   ]
 
   const isActive = (href: string) => pathname === href
-
-  // Mobile overlay
+  const hideOnRoutes = ['/login']
+  const shouldHideSidebar = hideOnRoutes.some((route) => pathname.startsWith(route))
+  if (shouldHideSidebar) {
+    return null
+  }
   if (isMobile && isMobileOpen) {
     return (
       <div className="fixed inset-0 z-50 md:hidden">
@@ -74,7 +75,7 @@ export default function Sidebar() {
       )}
       
       {/* Desktop sidebar */}
-      <div className={`relative hidden md:flex md:flex-col h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+      <div className={`relative hidden md:flex md:flex-col h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-56'}`}>
         <SidebarContent
           isCollapsed={isCollapsed}
           menuItems={menuItems}
@@ -114,8 +115,25 @@ function SidebarContent({
   const themeContext = useTheme()
   const { isDarkMode = false, toggleDarkMode = () => {} } = themeContext || {}
   const { user, logout } = useAuth()
-  const displayName = user?.username ?? 'Pengguna'
+  const displayName = user?.username
   const initial = (displayName?.[0] || 'U').toUpperCase()
+  const [appName, setAppName] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'GenieACS'
+    return localStorage.getItem('appName') || 'GenieACS'
+  })
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      const name = typeof e?.detail === 'string' ? e.detail : localStorage.getItem('appName')
+      if (name) setAppName(name)
+    }
+    try {
+      const initial = localStorage.getItem('appName')
+      if (initial) setAppName(initial)
+    } catch {}
+    window.addEventListener('appNameChanged', handler as any)
+    return () => window.removeEventListener('appNameChanged', handler as any)
+  }, [])
   
   const handleLinkClick = () => {
     if (setIsMobileOpen) {
@@ -128,11 +146,11 @@ function SidebarContent({
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         {!isCollapsed && (
-          <Link href="/" className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-sm">GP</span>
+          <Link href="/" className="flex items-center space-x-2">
+            <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-blue-600 rounded-md flex items-center justify-center">
+              <span className="text-white font-bold text-xs">GP</span>
             </div>
-            <span className="text-lg font-semibold text-gray-800 dark:text-gray-200">GenieACS</span>
+            <span className="text-base font-semibold text-gray-800 dark:text-gray-200">{appName}</span>
           </Link>
         )}
       </div>
@@ -145,14 +163,14 @@ function SidebarContent({
               <Link
                 href={item.href}
                 onClick={handleLinkClick}
-                className={`flex items-center space-x-3 px-3 py-2 rounded-lg transition-colors ${
+                className={`flex items-center space-x-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
                   isActive(item.href)
                     ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
-                <span className="text-xl">{item.icon}</span>
-                {!isCollapsed && <span>{item.label}</span>}
+                <span className="text-base">{item.icon}</span>
+                {!isCollapsed && <span className="text-sm">{item.label}</span>}
               </Link>
             </li>
           ))}
@@ -161,11 +179,6 @@ function SidebarContent({
 
       {/* Footer */}
       <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-        {!isCollapsed && (
-          <div className="text-xs text-gray-500 dark:text-gray-400 text-center mb-3">
-            Copyright © SkydashNET
-          </div>
-        )}
 
         {/* User Info + Logout */}
         {!isCollapsed ? (
@@ -204,7 +217,7 @@ function SidebarContent({
         {/* Dark Mode Toggle */}
         <button
           onClick={toggleDarkMode}
-          className="w-full flex items-center justify-center space-x-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          className="w-full flex items-center justify-center space-x-2 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm"
         >
           {isDarkMode ? (
             <>
@@ -222,6 +235,11 @@ function SidebarContent({
             </>
           )}
         </button>
+        {!isCollapsed && (
+          <div className="text-xs text-gray-500 dark:text-gray-400 text-center mt-3">
+            Copyright © SkydashNET
+          </div>
+        )}
       </div>
     </>
   )

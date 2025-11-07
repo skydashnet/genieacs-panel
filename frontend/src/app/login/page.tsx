@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useAuth } from '@/contexts/auth-context'
 
 export default function Login() {
   const [formData, setFormData] = useState({
@@ -13,34 +14,21 @@ export default function Login() {
   const [error, setError] = useState('')
   const router = useRouter()
 
+  const { login } = useAuth()
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      })
-
-      const data = await response.json()
-
-      if (response.ok && data.success) {
-        // Save token to localStorage
-        localStorage.setItem('token', data.data.token)
-        localStorage.setItem('refreshToken', data.data.refreshToken)
-        localStorage.setItem('user', JSON.stringify(data.data.user))
-        
-        // Redirect to dashboard
+      const ok = await login(formData.username, formData.password)
+      if (ok) {
         router.push('/dashboard')
       } else {
-        setError(data.message || 'Login failed')
+        setError('Login failed')
       }
-    } catch (error) {
+    } catch {
       setError('Network error. Please try again.')
     } finally {
       setLoading(false)
@@ -165,26 +153,6 @@ export default function Login() {
           </div>
         </form>
         
-        <div className="mt-6">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300 dark:border-gray-600" />
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400">
-                Don't have an account?
-              </span>
-            </div>
-          </div>
-          <div className="mt-6 text-center">
-            <Link
-              href="/register"
-              className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              Contact your administrator
-            </Link>
-          </div>
-        </div>
       </div>
     </div>
   )
