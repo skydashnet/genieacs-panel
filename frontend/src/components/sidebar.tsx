@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from '@/contexts/theme-context'
+import { useAuth } from '@/contexts/auth-context'
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -73,33 +74,48 @@ export default function Sidebar() {
       )}
       
       {/* Desktop sidebar */}
-      <div className={`hidden md:block fixed left-0 top-0 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 z-50 ${isCollapsed ? 'w-20' : 'w-64'}`}>
-        <SidebarContent 
-          isCollapsed={isCollapsed} 
-          menuItems={menuItems} 
-          isActive={isActive} 
-          setIsCollapsed={setIsCollapsed}
+      <div className={`relative hidden md:flex md:flex-col h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-64'}`}>
+        <SidebarContent
+          isCollapsed={isCollapsed}
+          menuItems={menuItems}
+          isActive={isActive}
         />
+        <button
+          onClick={() => setIsCollapsed(!isCollapsed)}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="absolute top-1/2 -right-3 z-10 w-6 h-12 flex items-center justify-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow hover:shadow-md hover:scale-105 transform -translate-y-1/2 transition"
+        >
+          {isCollapsed ? (
+            <svg className="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          )}
+        </button>
       </div>
     </>
   )
 }
 
-function SidebarContent({ 
-  isCollapsed, 
-  menuItems, 
-  isActive, 
-  setIsCollapsed,
-  setIsMobileOpen 
+function SidebarContent({
+  isCollapsed,
+  menuItems,
+  isActive,
+  setIsMobileOpen
 }: {
   isCollapsed: boolean
   menuItems: { href: string; label: string; icon: string }[]
   isActive: (href: string) => boolean
-  setIsCollapsed?: (collapsed: boolean) => void
   setIsMobileOpen?: (open: boolean) => void
 }) {
   const themeContext = useTheme()
   const { isDarkMode = false, toggleDarkMode = () => {} } = themeContext || {}
+  const { user, logout } = useAuth()
+  const displayName = user?.username ?? 'Pengguna'
+  const initial = (displayName?.[0] || 'U').toUpperCase()
   
   const handleLinkClick = () => {
     if (setIsMobileOpen) {
@@ -118,16 +134,6 @@ function SidebarContent({
             </div>
             <span className="text-lg font-semibold text-gray-800 dark:text-gray-200">GenieACS</span>
           </Link>
-        )}
-        {setIsCollapsed && (
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
         )}
       </div>
 
@@ -157,7 +163,41 @@ function SidebarContent({
       <div className="p-4 border-t border-gray-200 dark:border-gray-700">
         {!isCollapsed && (
           <div className="text-xs text-gray-500 dark:text-gray-400 text-center mb-3">
-            © C SkydashNET
+            Copyright © SkydashNET
+          </div>
+        )}
+
+        {/* User Info + Logout */}
+        {!isCollapsed ? (
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">
+                {initial}
+              </div>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">
+                  {displayName}
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={logout}
+              className="px-2 py-1 rounded-md text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              Logout
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center mb-3">
+            <button
+              onClick={logout}
+              title="Logout"
+              className="p-2 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7" />
+              </svg>
+            </button>
           </div>
         )}
         

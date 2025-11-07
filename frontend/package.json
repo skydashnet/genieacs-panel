@@ -28,6 +28,7 @@
     "clsx": "^2.0.0",
     "date-fns": "^2.30.0",
     "framer-motion": "^10.16.16",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.294.0",
     "next": "^14.2.33",
     "postcss": "^8",
@@ -42,6 +43,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
+    "@types/leaflet": "^1.9.21",
     "eslint": "^8",
     "eslint-config-next": "14.0.4"
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/contexts/theme-context'
 
 interface MapNode {
@@ -22,11 +22,18 @@ export default function NetworkMap() {
   const [loading, setLoading] = useState(true)
   const [selectedNode, setSelectedNode] = useState<MapNode | null>(null)
   const [mapView, setMapView] = useState<'map' | 'list'>('map')
-  const [lastRefresh, setLastRefresh] = useState(new Date())
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const { isDarkMode } = useTheme()
 
+  // Leaflet map refs
+  const mapContainerRef = useRef<HTMLDivElement | null>(null)
+  const mapRef = useRef<any>(null)
+  const markersLayerRef = useRef<any>(null)
+  const tileLayerRef = useRef<any>(null)
+  const leafletRef = useRef<any>(null)
+  const refreshTimerRef = useRef<number | null>(null)
+
   useEffect(() => {
-    // Simulate API call to fetch network nodes
     const timer = setTimeout(() => {
       const mockNodes: MapNode[] = [
         {
@@ -105,12 +112,155 @@ export default function NetworkMap() {
 
     return () => clearTimeout(timer)
   }, [])
+  useEffect(() => {
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+    document.head.appendChild(link)
+    return () => {
+      if (link.parentNode) {
+        document.head.removeChild(link)
+      }
+    }
+  }, [])
+  useEffect(() => {
+    setLastRefresh(new Date())
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+        markersLayerRef.current = null
+        tileLayerRef.current = null
+      }
+      if (refreshTimerRef.current) {
+        clearTimeout(refreshTimerRef.current)
+        refreshTimerRef.current = null
+      }
+    }
+  }, [])
+
+  const getTileUrlAndAttrib = (dark: boolean) => {
+    if (dark) {
+      return {
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+      }
+    }
+    return {
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; OpenStreetMap contributors'
+    }
+  }
+
+  const updateTileLayer = () => {
+    const L: any = leafletRef.current
+    const map: any = mapRef.current
+    if (!L || !map) return
+    if (tileLayerRef.current) {
+      map.removeLayer(tileLayerRef.current)
+      tileLayerRef.current = null
+    }
+    const { url, attribution } = getTileUrlAndAttrib(isDarkMode)
+    tileLayerRef.current = L.tileLayer(url, { attribution })
+    tileLayerRef.current.addTo(map)
+  }
+
+  const updateMarkers = () => {
+    const L: any = leafletRef.current
+    const map: any = mapRef.current
+    if (!L || !map) return
+
+    if (!markersLayerRef.current) {
+      markersLayerRef.current = L.layerGroup().addTo(map)
+    }
+    const group: any = markersLayerRef.current
+    group.clearLayers()
+
+    const bounds = L.latLngBounds([])
+
+    nodes.forEach((n) => {
+      const html = `<div style="font-size:22px;line-height:22px;position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.25));">${getNodeIcon(n.type)}<span style="position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;background:${getStatusHex(n.status)};border-radius:9999px;border:2px solid ${isDarkMode ? '#111827' : '#ffffff'};"></span></div>`
+      const icon = L.divIcon({
+        className: '',
+        html,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      })
+      const marker = L.marker([n.latitude, n.longitude], { icon })
+      marker.addTo(group)
+      marker.bindTooltip(
+        `<div><strong>${n.name}</strong><br/>${getTypeLabel(n.type)} · ${n.status}</div>`,
+        { direction: 'top', sticky: true, opacity: isDarkMode ? 0.95 : 0.9 }
+      )
+      marker.on('click', () => setSelectedNode(n))
+      bounds.extend([n.latitude, n.longitude])
+    })
+
+    if (nodes.length > 0) {
+      map.fitBounds(bounds.pad(0.2))
+    }
+  }
+
+  // Initialize Leaflet map when switching to Map view
+  useEffect(() => {
+    if (mapView !== 'map') return
+    let cancelled = false
+    ;(async () => {
+      if (!leafletRef.current) {
+        const mod = await import('leaflet')
+        const L = (mod as any).default ?? mod
+        leafletRef.current = L
+      }
+      const L: any = leafletRef.current
+      if (cancelled) return
+      if (!mapContainerRef.current) return
+
+      if (!mapRef.current) {
+        const center: [number, number] = [-6.2088, 106.8456] // Jakarta
+        const map = L.map(mapContainerRef.current, {
+          center,
+          zoom: 12,
+        })
+        mapRef.current = map
+        updateTileLayer()
+        markersLayerRef.current = L.layerGroup().addTo(map)
+      }
+
+      updateMarkers()
+      // ensure proper size after render
+      setTimeout(() => {
+        mapRef.current?.invalidateSize()
+      }, 100)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [mapView])
+
+  // Update tile layer on theme change
+  useEffect(() => {
+    if (mapRef.current && mapView === 'map') {
+      updateTileLayer()
+    }
+  }, [isDarkMode, mapView])
+
+  // Update markers when nodes change
+  useEffect(() => {
+    if (mapRef.current && mapView === 'map') {
+      updateMarkers()
+    }
+  }, [nodes, mapView])
 
   const handleRefresh = () => {
     setLoading(true)
     setLastRefresh(new Date())
     // Simulate API call to refresh network nodes
-    const timer = setTimeout(() => {
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current)
+    }
+    refreshTimerRef.current = window.setTimeout(() => {
       const mockNodes: MapNode[] = [
         {
           id: 1,
@@ -184,9 +334,8 @@ export default function NetworkMap() {
       ]
       setNodes(mockNodes)
       setLoading(false)
+      refreshTimerRef.current = null
     }, 1000)
-
-    return () => clearTimeout(timer)
   }
 
   const getNodeIcon = (type: string) => {
@@ -214,6 +363,19 @@ export default function NetworkMap() {
         return 'bg-yellow-500'
       default:
         return 'bg-gray-500'
+    }
+  }
+
+  const getStatusHex = (status: string) => {
+    switch (status) {
+      case 'online':
+        return '#22c55e' // green-500
+      case 'offline':
+        return '#ef4444' // red-500
+      case 'warning':
+        return '#f59e0b' // amber-500
+      default:
+        return '#6b7280' // gray-500
     }
   }
 
@@ -287,7 +449,7 @@ export default function NetworkMap() {
 
         {/* Last Refresh Info */}
         <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-          Last refreshed: {lastRefresh.toLocaleTimeString()}
+          Last refreshed: {lastRefresh ? lastRefresh.toLocaleTimeString() : '—'}
         </div>
 
         {/* Stats Cards */}
@@ -347,76 +509,11 @@ export default function NetworkMap() {
             {mapView === 'map' ? (
               <div className="modern-card p-6">
                 <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Network Topology</h2>
-                <div className="h-96 bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center relative overflow-hidden">
-                  {/* Simple network visualization */}
-                  <div className="absolute inset-0 p-8">
-                    <div className="relative w-full h-full">
-                      {/* Server */}
-                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-                        <div className="relative">
-                          <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center text-2xl border-2 border-blue-500">
-                            🖥️
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
-                        </div>
-                        <p className="text-xs text-center mt-2 font-medium">Main Server</p>
-                      </div>
-
-                      {/* ODC */}
-                      <div className="absolute top-1/4 left-1/4">
-                        <div className="relative">
-                          <div className="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-xl border-2 border-gray-500">
-                            🏢
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
-                        </div>
-                        <p className="text-xs text-center mt-1">ODC</p>
-                      </div>
-
-                      {/* ODP */}
-                      <div className="absolute top-3/4 left-1/4">
-                        <div className="relative">
-                          <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-lg border-2 border-gray-500">
-                            📦
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-yellow-500 rounded-full border-2 border-white dark:border-gray-900"></div>
-                        </div>
-                        <p className="text-xs text-center mt-1">ODP</p>
-                      </div>
-
-                      {/* ONTs */}
-                      <div className="absolute top-1/4 right-1/4">
-                        <div className="relative">
-                          <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-base border-2 border-gray-500">
-                            🏠
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
-                        </div>
-                        <p className="text-xs text-center mt-1">ONT</p>
-                      </div>
-
-                      <div className="absolute top-3/4 right-1/4">
-                        <div className="relative">
-                          <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-base border-2 border-gray-500">
-                            🏠
-                          </div>
-                          <div className="absolute -bottom-1 -right-1 w-2 h-2 bg-red-500 rounded-full border-2 border-white dark:border-gray-900"></div>
-                        </div>
-                        <p className="text-xs text-center mt-1">ONT</p>
-                      </div>
-
-                      {/* Connection lines */}
-                      <svg className="absolute inset-0 w-full h-full pointer-events-none">
-                        <line x1="50%" y1="50%" x2="25%" y2="25%" stroke="#9CA3AF" strokeWidth="2" />
-                        <line x1="25%" y1="25%" x2="25%" y2="75%" stroke="#9CA3AF" strokeWidth="2" />
-                        <line x1="25%" y1="75%" x2="75%" y2="75%" stroke="#9CA3AF" strokeWidth="2" />
-                        <line x1="25%" y1="25%" x2="75%" y2="25%" stroke="#9CA3AF" strokeWidth="2" />
-                      </svg>
-                    </div>
-                  </div>
+                <div className="h-[500px] rounded-lg overflow-hidden">
+                  <div ref={mapContainerRef} className="w-full h-full" />
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-4 text-center">
-                  Interactive network topology visualization. Click on nodes for details.
+                  Hover pin untuk lihat detail cepat. Klik pin untuk membuka detail lengkap.
                 </p>
               </div>
             ) : (

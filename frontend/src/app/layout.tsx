@@ -1,6 +1,5 @@
 import './globals.css'
 import Sidebar from '@/components/sidebar'
-import Navbar from '@/components/navbar'
 import { ThemeProvider } from '@/contexts/theme-context'
 import { AuthProvider } from '@/contexts/auth-context'
 
@@ -21,9 +20,8 @@ export default function RootLayout({
           <ThemeProvider>
             <div className="flex h-screen overflow-hidden">
               <Sidebar />
-              <div className="flex-1 overflow-y-auto md:ml-0">
-                <Navbar />
-                <main className="min-h-full md:pt-16 pt-16">
+              <div className="flex-1 overflow-y-auto">
+                <main className="min-h-full">
                   {children}
                 </main>
               </div>
