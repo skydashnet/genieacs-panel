@@ -1,275 +1,310 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { debounce } from '@/lib/utils'
-import { devicesAPI } from '@/lib/api'
-import { useToast } from '@/components/ui/toast'
+import { devicesAPI, vendorsAPI } from '@/lib/api'
 import { useLoading } from '@/components/ui/loading'
+import { useToast } from '@/components/ui/toast'
+import type { Device, Vendor } from '@/types'
 
-interface Device {
-  _id: string
-  SerialNumber: string
-  productclass: string
-  pppoe: string
-  wanbridge: string
-  rxpower: number
-  temperature: number
-  activedevices: number
-  ssid1: string
-  ssid2: string
-  _lastInform: string
+interface ProcessedDevice extends Device {
+  isOnline: boolean
+  brand: string
 }
 
-export default function Devices() {
-  const [devices, setDevices] = useState<Device[]>([])
+export default function DevicesPage() {
+  const [devices, setDevices] = useState<ProcessedDevice[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [itemsPerPage, setItemsPerPage] = useState(10)
-  const toast = useToast()
+  const [filterStatus, setFilterStatus] = useState('all')
+  
   const loadingCtl = useLoading()
+  const toast = useToast()
+
+  const getSignalStrengthInfo = (rxPowerStr: any) => {
+    const rxpower = parseFloat(String(rxPowerStr));
+    
+    if (isNaN(rxpower)) {
+      return { 
+        color: 'text-gray-500 dark:text-gray-400',
+        label: 'N/A',
+        badgeClass: 'modern-badge' 
+      };
+    }
+    
+    if (rxpower >= -21.99) {
+      return { 
+        color: 'text-green-600 dark:text-green-400',
+        label: 'Excellent',
+        badgeClass: 'modern-badge-success'
+      };
+    }
+    if (rxpower >= -24.99) {
+      return { 
+        color: 'text-blue-600 dark:text-blue-400',
+        label: 'Good',
+        badgeClass: 'modern-badge-info'
+      };
+    }
+    if (rxpower >= -26.99) {
+      return { 
+        color: 'text-yellow-600 dark:text-yellow-400',
+        label: 'Poor',
+        badgeClass: 'modern-badge-warning'
+      };
+    }
+    return { 
+      color: 'text-red-600 dark:text-red-400',
+      label: 'Danger',
+      badgeClass: 'modern-badge-error'
+    };
+  }
+  
+  const findBrand = (manufacturer: string, productClass: string, vendors: Vendor[]) => {
+    manufacturer = manufacturer?.toLowerCase() || ''
+    productClass = productClass?.toLowerCase() || ''
+    
+    const sortedVendors = vendors.sort((a, b) => (b.priority || 0) - (a.priority || 0))
+    
+    for (const vendor of sortedVendors) {
+      const manPatterns = vendor.manufacturer_patterns || []
+      const prodPatterns = vendor.product_patterns || []
+      
+      const manMatch = manPatterns.some((p: string) => manufacturer.includes(p.toLowerCase()))
+      const prodMatch = prodPatterns.some((p: string) => productClass.includes(p.toLowerCase()))
+      
+      if (manMatch || prodMatch) {
+        return vendor.name
+      }
+    }
+    
+    return manufacturer || 'Unknown'
+  }
+  
+  const processDeviceData = (devices: Device[], vendors: Vendor[]) => {
+    const now = new Date()
+    return devices.map((item: Device) => {
+      const lastInform = item._lastInform ? new Date(item._lastInform) : null
+      const isOnline = lastInform ? (now.getTime() - lastInform.getTime()) < 10 * 60 * 1000 : false
+      
+      const manufacturer = item.manufacturer || ''
+      const productClass = item.productclass || 'Unknown'
+      const brand = findBrand(manufacturer, productClass, vendors)
+      
+      return {
+        ...item,
+        isOnline,
+        brand: brand,
+      }
+    })
+  }
+
+  const handleSummon = async (e: React.MouseEvent, deviceId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    loadingCtl.show('Summoning device...');
+    try {
+      const res = await devicesAPI.summonDevice(deviceId);
+      if (res.success) {
+        toast.success(res.message || 'Summon command sent!');
+        setDevices(prevDevices => 
+          prevDevices.map(device => {
+            if (device._id === deviceId) {
+              return {
+                ...device,
+                isOnline: true,
+                _lastInform: new Date().toISOString()
+              };
+            }
+            return device;
+          })
+        );
+        
+      } else {
+        toast.error(res.message || 'Failed to send summon');
+      }
+    } catch (error: any) { 
+      toast.error(error.message || 'Error sending summon command');
+    } finally {
+      loadingCtl.hide();
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      loadingCtl.show('Loading devices...')
-      const res = await devicesAPI.getDevices()
-      if (!cancelled) {
-        if (res.success && Array.isArray(res.data)) {
-          setDevices(res.data as any)
-        } else {
-          toast.error(res.message || 'Failed to load devices')
-          setDevices([])
-        }
-        setLoading(false)
-        loadingCtl.hide()
-      }
-    })()
-    return () => { cancelled = true }
-  }, [])
-
-  const filteredDevices = devices.filter((device: any) =>
-    device._id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    device.SerialNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    device.productclass.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  const indexOfLastItem = currentPage * itemsPerPage
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage
-  const currentItems = filteredDevices.slice(indexOfFirstItem, indexOfLastItem)
-  const totalPages = Math.ceil(filteredDevices.length / itemsPerPage)
-  const debouncedSearch = debounce((term: string) => {
-    setSearchTerm(term)
-    setCurrentPage(1)
-  }, 300)
-
-  const getSignalStrengthColor = (rxpower: number) => {
-    if (rxpower >= -25) return 'text-green-600 dark:text-green-400'
-    if (rxpower >= -50) return 'text-yellow-600 dark:text-yellow-400'
-    if (rxpower >= -75) return 'text-orange-600 dark:text-orange-400'
-    return 'text-red-600 dark:text-red-400'
-  }
-
-  const getStatusBadge = (lastInform: string) => {
-    const lastSeen = new Date(lastInform)
-    const now = new Date()
-    const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60))
+    setLoading(true)
     
-    if (diffMinutes < 10) {
-      return <span className="modern-badge-success">Online</span>
-    } else if (diffMinutes < 60) {
-      return <span className="modern-badge-warning">Away</span>
-    } else {
-      return <span className="modern-badge-error">Offline</span>
-    }
-  }
+    const fetchData = async () => {
+      try {
+        const [devicesRes, vendorsRes] = await Promise.all([
+          devicesAPI.getDevices(),
+          vendorsAPI.getAll()
+        ]);
 
+        if (cancelled) return
 
-  const handleSummon = async (deviceId: string) => {
-    const res = await devicesAPI.summonDevice(deviceId)
-    if (res.success) {
-      toast.success(res.message || 'Summon sent')
-    } else {
-      toast.error(res.message || 'Failed to send summon')
+        if (devicesRes.success && vendorsRes.success) {
+          const devices = devicesRes.data as Device[]
+          const vendors = vendorsRes.data as Vendor[]
+          
+          const processed = processDeviceData(devices, vendors)
+          setDevices(processed)
+          
+        } else {
+          toast.error(devicesRes.message || vendorsRes.message || 'Failed to load data')
+        }
+      } catch (error) {
+        if (!cancelled) {
+          toast.error('Network error loading devices')
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
     }
-  }
+    
+    fetchData()
+    
+    return () => { cancelled = true }
+  }, [toast])
 
-  const handleDelete = async (deviceId: string) => {
-    if (!confirm('Delete this device?')) return
-    const res = await devicesAPI.deleteDevice(deviceId)
-    if (res.success) {
-      setDevices(prev => prev.filter(d => d._id !== deviceId))
-      toast.success('Device deleted')
-    } else {
-      toast.error(res.message || 'Failed to delete device')
-    }
+  const filteredDevices = useMemo(() => {
+    return devices.filter(device => {
+      const search = searchTerm.toLowerCase()
+      const statusMatch = filterStatus === 'all' || 
+                          (filterStatus === 'online' && device.isOnline) || 
+                          (filterStatus === 'offline' && !device.isOnline)
+
+      const searchMatch = !search ||
+                          device._id.toLowerCase().includes(search) ||
+                          device.SerialNumber.toLowerCase().includes(search) ||
+                          device.brand.toLowerCase().includes(search) ||
+                          device.productclass.toLowerCase().includes(search) ||
+                          device.pppoe?.toLowerCase().includes(search)
+                          
+      return statusMatch && searchMatch
+    })
+  }, [devices, searchTerm, filterStatus])
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto flex justify-center items-center h-[60vh]">
+          <div className="flex flex-col items-center">
+            <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 rounded-full animate-spin"></div>
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-400">Loading Devices...</p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="handwritter text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Device Management</h1>
-            <p className="text-gray-600 dark:text-gray-400">Manage and monitor your network devices</p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <input
-              type="text"
-              placeholder="Search devices..."
-              onChange={(e) => debouncedSearch(e.target.value)}
-              className="modern-input w-64"
-            />
-            <button className="modern-button">
-              Search
-            </button>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Device Management</h1>
+          <p className="text-gray-600 dark:text-gray-400">View, search, and manage all connected devices.</p>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="modern-card p-6">
-            <div className="metric-value">{devices.length}</div>
-            <div className="metric-label">Total Devices</div>
-          </div>
-          <div className="modern-card p-6">
-            <div className="metric-value text-green-600 dark:text-green-400">
-              {devices.filter((d: any) => {
-                const lastSeen = new Date(d._lastInform)
-                const now = new Date()
-                return (now.getTime() - lastSeen.getTime()) < 10 * 60 * 1000
-              }).length}
-            </div>
-            <div className="metric-label">Online Now</div>
-          </div>
-          <div className="modern-card p-6">
-            <div className="metric-value text-yellow-600 dark:text-yellow-400">
-              {devices.filter((d: any) => {
-                const lastSeen = new Date(d._lastInform)
-                const now = new Date()
-                const diff = (now.getTime() - lastSeen.getTime()) / (1000 * 60)
-                return diff >= 10 && diff < 60
-              }).length}
-            </div>
-            <div className="metric-label">Idle</div>
-          </div>
-          <div className="modern-card p-6">
-            <div className="metric-value text-red-600 dark:text-red-400">
-              {devices.filter((d: any) => {
-                const lastSeen = new Date(d._lastInform)
-                const now = new Date()
-                return (now.getTime() - lastSeen.getTime()) >= 60 * 60 * 1000
-              }).length}
-            </div>
-            <div className="metric-label">Offline</div>
-          </div>
+        {/* Filters */}
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <input
+            type="text"
+            placeholder="Search (Serial, Brand, PPPoE...)"
+            className="modern-input flex-1"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+          <select
+            className="modern-input md:w-48"
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+          >
+            <option value="all">All Status</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+          </select>
         </div>
 
-        {/* Devices Table */}
-        <div className="modern-card p-6">
+        {/* Table */}
+        <div className="modern-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="modern-table">
               <thead>
                 <tr>
-                  <th>Product Type</th>
-                  <th>RxPower</th>
                   <th>Status</th>
+                  <th>Serial Number / ID</th>
+                  <th>Brand</th>
+                  <th>Product Class</th>
                   <th>PPPoE</th>
-                  <th>SSID</th>
-                  <th>Total Connected</th>
-                  <th>Wan Bridge</th>
+                  <th>RX Power</th>
                   <th>Last Inform</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {filteredDevices.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-8">
-                      <div className="w-8 h-8 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-                      <p className="mt-4 text-gray-500 dark:text-gray-400">Loading devices...</p>
+                    <td colSpan={8} className="text-center py-12">
+                      <p className="text-gray-500 dark:text-gray-400">No devices found matching your criteria.</p>
                     </td>
                   </tr>
-                ) : filteredDevices.length === 0 ? (
-                  <tr>
-                    <td colSpan={11} className="text-center py-8">
-                      <p className="text-gray-500 dark:text-gray-400">No devices found</p>
-                    </td>
-                  </tr>
-                ) : currentItems.map((device: Device) => (
-                  <tr key={device._id}>
-                    <td>{device.productclass}</td>
-                    <td className={`text-sm font-medium ${getSignalStrengthColor(device.rxpower)}`}>
-                      {device.rxpower} dBm
-                    </td>
-                    <td>{getStatusBadge(device._lastInform)}</td>
-                    <td className="text-sm">{device.pppoe}</td>
-                    <td>
-                      <div className="space-y-1">
-                        {device.ssid1 && <div className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-1 rounded">{device.ssid1}</div>}
-                        {device.ssid2 && <div className="text-xs bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 px-2 py-1 rounded">{device.ssid2}</div>}
-                      </div>
-                    </td>
-                    <td className="text-sm">{device.activedevices}</td>
-                    <td className="text-sm">{device.wanbridge}</td>
-                    <td className="text-sm">{device._lastInform}</td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleSummon(device._id)}
-                          className="px-2 py-1 rounded-md text-blue-600 border border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-xs"
-                          title="Summon"
-                        >
-                          Summon
-                        </button>
-                        <Link href={`/devices/${device._id}`} className="px-2 py-1 rounded-md text-green-600 border border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20 transition-colors text-xs" title="View Details">
-                          Details
-                        </Link>
-                        <button
-                          onClick={() => handleDelete(device._id)}
-                          className="px-2 py-1 rounded-md text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-xs"
-                          title="Delete"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                ) : (
+                  filteredDevices.map((device) => {
+                    const signalInfo = getSignalStrengthInfo(device.rxpower);
+                    
+                    return (
+                      <tr key={device._id}>
+                        <td>
+                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                            device.isOnline ? 'modern-badge-success' : 'modern-badge-error'
+                          }`}>
+                            {device.isOnline ? 'Online' : 'Offline'}
+                          </span>
+                        </td>
+                        <td>
+                          <Link href={`/devices/${encodeURIComponent(device._id)}`}>
+                            <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline">
+                              {device.SerialNumber || device._id}
+                            </span>
+                          </Link>
+                        </td>
+                        <td>{device.brand}</td>
+                        <td>{device.productclass}</td>
+                        <td>{device.pppoe || 'N/A'}</td>
+                        <td className={`font-semibold ${signalInfo.color}`}>
+                          {device.rxpower ? `${device.rxpower} dBm` : 'N/A'}
+                        </td>
+                        <td className="text-xs text-gray-500 dark:text-gray-400">
+                          {device._lastInform ? new Date(device._lastInform).toLocaleString('id-ID') : 'N/A'}
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <Link href={`/devices/${encodeURIComponent(device._id)}`}>
+                              <span className="modern-button-secondary text-xs px-3 py-1">
+                                Details
+                              </span>
+                            </Link>
+                            <button
+                              onClick={(e) => handleSummon(e, device._id)}
+                              className="modern-button text-xs px-3 py-1"
+                              title="Summon Device"
+                            >
+                              🛎
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
               </tbody>
             </table>
           </div>
-          
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6 px-2">
-              <div className="text-sm text-gray-700 dark:text-gray-300">
-                Showing {indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredDevices.length)} of {filteredDevices.length} results
-              </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Previous
-                </button>
-                <span className="px-3 py-1 text-sm">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

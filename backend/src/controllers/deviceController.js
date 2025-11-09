@@ -93,111 +93,42 @@ class DeviceController {
   }
 
   static async summonDevice(req, res) {
+    const { id } = req.params;
+    const { parameters = [] } = req.body;
+
     try {
-      const { deviceId, parameters = ['wifi', 'wan', 'virtual', 'system', 'hosts', 'credentials'] } = req.body;
-      
-      if (!deviceId) {
-        return res.status(400).json(
-          createErrorResponse('Device ID is required')
-        );
+      const genieAcsUrl = await DeviceService.getGenieAcsUrl();
+      if (!genieAcsUrl) {
+        throw new Error('GenieACS URL not configured');
+      }
+      let url = new URL(genieAcsUrl);
+      if (!url.pathname.startsWith('/devices')) {
+        url.pathname = '/devices';
       }
 
-      const baseUrl = await DeviceService.getGenieAcsUrl();
-      const virtualParams = await DeviceService.getVirtualParameters();
-      
-      const summonsToSend = [];
-      const timestamp = Date.now();
+      const tasksUrl = `${url.toString()}/${id}/tasks?connection_request=1`;
 
-      if (parameters.includes('virtual')) {
-        summonsToSend.push(
-          { name: virtualParams.vpPppoeUsername, timestamp },
-          { name: virtualParams.vpWanBridge, timestamp },
-          { name: virtualParams.vpRxPower, timestamp },
-          { name: virtualParams.vpTemperature, timestamp },
-          { name: virtualParams.vpActiveDevices, timestamp },
-          { name: virtualParams.vpSuperAdmin, timestamp },
-          { name: virtualParams.vpSuperPassword, timestamp },
-          { name: virtualParams.vpUserAdmin, timestamp },
-          { name: virtualParams.vpUserPassword, timestamp }
-        );
+      const task = {
+        name: 'getParameterValues',
+        parameterNames: [
+          'InternetGatewayDevice.DeviceInfo.SerialNumber',
+          ...parameters
+        ]
+      };
+      const data = await DeviceService.fetchFromGenieAcs(tasksUrl, {}, 'POST', task);
+      if (data && data.fault && data.fault.faultString) {
+        console.error('GenieACS Task Fault:', data.fault.faultString);
+        throw new Error(data.fault.faultString);
       }
-
-      if (parameters.includes('system')) {
-        summonsToSend.push(
-          { name: 'InternetGatewayDevice.DeviceInfo.HardwareVersion', timestamp },
-          { name: 'InternetGatewayDevice.DeviceInfo.SoftwareVersion', timestamp },
-          { name: 'InternetGatewayDevice.DeviceInfo.UpTime', timestamp },
-          { name: 'InternetGatewayDevice.ManagementServer.ConnectionRequestURL', timestamp },
-          { name: 'InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress', timestamp }
-        );
-      }
-
-      if (parameters.includes('wifi')) {
-        const maxWifiConfig = 8;
-        for (let i = 1; i <= maxWifiConfig; i++) {
-          summonsToSend.push(
-            { name: `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.Enable`, timestamp },
-            { name: `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.SSID`, timestamp },
-            { name: `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.BeaconType`, timestamp },
-            { name: `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.TotalAssociations`, timestamp },
-            { name: `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.Channel`, timestamp },
-            { name: `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.KeyPassphrase`, timestamp },
-            { name: `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.PreSharedKey.1.KeyPassphrase`, timestamp }
-          );
-        }
-        
-        summonsToSend.push(
-          { name: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.*.AssociatedDevice.*', timestamp }
-        );
-      }
-
-      if (parameters.includes('hosts')) {
-        summonsToSend.push(
-          { name: 'InternetGatewayDevice.LANDevice.1.Hosts.Host', timestamp },
-          { name: virtualParams.vpActiveDevices, timestamp }
-        );
-      }
-
-      if (parameters.includes('credentials')) {
-        summonsToSend.push(
-          { name: virtualParams.vpSuperAdmin, timestamp },
-          { name: virtualParams.vpSuperPassword, timestamp },
-          { name: virtualParams.vpUserAdmin, timestamp },
-          { name: virtualParams.vpUserPassword, timestamp }
-        );
-      }
-
-      const encodedDeviceId = encodeURIComponent(deviceId);
-      const summonUrl = `${baseUrl}/${encodedDeviceId}/tasks?connection_request`;
-
-      const response = await fetch(summonUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          name: 'getParameterValues',
-          parameterNames: summonsToSend.map(s => s.name)
-        }),
-        timeout: 30000
+      res.json({
+        success: true,
+        message: 'Device summon task queued.',
+        data: data
       });
-
-      const result = await response.json().catch(() => null);
-
-      return res.json(
-        createResponse(`Summon sent successfully for ${summonsToSend.length} parameters`, {
-          deviceId,
-          parameterTypes: parameters,
-          parameterCount: summonsToSend.length,
-          taskId: result?._id || 'unknown'
-        })
-      );
+      
     } catch (error) {
-      console.error('Summon device error:', error);
-      return res.status(500).json(
-        createErrorResponse('Failed to summon device', error.message)
-      );
+      console.error('Error summoning device:', error.message);
+      res.status(500).json({ success: false, message: error.message || 'Failed to summon device' });
     }
   }
 
