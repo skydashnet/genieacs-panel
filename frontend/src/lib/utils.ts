@@ -15,16 +15,6 @@ export function formatNumber(num: number): string {
   return num.toString()
 }
 
-export function formatDate(dateString: string): string {
-  const date = new Date(dateString)
-  return date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
 
 export function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString)
@@ -115,5 +105,30 @@ export function copyToClipboard(text: string): Promise<boolean> {
       document.execCommand('copy') ? resolve(true) : resolve(false)
       textArea.remove()
     })
+  }
+}
+
+export function formatDate(isoString: string | undefined | null): string {
+  if (!isoString) return 'N/A';
+  
+  try {
+    const date = new Date(isoString);
+    const options: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Jakarta'
+    };
+    
+    let formatted = new Intl.DateTimeFormat('id-ID', options).format(date);
+    formatted = formatted.replace(/\//g, '-').replace(/\./g, ':').replace(',', '');
+    
+    return formatted;
+  } catch (error) {
+    return 'Invalid Date';
   }
 }

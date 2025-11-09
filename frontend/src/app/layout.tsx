@@ -16,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="id">
+    <html lang="id" suppressHydrationWarning={true}>
       <body className="bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200">
         <AuthProvider>
           <ThemeProvider>

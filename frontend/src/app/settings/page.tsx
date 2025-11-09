@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { vendorsAPI, settingsAPI, authAPI } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { useLoading } from '@/components/ui/loading'
-import type { Vendor as VendorType, WifiSecurityConfig as WifiSecurityConfigType, WifiSecurityMapping as WifiSecurityMappingType } from '@/types'
+import type { Vendor as VendorType, WifiSecurityConfig as WifiSecurityConfigType } from '@/types' // Hapus WifiSecurityMappingType
 
 export default function Settings() {
   const [settings, setSettings] = useState({
@@ -27,7 +27,6 @@ export default function Settings() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      // Load settings from backend
       const res = await settingsAPI.getAll()
       if (!cancelled && res.success && res.data) {
         setSettings(prev => ({ ...prev, ...(res.data as any) }))
@@ -137,11 +136,18 @@ export default function Settings() {
   const [vendorsLoading, setVendorsLoading] = useState(false)
   const [creatingVendor, setCreatingVendor] = useState(false)
   const [editingVendor, setEditingVendor] = useState<VendorType | null>(null)
+  
   const [vendorForm, setVendorForm] = useState<{
     name: string
     parameter_prefix: string
     manufacturer_patterns: string
     product_patterns: string
+    service_list_path: string
+    lan_binding_path: string
+    vlan_id_path: string
+    wifi_password_path: string
+    http_wan_enable_path: string
+    firewall_level_path: string
     priority: number
     enabled: number
     description: string
@@ -150,6 +156,12 @@ export default function Settings() {
     parameter_prefix: '',
     manufacturer_patterns: '',
     product_patterns: '',
+    service_list_path: '',
+    lan_binding_path: '',
+    vlan_id_path: '',
+    wifi_password_path: '',
+    http_wan_enable_path: '',
+    firewall_level_path: '',
     priority: 10,
     enabled: 1,
     description: '',
@@ -176,6 +188,12 @@ export default function Settings() {
       parameter_prefix: '',
       manufacturer_patterns: '',
       product_patterns: '',
+      service_list_path: '',
+      lan_binding_path: '',
+      vlan_id_path: '',
+      wifi_password_path: '',
+      http_wan_enable_path: '',
+      firewall_level_path: '',
       priority: 10,
       enabled: 1,
       description: '',
@@ -190,6 +208,12 @@ export default function Settings() {
       parameter_prefix: vendorForm.parameter_prefix || null,
       manufacturer_patterns: vendorForm.manufacturer_patterns.split(',').map(s => s.trim()).filter(Boolean),
       product_patterns: vendorForm.product_patterns.split(',').map(s => s.trim()).filter(Boolean),
+      service_list_path: vendorForm.service_list_path || null,
+      lan_binding_path: vendorForm.lan_binding_path || null,
+      vlan_id_path: vendorForm.vlan_id_path || null,
+      wifi_password_path: vendorForm.wifi_password_path || null,
+      http_wan_enable_path: vendorForm.http_wan_enable_path || null,
+      firewall_level_path: vendorForm.firewall_level_path || null,
       priority: Number(vendorForm.priority) || 10,
       enabled: Number(vendorForm.enabled) ? 1 : 0,
       description: vendorForm.description || null,
@@ -230,6 +254,7 @@ export default function Settings() {
   // ===== WiFi Security Configs =====
   const [wifiConfigs, setWifiConfigs] = useState<WifiSecurityConfigType[]>([])
   const [wifiConfigLoading, setWifiConfigLoading] = useState(false)
+  const [creatingConfig, setCreatingConfig] = useState(false) // State buat nampilin form
   const [configForm, setConfigForm] = useState<{ product_class: string; security_types: string; password_param_path: string }>({
     product_class: '',
     security_types: '',
@@ -248,7 +273,6 @@ export default function Settings() {
 
   useEffect(() => {
     if (activeTab === 'wifi-security') {
-      fetchVendors()
       fetchWifiConfigs()
     }
   }, [activeTab])
@@ -256,6 +280,7 @@ export default function Settings() {
   const resetConfigForm = () => {
     setConfigForm({ product_class: '', security_types: '', password_param_path: '' })
     setEditingConfig(null)
+    setCreatingConfig(false)
   }
 
   const submitWifiConfig = async () => {
@@ -292,84 +317,6 @@ export default function Settings() {
       toast.success('WiFi security config deleted')
     } else {
       const msg = res.message || 'Failed to delete config'
-      setNotification({ success: false, message: msg })
-      toast.error(msg)
-    }
-  }
-
-  // ===== WiFi Security Mappings per Vendor =====
-  const [selectedVendorId, setSelectedVendorId] = useState<number | null>(null)
-  const [wifiMappings, setWifiMappings] = useState<WifiSecurityMappingType[]>([])
-  const [wifiMappingsLoading, setWifiMappingsLoading] = useState(false)
-  const [mappingForm, setMappingForm] = useState<{ raw_security_value: string; normalized_security: string; description: string }>({
-    raw_security_value: '',
-    normalized_security: '',
-    description: ''
-  })
-  const [editingMapping, setEditingMapping] = useState<WifiSecurityMappingType | null>(null)
-
-  const fetchWifiMappings = async (vendorId: number) => {
-    setWifiMappingsLoading(true)
-    const res = await vendorsAPI.getWifiSecurityMappings(vendorId)
-    if (res.success && Array.isArray(res.data)) {
-      setWifiMappings(res.data as unknown as WifiSecurityMappingType[])
-    }
-    setWifiMappingsLoading(false)
-  }
-
-  useEffect(() => {
-    if (activeTab === 'wifi-security' && selectedVendorId) {
-      fetchWifiMappings(selectedVendorId)
-    }
-  }, [activeTab, selectedVendorId])
-
-  const resetMappingForm = () => {
-    setMappingForm({ raw_security_value: '', normalized_security: '', description: '' })
-    setEditingMapping(null)
-  }
-
-  const submitWifiMapping = async () => {
-    if (!selectedVendorId) {
-      const msg = 'Select vendor first'
-      setNotification({ success: false, message: msg })
-      toast.error(msg)
-      return
-    }
-    const payload: any = {
-      vendor_id: selectedVendorId,
-      raw_security_value: mappingForm.raw_security_value,
-      normalized_security: mappingForm.normalized_security,
-      description: mappingForm.description,
-    }
-    let res
-    if (editingMapping) {
-      res = await vendorsAPI.updateWifiSecurityMapping(editingMapping.id, payload)
-    } else {
-      res = await vendorsAPI.createWifiSecurityMapping(selectedVendorId, payload)
-    }
-    if (res.success) {
-      const msg = editingMapping ? 'Mapping updated' : 'Mapping created'
-      setNotification({ success: true, message: msg })
-      toast.success(msg)
-      await fetchWifiMappings(selectedVendorId)
-      resetMappingForm()
-    } else {
-      const msg = res.message || 'Operation failed'
-      setNotification({ success: false, message: msg })
-      toast.error(msg)
-    }
-  }
-
-  const deleteWifiMapping = async (id: number) => {
-    if (!selectedVendorId) return
-    if (!confirm('Delete this mapping?')) return
-    const res = await vendorsAPI.deleteWifiSecurityMapping(id)
-    if (res.success) {
-      setWifiMappings(prev => prev.filter(m => m.id !== id))
-      setNotification({ success: true, message: 'Mapping deleted' })
-      toast.success('Mapping deleted')
-    } else {
-      const msg = res.message || 'Failed to delete mapping'
       setNotification({ success: false, message: msg })
       toast.error(msg)
     }
@@ -425,7 +372,7 @@ export default function Settings() {
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
             >
-              Vendors
+              Vendor Management
             </button>
             <button
               onClick={() => setActiveTab('wifi-security')}
@@ -435,7 +382,7 @@ export default function Settings() {
                   : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
               }`}
             >
-              WiFi Security
+              WiFi Security Config
             </button>
           </div>
         </div>
@@ -620,180 +567,267 @@ export default function Settings() {
 
         {/* Vendors Tab */}
         {activeTab === 'vendors' && (
-          <div className="modern-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Vendor Management</h2>
-              <button
-                onClick={() => { resetVendorForm(); setCreatingVendor(true) }}
-                className="modern-button"
-              >
-                + Add Vendor
-              </button>
-            </div>
-
-            {(creatingVendor || editingVendor) && (
-              <div className="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Name</label>
-                    <input
-                      value={vendorForm.name}
-                      onChange={(e) => setVendorForm(v => ({ ...v, name: e.target.value }))}
-                      className="modern-input w-full"
-                      placeholder="Vendor name"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Parameter Prefix</label>
-                    <input
-                      value={vendorForm.parameter_prefix}
-                      onChange={(e) => setVendorForm(v => ({ ...v, parameter_prefix: e.target.value }))}
-                      className="modern-input w-full font-mono"
-                      placeholder="e.g. X_HW"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Manufacturer Patterns (comma separated)</label>
-                    <input
-                      value={vendorForm.manufacturer_patterns}
-                      onChange={(e) => setVendorForm(v => ({ ...v, manufacturer_patterns: e.target.value }))}
-                      className="modern-input w-full"
-                      placeholder="huawei, hw"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Product Patterns (comma separated)</label>
-                    <input
-                      value={vendorForm.product_patterns}
-                      onChange={(e) => setVendorForm(v => ({ ...v, product_patterns: e.target.value }))}
-                      className="modern-input w-full"
-                      placeholder="hg8, eg8, f660"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Priority</label>
-                    <input
-                      type="number"
-                      value={vendorForm.priority}
-                      onChange={(e) => setVendorForm(v => ({ ...v, priority: Number(e.target.value) }))}
-                      className="modern-input w-full"
-                      placeholder="10"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Status</label>
-                    <select
-                      value={vendorForm.enabled}
-                      onChange={(e) => setVendorForm(v => ({ ...v, enabled: Number(e.target.value) }))}
-                      className="modern-input w-full"
-                    >
-                      <option value={1}>Enabled</option>
-                      <option value={0}>Disabled</option>
-                    </select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium mb-1">Description</label>
-                    <textarea
-                      value={vendorForm.description}
-                      onChange={(e) => setVendorForm(v => ({ ...v, description: e.target.value }))}
-                      className="modern-input w-full"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-4">
-                  <button onClick={submitVendor} className="modern-button">
-                    {editingVendor ? 'Update Vendor' : 'Create Vendor'}
-                  </button>
-                  <button
-                    onClick={resetVendorForm}
-                    className="modern-button-secondary"
-                  >
-                    Cancel
-                  </button>
-                </div>
+          <div className="space-y-6">
+            {/* Vendor List */}
+            <div className="modern-card p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Vendor Management</h2>
+                <button
+                  onClick={() => { resetVendorForm(); setCreatingVendor(true) }}
+                  className="modern-button"
+                >
+                  + Add Vendor
+                </button>
               </div>
-            )}
 
-            <div className="overflow-x-auto">
-              <table className="modern-table">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Parameter Prefix</th>
-                    <th>Patterns</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendorsLoading ? (
+              {(creatingVendor || editingVendor) && (
+                <div className="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    
+                    {/* General Info */}
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium mb-1">Name *</label>
+                      <input
+                        value={vendorForm.name}
+                        onChange={(e) => setVendorForm(v => ({ ...v, name: e.target.value }))}
+                        className="modern-input w-full"
+                        placeholder="Vendor name"
+                      />
+                    </div>
+                    
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium mb-1">Manufacturer Patterns (Comma-separated) *</label>
+                      <input
+                        value={vendorForm.manufacturer_patterns}
+                        onChange={(e) => setVendorForm(v => ({ ...v, manufacturer_patterns: e.target.value }))}
+                        className="modern-input w-full"
+                        placeholder="huawei, hw"
+                      />
+                    </div>
+                    
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium mb-1">Product Patterns (Comma-separated) *</label>
+                      <input
+                        value={vendorForm.product_patterns}
+                        onChange={(e) => setVendorForm(v => ({ ...v, product_patterns: e.target.value }))}
+                        className="modern-input w-full"
+                        placeholder="hg8, eg8, f660"
+                      />
+                    </div>
+                    
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium mb-1">Parameter Prefix</label>
+                      <input
+                        value={vendorForm.parameter_prefix}
+                        onChange={(e) => setVendorForm(v => ({ ...v, parameter_prefix: e.target.value }))}
+                        className="modern-input w-full font-mono"
+                        placeholder="e.g. X_HW"
+                      />
+                    </div>
+
+                    {/* WAN Connection Parameters */}
+                    <h3 className="md:col-span-3 text-md font-semibold text-gray-800 dark:text-gray-200 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">WAN Connection Parameters</h3>
+                    
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Service List Path</label>
+                      <input
+                        value={vendorForm.service_list_path}
+                        onChange={(e) => setVendorForm(v => ({ ...v, service_list_path: e.target.value }))}
+                        className="modern-input w-full font-mono"
+                        placeholder="e.g. X_HW_SERVICELIST"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">LAN Binding Path</label>
+                      <input
+                        value={vendorForm.lan_binding_path}
+                        onChange={(e) => setVendorForm(v => ({ ...v, lan_binding_path: e.target.value }))}
+                        className="modern-input w-full font-mono"
+                        placeholder="e.g. X_HW_LANBIND"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">VLAN ID Path</label>
+                      <input
+                        value={vendorForm.vlan_id_path}
+                        onChange={(e) => setVendorForm(v => ({ ...v, vlan_id_path: e.target.value }))}
+                        className="modern-input w-full font-mono"
+                        placeholder="e.g. X_HW_VLAN"
+                      />
+                    </div>
+
+                    {/* WiFi & Security Parameters */}
+                    <h3 className="md:col-span-3 text-md font-semibold text-gray-800 dark:text-gray-200 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">WiFi & Security Parameters</h3>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">WiFi Password Path</label>
+                      <input
+                        value={vendorForm.wifi_password_path}
+                        onChange={(e) => setVendorForm(v => ({ ...v, wifi_password_path: e.target.value }))}
+                        className="modern-input w-full font-mono"
+                        placeholder="e.g. PreSharedKey.1.KeyPassphrase"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">HTTP WAN Enable Path</label>
+                      <input
+                        value={vendorForm.http_wan_enable_path}
+                        onChange={(e) => setVendorForm(v => ({ ...v, http_wan_enable_path: e.target.value }))}
+                        className="modern-input w-full font-mono"
+                        placeholder="e.g. ...AclServices.HTTPWanEnable"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Firewall Level Path</label>
+                      <input
+                        value={vendorForm.firewall_level_path}
+                        onChange={(e) => setVendorForm(v => ({ ...v, firewall_level_path: e.target.value }))}
+                        className="modern-input w-full font-mono"
+                        placeholder="e.g. ...X_HW_FirewallLevel"
+                      />
+                    </div>
+
+                    {/* Other Parameters */}
+                    <h3 className="md:col-span-3 text-md font-semibold text-gray-800 dark:text-gray-200 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">Other Parameters</h3>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Priority</label>
+                      <input
+                        type="number"
+                        value={vendorForm.priority}
+                        onChange={(e) => setVendorForm(v => ({ ...v, priority: Number(e.target.value) }))}
+                        className="modern-input w-full"
+                        placeholder="10"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Status</label>
+                      <select
+                        value={vendorForm.enabled}
+                        onChange={(e) => setVendorForm(v => ({ ...v, enabled: Number(e.target.value) }))}
+                        className="modern-input w-full"
+                      >
+                        <option value={1}>Enabled</option>
+                        <option value={0}>Disabled</option>
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium mb-1">Description</label>
+                      <textarea
+                        value={vendorForm.description}
+                        onChange={(e) => setVendorForm(v => ({ ...v, description: e.target.value }))}
+                        className="modern-input w-full"
+                        rows={2}
+                        placeholder="Optional description"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-4">
+                    <button onClick={submitVendor} className="modern-button">
+                      {editingVendor ? 'Update Vendor' : 'Create Vendor'}
+                    </button>
+                    <button
+                      onClick={resetVendorForm}
+                      className="modern-button-secondary"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="modern-table">
+                  <thead>
                     <tr>
-                      <td colSpan={6} className="text-center py-8">
-                        <div className="w-8 h-8 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-                        <p className="mt-2 text-gray-500 dark:text-gray-400">Loading vendors...</p>
-                      </td>
+                      <th>Name</th>
+                      <th>Parameter Prefix</th>
+                      <th>Patterns</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th>Action</th>
                     </tr>
-                  ) : vendorList.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-gray-500 dark:text-gray-400">
-                        No vendors
-                      </td>
-                    </tr>
-                  ) : (
-                    vendorList.map((v) => (
-                      <tr key={v.id}>
-                        <td className="font-medium">{v.name}</td>
-                        <td className="font-mono text-xs">{v.parameter_prefix || '-'}</td>
-                        <td>
-                          <div className="flex flex-wrap gap-1">
-                            {(v.manufacturer_patterns || []).concat(v.product_patterns || []).map((p, idx) => (
-                              <span key={idx} className="modern-badge">{p}</span>
-                            ))}
-                          </div>
-                        </td>
-                        <td>{v.priority}</td>
-                        <td>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${v.enabled ? 'modern-badge-success' : 'modern-badge-error'}`}>
-                            {v.enabled ? 'Enabled' : 'Disabled'}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingVendor(v)
-                                setCreatingVendor(true)
-                                setVendorForm({
-                                  name: v.name,
-                                  parameter_prefix: v.parameter_prefix || '',
-                                  manufacturer_patterns: (v.manufacturer_patterns || []).join(','),
-                                  product_patterns: (v.product_patterns || []).join(','),
-                                  priority: v.priority,
-                                  enabled: v.enabled,
-                                  description: v.description || ''
-                                })
-                              }}
-                              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                              title="Edit"
-                            >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => deleteVendor(v.id)}
-                              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                              title="Delete"
-                            >
-                              🗑️
-                            </button>
-                          </div>
+                  </thead>
+                  <tbody>
+                    {vendorsLoading ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8">
+                          <div className="w-8 h-8 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+                          <p className="mt-2 text-gray-500 dark:text-gray-400">Loading vendors...</p>
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    ) : vendorList.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-gray-500 dark:text-gray-400">
+                          No vendors
+                        </td>
+                      </tr>
+                    ) : (
+                      vendorList.map((v) => (
+                        <tr key={v.id}>
+                          <td className="font-medium">{v.name}</td>
+                          <td className="font-mono text-xs">{v.parameter_prefix || '-'}</td>
+                          <td>
+                            <div className="flex flex-wrap gap-1">
+                              {(v.manufacturer_patterns || []).concat(v.product_patterns || []).map((p, idx) => (
+                                <span key={idx} className="modern-badge">{p}</span>
+                              ))}
+                            </div>
+                          </td>
+                          <td>{v.priority}</td>
+                          <td>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${v.enabled ? 'modern-badge-success' : 'modern-badge-error'}`}>
+                              {v.enabled ? 'Enabled' : 'Disabled'}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingVendor(v)
+                                  setCreatingVendor(true)
+                                  setVendorForm({
+                                    name: v.name,
+                                    parameter_prefix: v.parameter_prefix || '',
+                                    manufacturer_patterns: (v.manufacturer_patterns || []).join(','),
+                                    product_patterns: (v.product_patterns || []).join(','),
+                                    service_list_path: v.service_list_path || '',
+                                    lan_binding_path: v.lan_binding_path || '',
+                                    vlan_id_path: v.vlan_id_path || '',
+                                    wifi_password_path: v.wifi_password_path || '',
+                                    http_wan_enable_path: v.http_wan_enable_path || '',
+                                    firewall_level_path: v.firewall_level_path || '',
+                                    priority: v.priority,
+                                    enabled: v.enabled,
+                                    description: v.description || ''
+                                  })
+                                }}
+                                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                title="Edit"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => deleteVendor(v.id)}
+                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                                title="Delete"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -804,17 +838,18 @@ export default function Settings() {
             {/* WiFi Security Configs */}
             <div className="modern-card p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">WiFi Security Configs (by Product Class)</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">WiFi Security Configuration</h2>
                 <button
-                  onClick={() => { resetConfigForm() }}
+                  onClick={() => { 
+                    resetConfigForm(); 
+                    setCreatingConfig(true);
+                  }}
                   className="modern-button"
                 >
-                  + Add Config
+                  + Add WiFi Config
                 </button>
               </div>
-
-              {/* Create/Edit Config Form */}
-              {(editingConfig || configForm.product_class || configForm.security_types || configForm.password_param_path) && (
+              {(creatingConfig || editingConfig) && (
                 <div className="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -856,12 +891,13 @@ export default function Settings() {
 
               <div className="overflow-x-auto">
                 <table className="modern-table">
+                  {/* Style Header Tabel Sesuai SS */}
                   <thead>
                     <tr>
-                      <th>Product Class</th>
-                      <th>Security Types</th>
-                      <th>Password Param Path</th>
-                      <th>Action</th>
+                      <th className="uppercase">Product Class</th>
+                      <th className="uppercase">Password Path</th>
+                      <th className="uppercase">Security Types</th>
+                      <th className="uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -877,6 +913,7 @@ export default function Settings() {
                       wifiConfigs.map(cfg => (
                         <tr key={cfg.id}>
                           <td className="font-medium">{cfg.product_class}</td>
+                          <td className="font-mono text-xs">{cfg.password_param_path}</td>
                           <td>
                             <div className="flex flex-wrap gap-1">
                               {(cfg.security_types_array || []).map((s, idx) => (
@@ -884,27 +921,27 @@ export default function Settings() {
                               ))}
                             </div>
                           </td>
-                          <td className="font-mono text-xs">{cfg.password_param_path}</td>
                           <td>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
                               <button
                                 onClick={() => {
-                                  setEditingConfig(cfg)
+                                  setEditingConfig(cfg);
+                                  setCreatingConfig(false);
                                   setConfigForm({
                                     product_class: cfg.product_class,
                                     security_types: cfg.security_types,
                                     password_param_path: cfg.password_param_path
                                   })
                                 }}
-                                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium text-sm"
                               >
-                                ✏️
+                                Edit
                               </button>
                               <button
                                 onClick={() => deleteWifiConfig(cfg.id)}
-                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                                className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium text-sm"
                               >
-                                🗑️
+                                Delete
                               </button>
                             </div>
                           </td>
@@ -914,126 +951,6 @@ export default function Settings() {
                   </tbody>
                 </table>
               </div>
-            </div>
-
-            {/* WiFi Security Mappings per Vendor */}
-            <div className="modern-card p-6">
-              <div className="mb-4 flex items-center gap-3">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">WiFi Security Mappings (per Vendor)</h2>
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Select Vendor</label>
-                <select
-                  value={selectedVendorId || ''}
-                  onChange={(e) => {
-                    const v = e.target.value ? Number(e.target.value) : null
-                    setSelectedVendorId(v)
-                  }}
-                  className="modern-input w-full md:w-80"
-                >
-                  <option value="">-- Choose Vendor --</option>
-                  {vendorList.map(v => (
-                    <option key={v.id} value={v.id}>{v.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedVendorId && (
-                <>
-                  <div className="mb-4 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Raw Security Value</label>
-                        <input
-                          value={mappingForm.raw_security_value}
-                          onChange={(e) => setMappingForm(f => ({ ...f, raw_security_value: e.target.value }))}
-                          className="modern-input w-full"
-                          placeholder="e.g. WPA2-PSK"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Normalized Security</label>
-                        <input
-                          value={mappingForm.normalized_security}
-                          onChange={(e) => setMappingForm(f => ({ ...f, normalized_security: e.target.value }))}
-                          className="modern-input w-full"
-                          placeholder="e.g. WPA2-PSK"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium mb-1">Description</label>
-                        <input
-                          value={mappingForm.description}
-                          onChange={(e) => setMappingForm(f => ({ ...f, description: e.target.value }))}
-                          className="modern-input w-full"
-                          placeholder="optional"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 mt-4">
-                      <button onClick={submitWifiMapping} className="modern-button">
-                        {editingMapping ? 'Update Mapping' : 'Create Mapping'}
-                      </button>
-                      <button onClick={resetMappingForm} className="modern-button-secondary">Clear</button>
-                    </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="modern-table">
-                      <thead>
-                        <tr>
-                          <th>Raw Value</th>
-                          <th>Normalized</th>
-                          <th>Description</th>
-                          <th>Action</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {wifiMappingsLoading ? (
-                          <tr>
-                            <td colSpan={4} className="text-center py-8 text-gray-500 dark:text-gray-400">Loading mappings...</td>
-                          </tr>
-                        ) : wifiMappings.length === 0 ? (
-                          <tr>
-                            <td colSpan={4} className="text-center py-8 text-gray-500 dark:text-gray-400">No mappings</td>
-                          </tr>
-                        ) : (
-                          wifiMappings.map(m => (
-                            <tr key={m.id}>
-                              <td>{m.raw_security_value}</td>
-                              <td className="font-medium">{m.normalized_security}</td>
-                              <td className="text-sm text-gray-600 dark:text-gray-400">{m.description || '-'}</td>
-                              <td>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => {
-                                      setEditingMapping(m)
-                                      setMappingForm({
-                                        raw_security_value: m.raw_security_value,
-                                        normalized_security: m.normalized_security,
-                                        description: m.description || ''
-                                      })
-                                    }}
-                                    className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-                                  >
-                                    ✏️
-                                  </button>
-                                  <button
-                                    onClick={() => deleteWifiMapping(m.id)}
-                                    className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
-                                  >
-                                    🗑️
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                </>
-              )}
             </div>
           </div>
         )}
@@ -1055,15 +972,17 @@ export default function Settings() {
         )}
 
         {/* Save Button */}
-        <div className="flex justify-end mt-8">
-          <button
-            onClick={handleSaveSettings}
-            disabled={loading}
-            className="modern-button"
-          >
-            {loading ? 'Saving...' : 'Save Settings'}
-          </button>
-        </div>
+        {(activeTab === 'general' || activeTab === 'virtual-params') && (
+          <div className="flex justify-end mt-8">
+            <button
+              onClick={handleSaveSettings}
+              disabled={loading}
+              className="modern-button"
+            >
+              {loading ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

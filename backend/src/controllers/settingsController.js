@@ -142,7 +142,10 @@ class SettingsController {
       if (testUrl.endsWith('/')) {
         testUrl = testUrl.slice(0, -1);
       }
-      
+      if (!testUrl.endsWith('/devices')) {
+        testUrl = `${testUrl}/devices`;
+      }
+
       testUrl = `${testUrl}?limit=1`;
       
       const controller = new AbortController();

@@ -133,6 +133,14 @@ export const devicesAPI = {
   
   summonDevice: (deviceId: string, parameters?: string[]) =>
     apiClient.post('/devices/summon', { deviceId, parameters }),
+
+  updateWanConfig: (deviceId: string, wanIndex: string, formData: any) => {
+    return apiClient.post(`/devices/${deviceId}/update-wan`, { wanIndex, formData });
+  },
+
+  updateCredentials: (deviceId: string, type: 'super' | 'user', password: string) => {
+    return apiClient.post(`/devices/${deviceId}/update-credentials`, { type, password });
+  }
 }
 
 // Settings API

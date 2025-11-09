@@ -31,10 +31,10 @@ class DeviceService {
       if (!baseUrl) {
         throw new Error('GenieACS URL not configured');
       }
-      
       let url = new URL(baseUrl);
-      url = new URL(url.origin + (url.pathname.replace(/\/devices\/?$/, '')));
-      
+      if (!url.pathname.startsWith('/devices')) {
+        url.pathname = '/devices';
+      }
       url = new URL(endpoint, url);
       
       Object.keys(query).forEach(key => {
@@ -310,7 +310,7 @@ class DeviceService {
         throw new Error('Device not found');
       }
 
-      return this.processDetailDeviceData(data[0], virtualParams, vendorConfigurations);
+      return await this.processDetailDeviceData(data[0], virtualParams, vendorConfigurations);
     } catch (error) {
       if (error.response) {
         throw new Error(`GenieACS API error: ${error.response.status} - ${error.response.statusText}`);
@@ -322,17 +322,45 @@ class DeviceService {
     }
   }
 
-  static processDetailDeviceData(item, virtualParams, vendorConfigurations) {
+  static async processDetailDeviceData(item, virtualParams, vendorConfigurations) {
     const getVPValue = (vpPath) => {
       if (!vpPath || !item.VirtualParameters) return null;
       const paramName = vpPath.split('.').pop();
       return item.VirtualParameters[paramName]?._value || null;
     };
+    
+    const getValue = (path) => {
+      if (!path || !item) return null;
+      const parts = path.split('.');
+      let current = item;
+      for (const part of parts) {
+        if (current && typeof current === 'object') {
+          current = current[part];
+        } else {
+          return null;
+        }
+      }
+      return current?._value || null;
+    };
+
+    const getRelativeValue = (obj, path) => {
+      if (!path || !obj) return null;
+      const parts = path.split('.');
+      let current = obj;
+      for (const part of parts) {
+        if (current && typeof current === 'object') {
+          current = current[part];
+        } else {
+          return null;
+        }
+      }
+      return (current && current._value !== undefined) ? current._value : current;
+    };
 
     const manufacturer = item._deviceId?._Manufacturer || null;
     const productClass = item._deviceId?._ProductClass || null;
     
-    const vendorObj = VendorService.detectVendor(manufacturer, productClass, item);
+    const vendorObj = await VendorService.detectVendor(manufacturer, productClass, item);
     const vendor = vendorObj ? vendorObj.name.toLowerCase() : 'unknown';
     const vendorId = vendorObj ? vendorObj.id : null;
 
@@ -341,12 +369,12 @@ class DeviceService {
       serialNumber: item._deviceId?._SerialNumber || null,
       manufacturer: manufacturer,
       oui: item._deviceId?._OUI || null,
-      hardwareVersion: item.InternetGatewayDevice?.DeviceInfo?.HardwareVersion?._value || null,
-      softwareVersion: item.InternetGatewayDevice?.DeviceInfo?.SoftwareVersion?._value || null,
-      upTime: item.InternetGatewayDevice?.DeviceInfo?.UpTime?._value || null,
+      hardwareVersion: getValue('InternetGatewayDevice.DeviceInfo.HardwareVersion'),
+      softwareVersion: getValue('InternetGatewayDevice.DeviceInfo.SoftwareVersion'),
+      upTime: getValue('InternetGatewayDevice.DeviceInfo.UpTime'),
       macAddress: 
-        item.InternetGatewayDevice?.LANDevice?.['1']?.LANEthernetInterfaceConfig?.['1']?.MACAddress?._value ||
-        item.InternetGatewayDevice?.WANDevice?.['1']?.WANEthernetInterfaceConfig?.MACAddress?._value ||
+        getValue('InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress') ||
+        getValue('InternetGatewayDevice.WANDevice.1.WANEthernetInterfaceConfig.MACAddress') ||
         null
     };
 
@@ -389,17 +417,144 @@ class DeviceService {
       }
     };
 
+    const wifi = [];
+    const wlanConfig = item.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration;
+
+    if (wlanConfig) {
+      for (let i = 1; i <= 8; i++) {
+        const ssidData = wlanConfig[i];
+        if (ssidData && ssidData.SSID?._value) {
+          wifi.push({
+            index: i,
+            enable: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.Enable`),
+            ssid: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.SSID`),
+            password: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.KeyPassphrase`) || getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.PreSharedKey.1.KeyPassphrase`),
+            security: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.BeaconType`),
+            channel: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.Channel`),
+            totalAssociations: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.TotalAssociations`)
+          });
+        }
+      }
+    }
+    
+    const wan = [];
+    const wanDevice = item.InternetGatewayDevice?.WANDevice;
+
+    if (wanDevice) {
+      for (const devKey in wanDevice) {
+        if (devKey.startsWith('_')) continue;
+        if (!wanDevice[devKey] || !wanDevice[devKey].WANConnectionDevice) continue;
+        
+        for (const connKey in wanDevice[devKey].WANConnectionDevice) {
+          if (connKey.startsWith('_')) continue;
+          const connDev = wanDevice[devKey].WANConnectionDevice[connKey];
+          if (!connDev) continue;
+
+          let connection = null;
+          let connType = null;
+          let connPath = null;
+
+          if (connDev.WANIPConnection) {
+            for (const ipKey in connDev.WANIPConnection) {
+              if (ipKey.startsWith('_')) continue;
+              if (connDev.WANIPConnection[ipKey]) {
+                connection = connDev.WANIPConnection[ipKey];
+                connType = 'IP';
+                connPath = `InternetGatewayDevice.WANDevice.${devKey}.WANConnectionDevice.${connKey}.WANIPConnection.${ipKey}`;
+                break;
+              }
+            }
+          }
+          
+          if (!connection && connDev.WANPPPConnection) {
+             for (const pppKey in connDev.WANPPPConnection) {
+              if (pppKey.startsWith('_')) continue;
+              if (connDev.WANPPPConnection[pppKey]) {
+                connection = connDev.WANPPPConnection[pppKey];
+                connType = 'PPPoE';
+                connPath = `InternetGatewayDevice.WANDevice.${devKey}.WANConnectionDevice.${connKey}.WANPPPConnection.${pppKey}`;
+                break;
+              }
+            }
+          }
+
+          if (connection && connPath) {
+            
+            let vlanId = null;
+            const vlanPath = vendorObj?.vlan_id_path;
+            if (vlanPath) {
+              if (vlanPath.startsWith('VirtualParameters.')) {
+                vlanId = getVPValue(vlanPath);
+              } else {
+                vlanId = getRelativeValue(connection, vlanPath);
+              }
+            }
+            
+            let serviceList = null;
+            const servicePath = vendorObj?.service_list_path;
+            if (servicePath) {
+              if (servicePath.startsWith('VirtualParameters.')) {
+                 serviceList = getVPValue(servicePath);
+              } else {
+                serviceList = getRelativeValue(connection, servicePath);
+              }
+            }
+            
+            let bindings = null;
+            const bindingPath = vendorObj?.lan_binding_path;
+            if (bindingPath) {
+              const bindingObj = getRelativeValue(connection, bindingPath);
+              if (bindingObj && typeof bindingObj === 'object') {
+                bindings = { lan: [], ssid: [] };
+                for (let i = 1; i <= 4; i++) {
+                  if (getRelativeValue(bindingObj, `Lan${i}Enable`)) {
+                    bindings.lan.push(`LAN${i}`);
+                  }
+                }
+                for (let i = 1; i <= 8; i++) {
+                  if (getRelativeValue(bindingObj, `SSID${i}Enable`)) {
+                    bindings.ssid.push(`SSID${i}`);
+                  }
+                }
+              }
+            }
+
+            wan.push({
+              index: `${devKey}.${connKey}`,
+              connType: connType,
+              name: getRelativeValue(connection, 'Name'),
+              status: getValue(`${connPath}.ConnectionStatus`),
+              ipAddress: getValue(`${connPath}.ExternalIPAddress`),
+              macAddress: getValue(`InternetGatewayDevice.WANDevice.${devKey}.WANEthernetInterfaceConfig.MACAddress`),
+              vlanId: vlanId,
+              username: getRelativeValue(connection, 'Username'),
+              serviceList: serviceList,
+              connectionType: getRelativeValue(connection, 'ConnectionType'),
+              natEnabled: getRelativeValue(connection, 'NATEnabled'),
+              bindings: bindings
+            });
+          }
+        }
+      }
+    }
+
     return {
       _id: item._id,
+      _lastInform: item._lastInform,
+      _lastBoot: item._lastBoot,
+      _registered: item._registered,
       vendor: vendor,
       deviceInfo,
       virtualParameters,
+      wifi, 
+      wan,
       vendorDetection: {
         vendor: vendor,
         vendorId: vendorId,
         vendorName: vendorObj?.name || 'Unknown',
         parameterPrefix: vendorObj?.parameter_prefix || null
-      }
+      },
+      _raw: item 
     };
   }
 
@@ -466,6 +621,146 @@ class DeviceService {
       console.error('Error rebooting device:', error);
       throw error;
     }
+  }
+  
+  static async updateWanConfig(deviceId, wanIndex, formData) {
+    const rawDeviceData = await this.fetchFromGenieAcs(deviceId, {});
+    const item = rawDeviceData[0];
+    const manufacturer = item._deviceId?._Manufacturer || null;
+    const productClass = item._deviceId?._ProductClass || null;
+    const vendorObj = await VendorService.detectVendor(manufacturer, productClass, item);
+    
+    if (!vendorObj) {
+      throw new Error('Vendor not found, cannot determine parameter paths.');
+    }
+    
+    const [devKey, connKey] = wanIndex.split('.');
+    const connDev = item.InternetGatewayDevice?.WANDevice?.[devKey]?.WANConnectionDevice?.[connKey];
+    
+    if (!connDev) throw new Error('WAN Connection path not found in raw data.');
+
+    let connection = null;
+    let connType = null;
+    let basePath = null;
+    
+    if (connDev.WANPPPConnection) {
+        for (const pppKey in connDev.WANPPPConnection) {
+        if (pppKey.startsWith('_')) continue;
+        connection = connDev.WANPPPConnection[pppKey];
+        connType = 'PPPoE';
+        basePath = `InternetGatewayDevice.WANDevice.${devKey}.WANConnectionDevice.${connKey}.WANPPPConnection.${pppKey}`;
+        break;
+      }
+    }
+
+    if (!basePath) {
+      throw new Error('Only PPPoE connections are editable for now.');
+    }
+    const tasks = [];
+    const { vlanEnabled, vlanId, username, password, bindings } = formData;
+    const vlanPath = vendorObj?.vlan_id_path;
+    if (vlanPath) {
+      tasks.push({
+        name: 'setParameterValues',
+        parameterValues: [
+          [`${basePath}.${vlanPath}`, vlanEnabled ? (vlanId || 0) : 0, 'xsd:unsignedInt'],
+        ]
+      });
+    }
+
+    if (username !== undefined) {
+      tasks.push({
+        name: 'setParameterValues',
+        parameterValues: [
+          [`${basePath}.Username`, username, 'xsd:string']
+        ]
+      });
+    }
+    if (password) { 
+        tasks.push({
+        name: 'setParameterValues',
+        parameterValues: [
+          [`${basePath}.Password`, password, 'xsd:string']
+        ]
+      });
+    }
+    
+    const bindingPath = vendorObj?.lan_binding_path;
+    if (bindingPath) {
+      const fullBindingPath = `${basePath}.${bindingPath}`;
+      const bindingParams = [];
+      for (let i = 1; i <= 4; i++) {
+        bindingParams.push([`${fullBindingPath}.Lan${i}Enable`, bindings[`LAN${i}`] ? 1 : 0, 'xsd:unsignedInt']);
+      }
+      for (let i = 1; i <= 8; i++) {
+        bindingParams.push([`${fullBindingPath}.SSID${i}Enable`, bindings[`SSID${i}`] ? 1 : 0, 'xsd:unsignedInt']);
+      }
+      
+      if (bindingParams.length > 0) {
+        tasks.push({
+          name: 'setParameterValues',
+          parameterValues: bindingParams
+        });
+      }
+    }
+    const genieAcsUrl = await this.getGenieAcsUrl();
+    const tasksUrl = `${genieAcsUrl}/${deviceId}/tasks?connection_request=1`;
+    
+    for (const task of tasks) {
+      const res = await fetch(tasksUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(task)
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        console.error('GenieACS Task Failed:', error);
+        throw new Error(`GenieACS task ${task.name} failed`);
+      }
+    }
+    
+    return { success: true, message: 'WAN configuration updated. Device will refresh on next inform.' };
+  }
+
+  static async updateCredentials(deviceId, type, password) {
+    const settings = await Setting.getAllAsObject();
+    let userPath, passPath;
+
+    if (type === 'super') {
+      userPath = settings.vpSuperAdmin;
+      passPath = settings.vpSuperPassword;
+    } else if (type === 'user') {
+      userPath = settings.vpUserAdmin;
+      passPath = settings.vpUserPassword;
+    } else {
+      throw new Error('Invalid credential type specified.');
+    }
+
+    if (!passPath) {
+      throw new Error(`VirtualParameter path for ${type} password is not set in settings.`);
+    }
+    const task = {
+      name: 'setParameterValues',
+      parameterValues: [
+        [passPath, password, 'xsd:string']
+      ]
+    };
+    const genieAcsUrl = await this.getGenieAcsUrl();
+    const tasksUrl = `${genieAcsUrl}/${deviceId}/tasks?connection_request=1`;
+
+    const res = await fetch(tasksUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(task)
+    });
+
+    if (!res.ok) {
+      const error = await res.json();
+      console.error('GenieACS Task Failed:', error);
+      throw new Error(`GenieACS task setParameterValues failed`);
+    }
+
+    return { success: true, message: `${type} admin password update task queued.` };
   }
 }
 

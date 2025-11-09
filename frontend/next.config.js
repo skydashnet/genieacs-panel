@@ -1,12 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Comment out static export to enable server-side features
-  // output: 'export',
   trailingSlash: true,
   images: {
     unoptimized: true
   },
-  // Enable API routes and other server-side features
+  reactStrictMode: false,
   async rewrites() {
     return [
       {

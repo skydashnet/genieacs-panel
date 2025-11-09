@@ -56,16 +56,13 @@ export default function Devices() {
     device.productclass.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  // Pagination logic
   const indexOfLastItem = currentPage * itemsPerPage
   const indexOfFirstItem = indexOfLastItem - itemsPerPage
   const currentItems = filteredDevices.slice(indexOfFirstItem, indexOfLastItem)
   const totalPages = Math.ceil(filteredDevices.length / itemsPerPage)
-
-  // Debounced search function
   const debouncedSearch = debounce((term: string) => {
     setSearchTerm(term)
-    setCurrentPage(1) // Reset to first page when searching
+    setCurrentPage(1)
   }, 300)
 
   const getSignalStrengthColor = (rxpower: number) => {
