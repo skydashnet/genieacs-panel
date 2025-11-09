@@ -32,6 +32,8 @@ export interface Device {
   ssid7?: string | null
   ssid8?: string | null
   _lastInform?: string
+  manufacturer?: string
+  _registered?: string
 }
 
 export interface DeviceDetail {
