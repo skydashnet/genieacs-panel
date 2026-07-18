@@ -4,6 +4,10 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+router.get('/setup-status', AuthController.getSetupStatus);
+
+router.post('/setup', AuthController.setupAdmin);
+
 router.post('/login', AuthController.login);
 
 router.get('/user', authenticateToken, AuthController.getCurrentUser);

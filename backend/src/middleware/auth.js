@@ -1,8 +1,17 @@
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-key-for-development-only';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
+
+const JWT_SECRET = (() => {
+  const secret = process.env.JWT_SECRET;
+  if (secret) return secret;
+  if (process.env.APP_ENV === 'production') {
+    throw new Error('JWT_SECRET must be set in production');
+  }
+  console.warn('JWT_SECRET not set; using insecure development fallback');
+  return 'insecure-development-secret';
+})();
 
 function generateTokens(user) {
   const accessToken = jwt.sign(

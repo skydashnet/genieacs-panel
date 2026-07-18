@@ -53,6 +53,70 @@ class AuthController {
     }
   }
 
+  static async getSetupStatus(req, res) {
+    try {
+      const count = await User.count();
+      return res.json(
+        createResponse('Setup status retrieved', { needsSetup: count === 0 })
+      );
+    } catch (error) {
+      console.error('Setup status error:', error);
+      return res.status(500).json(
+        createErrorResponse('Failed to get setup status', error.message)
+      );
+    }
+  }
+
+  static async setupAdmin(req, res) {
+    try {
+      const count = await User.count();
+      if (count > 0) {
+        return res.status(409).json(
+          createErrorResponse('Setup already completed')
+        );
+      }
+
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json(
+          createErrorResponse('Username and password are required')
+        );
+      }
+
+      if (String(username).length < 3) {
+        return res.status(400).json(
+          createErrorResponse('Username must be at least 3 characters')
+        );
+      }
+
+      if (String(password).length < 8) {
+        return res.status(400).json(
+          createErrorResponse('Password must be at least 8 characters')
+        );
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 12);
+      const userId = await User.create({ username, password: hashedPassword, role: 'admin' });
+      const user = { id: userId, username, role: 'admin' };
+
+      const { accessToken, refreshToken } = generateTokens(user);
+
+      return res.status(201).json(
+        createResponse('Admin account created successfully', {
+          user: { id: userId, username, role: 'admin' },
+          token: accessToken,
+          refreshToken
+        })
+      );
+    } catch (error) {
+      console.error('Setup admin error:', error);
+      return res.status(500).json(
+        createErrorResponse('Failed to create admin account', error.message)
+      );
+    }
+  }
+
   static async getCurrentUser(req, res) {
     try {
       const userId = req.user.userId;
