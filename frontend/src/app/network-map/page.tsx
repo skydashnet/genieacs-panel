@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useTheme } from '@/contexts/theme-context'
 import { mappingAPI, mapSettingsAPI } from '@/lib/api'
 import { useLoading } from '@/components/ui/loading'
+import { Icon } from '@/components/ui/icon'
 
 interface MapNode {
   id: number
@@ -30,67 +31,55 @@ export default function NetworkMap() {
   const { isDarkMode } = useTheme()
   const loadingCtl = useLoading()
 
-  // Leaflet map refs
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const markersLayerRef = useRef<any>(null)
   const tileLayerRef = useRef<any>(null)
   const leafletRef = useRef<any>(null)
-  const refreshTimerRef = useRef<number | null>(null)
+
+  const loadData = async (withSettings = true) => {
+    try {
+      setLoading(true)
+      loadingCtl.show('Loading network map...')
+      const requests: Promise<any>[] = [mappingAPI.getNodes()]
+      if (withSettings) requests.push(mapSettingsAPI.get())
+      const [nodesRes, settingsRes] = await Promise.all(requests)
+
+      const nodesData = Array.isArray(nodesRes.data) ? nodesRes.data : []
+      setNodes(
+        (nodesData as any[]).map(n => ({
+          id: n.id,
+          node_id: n.node_id,
+          type: n.type,
+          name: n.name,
+          latitude: Number(n.latitude),
+          longitude: Number(n.longitude),
+          capacity: n.capacity || undefined,
+          splitter: n.splitter || undefined,
+          pppoe: n.pppoe || undefined,
+          status: (n.status as any) || 'online'
+        }))
+      )
+
+      const ms = settingsRes?.data as any
+      if (ms && typeof ms === 'object') {
+        const lat = Number(ms.center_lat ?? -6.2088)
+        const lng = Number(ms.center_lng ?? 106.8456)
+        const zoom = Number(ms.default_zoom ?? 12)
+        if (!Number.isNaN(lat) && !Number.isNaN(lng)) setMapCenter([lat, lng])
+        if (!Number.isNaN(zoom)) setDefaultZoom(zoom)
+      }
+      setLastRefresh(new Date())
+    } catch (e) {
+      console.error('Failed loading map data', e)
+    } finally {
+      setLoading(false)
+      loadingCtl.hide()
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        setLoading(true)
-        loadingCtl.show('Loading network map...')
-        const [nodesRes, settingsRes] = await Promise.all([
-          mappingAPI.getNodes(),
-          mapSettingsAPI.get()
-        ])
-
-        if (!cancelled) {
-          const nodesData = Array.isArray(nodesRes.data) ? nodesRes.data : []
-          setNodes(
-            (nodesData as any[]).map(n => ({
-              id: n.id,
-              node_id: n.node_id,
-              type: n.type,
-              name: n.name,
-              latitude: Number(n.latitude),
-              longitude: Number(n.longitude),
-              capacity: n.capacity || undefined,
-              splitter: n.splitter || undefined,
-              pppoe: n.pppoe || undefined,
-              status: (n.status as any) || 'online'
-            }))
-          )
-
-          const ms = settingsRes.data as any
-          if (ms && typeof ms === 'object') {
-            const lat = Number(ms.center_lat ?? -6.2088)
-            const lng = Number(ms.center_lng ?? 106.8456)
-            const zoom = Number(ms.default_zoom ?? 12)
-            if (!Number.isNaN(lat) && !Number.isNaN(lng)) {
-              setMapCenter([lat, lng])
-            }
-            if (!Number.isNaN(zoom)) {
-              setDefaultZoom(zoom)
-            }
-          }
-        }
-      } catch (e) {
-        if (!cancelled) {
-          console.error('Failed loading map data', e)
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
-        loadingCtl.hide()
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
+    loadData()
   }, [])
   useEffect(() => {
     const link = document.createElement('link')
@@ -104,19 +93,12 @@ export default function NetworkMap() {
     }
   }, [])
   useEffect(() => {
-    setLastRefresh(new Date())
-  }, [])
-  useEffect(() => {
     return () => {
       if (mapRef.current) {
         mapRef.current.remove()
         mapRef.current = null
         markersLayerRef.current = null
         tileLayerRef.current = null
-      }
-      if (refreshTimerRef.current) {
-        clearTimeout(refreshTimerRef.current)
-        refreshTimerRef.current = null
       }
     }
   }, [])
@@ -161,12 +143,13 @@ export default function NetworkMap() {
     const bounds = L.latLngBounds([])
 
     nodes.forEach((n) => {
-      const html = `<div style="font-size:22px;line-height:22px;position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.25));">${getNodeIcon(n.type)}<span style="position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;background:${getStatusHex(n.status)};border-radius:9999px;border:2px solid ${isDarkMode ? '#111827' : '#ffffff'};"></span></div>`
+      const iconColor = isDarkMode ? '#e5e7eb' : '#374151'
+      const html = `<div style="position:relative;width:24px;height:24px;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.25));"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${getNodeSvg(n.type)}</svg><span style="position:absolute;right:-2px;bottom:-2px;width:8px;height:8px;background:${getStatusHex(n.status)};border-radius:9999px;border:2px solid ${isDarkMode ? '#111827' : '#ffffff'};"></span></div>`
       const icon = L.divIcon({
         className: '',
         html,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11],
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
       })
       const marker = L.marker([n.latitude, n.longitude], { icon })
       marker.addTo(group)
@@ -234,118 +217,33 @@ export default function NetworkMap() {
   }, [nodes, mapView])
 
   const handleRefresh = () => {
-    setLoading(true)
-    loadingCtl.show('Refreshing map...')
-    setLastRefresh(new Date())
-    // Simulate API call to refresh network nodes
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current)
-    }
-    refreshTimerRef.current = window.setTimeout(() => {
-      const mockNodes: MapNode[] = [
-        {
-          id: 1,
-          node_id: 'SRV-001',
-          type: 'server',
-          name: 'Main Server',
-          latitude: -6.2088,
-          longitude: 106.8456,
-          status: 'online'
-        },
-        {
-          id: 2,
-          node_id: 'ODC-001',
-          type: 'odc',
-          name: 'Central Distribution Cabinet',
-          latitude: -6.2108,
-          longitude: 106.8476,
-          capacity: 144,
-          status: 'online'
-        },
-        {
-          id: 3,
-          node_id: 'ODP-001',
-          type: 'odp',
-          name: 'Distribution Point A',
-          latitude: -6.2128,
-          longitude: 106.8496,
-          splitter: '1:16',
-          status: 'online'
-        },
-        {
-          id: 4,
-          node_id: 'ODP-002',
-          type: 'odp',
-          name: 'Distribution Point B',
-          latitude: -6.2148,
-          longitude: 106.8436,
-          splitter: '1:8',
-          status: 'warning'
-        },
-        {
-          id: 5,
-          node_id: 'ONT-001',
-          type: 'ont',
-          name: 'Customer A',
-          latitude: -6.2138,
-          longitude: 106.8506,
-          pppoe: 'customer-a@isp.com',
-          status: 'online'
-        },
-        {
-          id: 6,
-          node_id: 'ONT-002',
-          type: 'ont',
-          name: 'Customer B',
-          latitude: -6.2158,
-          longitude: 106.8426,
-          pppoe: 'customer-b@isp.com',
-          status: 'offline'
-        },
-        {
-          id: 7,
-          node_id: 'ONT-003',
-          type: 'ont',
-          name: 'Customer C',
-          latitude: -6.2118,
-          longitude: 106.8516,
-          pppoe: 'customer-c@isp.com',
-          status: 'online'
-        }
-      ]
-      setNodes(mockNodes)
-      setLoading(false)
-      loadingCtl.hide()
-      refreshTimerRef.current = null
-    }, 1000)
+    loadData(false)
   }
 
-  const getNodeIcon = (type: string) => {
+  const getNodeIconName = (type: string) => {
     switch (type) {
       case 'server':
-        return '🖥️'
+        return 'server'
       case 'odc':
-        return '🏢'
+        return 'building'
       case 'odp':
-        return '📦'
+        return 'box'
       case 'ont':
-        return '🏠'
+        return 'home'
       default:
-        return '📍'
+        return 'pin'
     }
   }
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'online':
-        return 'bg-green-500'
-      case 'offline':
-        return 'bg-red-500'
-      case 'warning':
-        return 'bg-yellow-500'
-      default:
-        return 'bg-gray-500'
+  const getNodeSvg = (type: string) => {
+    const paths: Record<string, string> = {
+      server: '<rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><line x1="7" y1="7" x2="7" y2="7"/><line x1="7" y1="17" x2="7" y2="17"/>',
+      building: '<path d="M6 22V4a1 1 0 011-1h10a1 1 0 011 1v18"/><line x1="10" y1="7" x2="10" y2="7"/><line x1="14" y1="7" x2="14" y2="7"/><line x1="10" y1="22" x2="10" y2="18"/><line x1="14" y1="22" x2="14" y2="18"/>',
+      box: '<path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4"/><line x1="12" y1="11" x2="12" y2="21"/>',
+      home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10"/>',
+      pin: '<path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>'
     }
+    return paths[type] || paths.pin
   }
 
   const getStatusHex = (status: string) => {
@@ -402,13 +300,14 @@ export default function NetworkMap() {
             <button
               onClick={handleRefresh}
               disabled={loading}
-              className="px-4 py-2 rounded-lg font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
             >
-              {loading ? 'Refreshing...' : '🔄 Refresh'}
+              <Icon name="refresh" size={16} className={loading ? 'animate-spin' : ''} />
+              {loading ? 'Refreshing...' : 'Refresh'}
             </button>
             <button
               onClick={() => setMapView('map')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md font-medium transition-colors ${
                 mapView === 'map'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
@@ -418,7 +317,7 @@ export default function NetworkMap() {
             </button>
             <button
               onClick={() => setMapView('list')}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              className={`px-4 py-2 rounded-md font-medium transition-colors ${
                 mapView === 'list'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
@@ -442,7 +341,7 @@ export default function NetworkMap() {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Nodes</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{nodes.length}</p>
               </div>
-              <div className="text-3xl">🌐</div>
+              <Icon name="globe" size={28} className="text-gray-400 dark:text-gray-500" />
             </div>
           </div>
           <div className="modern-card p-6">
@@ -453,7 +352,7 @@ export default function NetworkMap() {
                   {nodes.filter(n => n.status === 'online').length}
                 </p>
               </div>
-              <div className="text-3xl">✅</div>
+              <Icon name="check" size={28} className="text-green-500" />
             </div>
           </div>
           <div className="modern-card p-6">
@@ -464,7 +363,7 @@ export default function NetworkMap() {
                   {nodes.filter(n => n.status === 'offline').length}
                 </p>
               </div>
-              <div className="text-3xl">❌</div>
+              <Icon name="x" size={28} className="text-red-500" />
             </div>
           </div>
           <div className="modern-card p-6">
@@ -475,7 +374,7 @@ export default function NetworkMap() {
                   {nodes.filter(n => n.status === 'warning').length}
                 </p>
               </div>
-              <div className="text-3xl">⚠️</div>
+              <Icon name="warning" size={28} className="text-yellow-500" />
             </div>
           </div>
         </div>
@@ -491,7 +390,7 @@ export default function NetworkMap() {
             {mapView === 'map' ? (
               <div className="modern-card p-6">
                 <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Network Topology</h2>
-                <div className="h-[500px] rounded-lg overflow-hidden">
+                <div className="h-[500px] rounded-md overflow-hidden">
                   <div ref={mapContainerRef} className="w-full h-full" />
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-4 text-center">
@@ -520,7 +419,7 @@ export default function NetworkMap() {
                           <td>{node.name}</td>
                           <td>
                             <div className="flex items-center space-x-2">
-                              <span>{getNodeIcon(node.type)}</span>
+                              <Icon name={getNodeIconName(node.type)} size={18} className="text-gray-500 dark:text-gray-400" />
                               <span>{getTypeLabel(node.type)}</span>
                             </div>
                           </td>
@@ -551,16 +450,17 @@ export default function NetworkMap() {
         {/* Node Details Modal */}
         {selectedNode && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <div className="bg-white dark:bg-gray-800 rounded-md p-6 max-w-md w-full">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                   {selectedNode.name}
                 </h3>
                 <button
                   onClick={() => setSelectedNode(null)}
+                  aria-label="Close"
                   className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
                 >
-                  ✕
+                  <Icon name="x" size={20} />
                 </button>
               </div>
               <div className="space-y-3">

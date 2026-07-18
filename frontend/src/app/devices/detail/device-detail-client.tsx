@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/toast'
 import { useLoading } from '@/components/ui/loading'
 import { devicesAPI } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import { Icon } from '@/components/ui/icon'
 
 interface WanBindingData {
   lan: string[];
@@ -138,7 +139,7 @@ function EditWanModal({
   if (!isOpen || !wanData) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="modern-card w-full max-w-2xl max-h-[90vh] flex flex-col">
         {/* Header Modal */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
@@ -229,7 +230,7 @@ function EditWanModal({
                 <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">LAN Ports</p>
                 <div className="grid grid-cols-4 gap-3">
                   {([1, 2, 3, 4] as const).map(i => (
-                    <label key={`lan-${i}`} className="flex items-center space-x-2 p-2 border dark:border-gray-700 rounded-lg">
+                    <label key={`lan-${i}`} className="flex items-center space-x-2 p-2 border dark:border-gray-700 rounded-md">
                       <input
                         type="checkbox"
                         name={`LAN${i}`}
@@ -247,7 +248,7 @@ function EditWanModal({
                 <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">WiFi Networks</p>
                 <div className="grid grid-cols-4 gap-3">
                   {([1, 2, 3, 4, 5, 6, 7, 8] as const).map(i => (
-                    <label key={`ssid-${i}`} className="flex items-center space-x-2 p-2 border dark:border-gray-700 rounded-lg">
+                    <label key={`ssid-${i}`} className="flex items-center space-x-2 p-2 border dark:border-gray-700 rounded-md">
                       <input
                         type="checkbox"
                         name={`SSID${i}`}
@@ -311,7 +312,7 @@ function EditCredentialModal({
   if (!isOpen || !credentialType) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="modern-card w-full max-w-md">
         {/* Header Modal */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
@@ -588,7 +589,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
 
   const renderBindingBox = (label: string, isBound: boolean) => (
     <div className={`
-      relative flex flex-col items-center justify-center p-2 rounded-lg 
+      relative flex flex-col items-center justify-center p-2 rounded-md 
       transition-all duration-200 ease-in-out
       ${isBound 
         ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border border-blue-300 dark:border-blue-700'
@@ -682,10 +683,10 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
             </button>
             <button
               onClick={handleSummon}
-              className="modern-button"
+              className="modern-button inline-flex items-center gap-1.5"
               title="Summon Device"
             >
-              🛎 Summon
+              <Icon name="bell" size={16} /> Summon
             </button>
           </div>
         </div>
@@ -704,7 +705,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
           <div className="modern-card p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Temperature</span>
-              <span className="text-2xl">🌡️</span>
+              <Icon name="thermometer" size={20} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {vp.temperature?.value || 'N/A'}
@@ -713,7 +714,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
           <div className="modern-card p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Devices</span>
-              <span className="text-2xl">📱</span>
+              <Icon name="phone" size={20} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {vp.activedevices?.value || 0}
@@ -722,7 +723,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
           <div className="modern-card p-6">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Model</span>
-              <span className="text-2xl">🏠</span>
+              <Icon name="server" size={20} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
               {deviceInfo.productclass || 'N/A'}
@@ -846,7 +847,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
             <div className="space-y-6">
               {device.wan && device.wan.length > 0 ? (
                 device.wan.map((wan) => (
-                  <div key={wan.index} className="flex flex-col border border-gray-200 dark:border-gray-700 rounded-lg">
+                  <div key={wan.index} className="flex flex-col border border-gray-200 dark:border-gray-700 rounded-md">
                     <div className="p-5 space-y-3">
                       <div className="flex justify-between items-center">
                         <h3 className="text-md font-semibold text-gray-900 dark:text-gray-100">
@@ -979,7 +980,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {device.wifi && device.wifi.length > 0 ? (
                 device.wifi.map((ssid) => (
-                  <div key={ssid.index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <div key={ssid.index} className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
                     <div className="flex justify-between items-center mb-2">
                       <h3 className="font-medium text-gray-900 dark:text-gray-100">
                         SSID {ssid.index} ({ssid.enable ? 'Enabled' : 'Disabled'})
@@ -1021,7 +1022,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
               <div>
                 <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">Change Credentials</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
                     <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Superadmin (ISP)</h4>
                     <p className="text-sm text-gray-500">User: {vp.superAdmin?.value || 'N/A'}</p>
                     <p className="text-sm text-gray-500">Pass: {vp.superPassword?.value ? '******' : 'N/A'}</p>
@@ -1032,7 +1033,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
                       Update Superadmin
                     </button>
                   </div>
-                  <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                  <div className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
                     <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Useradmin (Client)</h4>
                     <p className="text-sm text-gray-500">User: {vp.userAdmin?.value || 'N/A'}</p>
                     <p className="text-sm text-gray-500">Pass: {vp.userPassword?.value ? '******' : 'N/A'}</p>
@@ -1048,7 +1049,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
 
               {/* <div>
                 <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">Raw Device Data (Debug)</h3>
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-md p-4">
                   <pre className="text-xs overflow-x-auto">
                     {JSON.stringify(device._raw || device, null, 2)}
                   </pre>

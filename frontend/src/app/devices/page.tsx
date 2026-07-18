@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { devicesAPI, vendorsAPI } from '@/lib/api'
 import { useLoading } from '@/components/ui/loading'
 import { useToast } from '@/components/ui/toast'
+import { Icon } from '@/components/ui/icon'
 import type { Device, Vendor } from '@/types'
 
 interface ProcessedDevice extends Device {
@@ -267,7 +268,7 @@ export default function DevicesPage() {
                           </span>
                         </td>
                         <td>
-                          <Link href={`/devices/${encodeURIComponent(device._id)}`}>
+                          <Link href={`/devices/detail?id=${encodeURIComponent(device._id)}`}>
                             <span className="font-mono text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline">
                               {device.SerialNumber || device._id}
                             </span>
@@ -284,17 +285,18 @@ export default function DevicesPage() {
                         </td>
                         <td>
                           <div className="flex items-center gap-2">
-                            <Link href={`/devices/${encodeURIComponent(device._id)}`}>
+                            <Link href={`/devices/detail?id=${encodeURIComponent(device._id)}`}>
                               <span className="modern-button-secondary text-xs px-3 py-1">
                                 Details
                               </span>
                             </Link>
                             <button
                               onClick={(e) => handleSummon(e, device._id)}
-                              className="modern-button text-xs px-3 py-1"
+                              className="modern-button text-xs px-3 py-1 inline-flex items-center"
                               title="Summon Device"
+                              aria-label="Summon Device"
                             >
-                              🛎
+                              <Icon name="bell" size={14} />
                             </button>
                           </div>
                         </td>

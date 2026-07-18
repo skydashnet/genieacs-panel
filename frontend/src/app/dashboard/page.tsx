@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/toast'
 import type { Device, Vendor } from '@/types'
 import { PieChart } from '@/components/charts/pie-chart'
 import { BarChart } from '@/components/charts/bar-chart'
+import { Icon } from '@/components/ui/icon'
 import { useAuth } from '@/contexts/auth-context'
 
 interface ProcessedDevice extends Device {
@@ -25,10 +26,10 @@ interface PieChartData {
 export default function DashboardPage() {
   const [devices, setDevices] = useState<ProcessedDevice[]>([])
   const [stats, setStats] = useState([
-    { name: 'Total Devices', value: 0, change: 0, icon: '💻' },
-    { name: 'Online', value: 0, change: 0, icon: '🟢' },
-    { name: 'Offline', value: 0, change: 0, icon: '🔴' },
-    { name: 'New Devices (24h)', value: 0, change: 0, icon: '✨' },
+    { name: 'Total Devices', value: 0, change: 0, icon: 'server' },
+    { name: 'Online', value: 0, change: 0, icon: 'check' },
+    { name: 'Offline', value: 0, change: 0, icon: 'x' },
+    { name: 'New Devices (24h)', value: 0, change: 0, icon: 'bell' },
   ])
   const [loading, setLoading] = useState(true)
   const [topProductClasses, setTopProductClasses] = useState<{name: string, count: number}[]>([])
@@ -154,10 +155,10 @@ export default function DashboardPage() {
           const { processed, stats, topProductClasses, rxDistribution } = processDeviceData(devices, vendors)
           setDevices(processed)
           setStats([
-            { name: 'Total Devices', value: stats.total, change: 0, icon: '💻' },
-            { name: 'Online', value: stats.online, change: 0, icon: '🟢' },
-            { name: 'Offline', value: stats.offline, change: 0, icon: '🔴' },
-            { name: 'New Devices (24h)', value: stats.new24h, change: 0, icon: '✨' },
+            { name: 'Total Devices', value: stats.total, change: 0, icon: 'server' },
+            { name: 'Online', value: stats.online, change: 0, icon: 'check' },
+            { name: 'Offline', value: stats.offline, change: 0, icon: 'x' },
+            { name: 'New Devices (24h)', value: stats.new24h, change: 0, icon: 'bell' },
           ])
           setTopProductClasses(topProductClasses)
           
@@ -225,7 +226,7 @@ export default function DashboardPage() {
             <div key={index} className="modern-card p-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{stat.name}</span>
-                <span className="text-2xl">{stat.icon}</span>
+                <Icon name={stat.icon} size={20} className="text-gray-400 dark:text-gray-500" />
               </div>
               <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">{stat.value}</p>
             </div>
@@ -262,7 +263,7 @@ export default function DashboardPage() {
       
       {/* Modal Welcome */}
       {showWelcomeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowWelcomeModal(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowWelcomeModal(false)}>
           <div className="modern-card w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
               <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
@@ -270,11 +271,10 @@ export default function DashboardPage() {
               </h3>
               <button
                 onClick={() => setShowWelcomeModal(false)}
-                className="p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
+                className="p-1 rounded-md text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
+                aria-label="Close"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-                </svg>
+                <Icon name="x" size={22} />
               </button>
             </div>
             <div className="p-6 space-y-4">

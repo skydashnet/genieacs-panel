@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { useAuth } from '@/contexts/auth-context'
+import { Icon } from '@/components/ui/icon'
 
 export default function Login() {
   const [formData, setFormData] = useState({
@@ -46,8 +46,8 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-            <span className="text-2xl">🔐</span>
+          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-md bg-blue-100 dark:bg-blue-900/30">
+            <Icon name="lock" size={24} className="text-blue-600 dark:text-blue-400" />
           </div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-gray-100">
             Sign in to your account
@@ -62,7 +62,7 @@ export default function Login() {
             <div className="rounded-md bg-red-50 dark:bg-red-900/20 p-4">
               <div className="flex">
                 <div className="flex-shrink-0">
-                  <span className="text-red-400">⚠️</span>
+                  <Icon name="warning" size={20} className="text-red-500" />
                 </div>
                 <div className="ml-3">
                   <h3 className="text-sm font-medium text-red-800 dark:text-red-300">
@@ -131,28 +131,7 @@ export default function Login() {
               )}
             </button>
           </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                id="remember-me"
-                name="remember-me"
-                type="checkbox"
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-              />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900 dark:text-gray-300">
-                Remember me
-              </label>
-            </div>
-            
-            <div className="text-sm">
-              <Link href="/forgot-password" className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">
-                Forgot your password?
-              </Link>
-            </div>
-          </div>
         </form>
-        
       </div>
     </div>
   )

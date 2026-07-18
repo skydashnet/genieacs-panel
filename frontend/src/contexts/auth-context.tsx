@@ -9,7 +9,9 @@ interface AuthContextType {
   user: User | null
   isAuthenticated: boolean
   loading: boolean
+  needsSetup: boolean
   login: (username: string, password: string) => Promise<boolean>
+  completeSetup: (username: string, password: string) => Promise<boolean>
   logout: () => void
 }
 
@@ -19,11 +21,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [needsSetup, setNeedsSetup] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
 
   useEffect(() => {
     const checkAuthStatus = async () => {
+      try {
+        const setupRes = await authAPI.getSetupStatus()
+        if (setupRes.success && (setupRes.data as any)?.needsSetup) {
+          setNeedsSetup(true)
+          setUser(null)
+          setIsAuthenticated(false)
+          setLoading(false)
+          return
+        }
+      } catch (error) {
+        console.error("Setup status check failed:", error)
+      }
+
+      setNeedsSetup(false)
       const token = localStorage.getItem('token')
       if (token) {
         try {
@@ -54,7 +71,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (loading) return
 
-    const isAuthPage = pathname === '/login';
+    const isSetupPage = pathname === '/setup'
+    const isAuthPage = pathname === '/login'
+
+    if (needsSetup) {
+      if (!isSetupPage) router.push('/setup')
+      return
+    }
+
+    if (isSetupPage) {
+      router.push(isAuthenticated ? '/dashboard' : '/login')
+      return
+    }
 
     if (!isAuthenticated && !isAuthPage) {
       router.push('/login');
@@ -63,7 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (isAuthenticated && isAuthPage) {
       router.push('/dashboard');
     }
-  }, [isAuthenticated, loading, pathname, router])
+  }, [isAuthenticated, needsSetup, loading, pathname, router])
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
@@ -91,6 +119,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }
 
+  const completeSetup = async (username: string, password: string): Promise<boolean> => {
+    try {
+      const res = await authAPI.setupAdmin(username, password)
+      if (res.success && res.data) {
+        const { token, user } = res.data as { token: string; user: User }
+        localStorage.setItem('token', token)
+        setUser(user)
+        setIsAuthenticated(true)
+        setNeedsSetup(false)
+        router.push('/dashboard')
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error("Setup failed:", error)
+      return false
+    }
+  }
+
   const logout = () => {
     localStorage.removeItem('token')
     setUser(null)
@@ -98,7 +145,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     router.push('/login')
   }
   
-  const value = { user, isAuthenticated, loading, login, logout }
+  const value = { user, isAuthenticated, loading, needsSetup, login, completeSetup, logout }
   
   return (
     <AuthContext.Provider value={value}>

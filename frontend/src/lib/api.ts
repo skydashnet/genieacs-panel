@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
 export interface ApiResponse<T = any> {
   success: boolean
@@ -98,6 +98,12 @@ export const apiClient = new ApiClient(API_BASE_URL)
 
 // Authentication API
 export const authAPI = {
+  getSetupStatus: () =>
+    apiClient.get('/auth/setup-status'),
+
+  setupAdmin: (username: string, password: string) =>
+    apiClient.post('/auth/setup', { username, password }),
+
   login: (username: string, password: string) =>
     apiClient.post('/auth/login', { username, password }),
   
@@ -263,4 +269,25 @@ export const mapSettingsAPI = {
   
   reset: () =>
     apiClient.post('/map-settings/reset'),
+}
+
+export interface DbConfigPayload {
+  client: 'sqlite3' | 'mysql2'
+  host?: string
+  port?: number
+  user?: string
+  password?: string
+  database?: string
+  migrateData?: boolean
+}
+
+export const databaseAPI = {
+  getConfig: () =>
+    apiClient.get('/database/config'),
+
+  test: (config: DbConfigPayload) =>
+    apiClient.post('/database/test', config),
+
+  switch: (config: DbConfigPayload) =>
+    apiClient.post('/database/switch', config),
 }

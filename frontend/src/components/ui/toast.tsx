@@ -1,6 +1,7 @@
 'use client'
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { Icon } from './icon'
 
 type ToastType = 'success' | 'error' | 'info' | 'warning'
 
@@ -36,19 +37,19 @@ function genId() {
 const typeStyles: Record<ToastType, { base: string; icon: string }> = {
   success: {
     base: 'border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300',
-    icon: '✅'
+    icon: 'check-circle'
   },
   error: {
     base: 'border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300',
-    icon: '❌'
+    icon: 'x-circle'
   },
   info: {
     base: 'border-blue-200 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300',
-    icon: 'ℹ️'
+    icon: 'info'
   },
   warning: {
     base: 'border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300',
-    icon: '⚠️'
+    icon: 'alert'
   }
 }
 
@@ -123,7 +124,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`border rounded-lg shadow-sm px-4 py-3 flex items-start gap-3 animate-in fade-in slide-in-from-right-4 ${typeStyles[t.type].base}`}
+            className={`border rounded-md shadow-sm px-4 py-3 flex items-start gap-3 animate-in fade-in slide-in-from-right-4 ${typeStyles[t.type].base}`}
             role="status"
             aria-live="polite"
           >
@@ -140,7 +141,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               aria-label="Dismiss"
               title="Dismiss"
             >
-              ✕
+              <Icon name="x" size={16} />
             </button>
           </div>
         ))}

@@ -23,36 +23,28 @@
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 221 83% 53%;
-    --radius: 0.5rem;
-    --luxury-gold: 45 74% 53%;
-    --luxury-silver: 0 0% 75%;
-    --luxury-platinum: 45 12% 89%;
-    --luxury-bronze: 27 59% 47%;
-    --luxury-diamond: 187 100% 87%;
-    --luxury-ruby: 340 83% 47%;
-    --luxury-emerald: 146 51% 47%;
-    --luxury-sapphire: 211 100% 37%;
+    --radius: 0.375rem;
   }
 
   .dark {
-    --background: 220 13% 5%;
+    --background: 220 13% 9%;
     --foreground: 210 40% 98%;
-    --card: 220 13% 5%;
+    --card: 220 13% 11%;
     --card-foreground: 210 40% 98%;
-    --popover: 220 13% 5%;
+    --popover: 220 13% 11%;
     --popover-foreground: 210 40% 98%;
     --primary: 217 91% 60%;
-    --primary-foreground: 220 13% 5%;
-    --secondary: 220 13% 15%;
+    --primary-foreground: 220 13% 9%;
+    --secondary: 220 13% 16%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 220 13% 15%;
+    --muted: 220 13% 16%;
     --muted-foreground: 215 20% 65%;
-    --accent: 220 13% 15%;
+    --accent: 220 13% 16%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    --border: 220 13% 15%;
-    --input: 220 13% 15%;
+    --border: 220 13% 18%;
+    --input: 220 13% 18%;
     --ring: 224 76% 94%;
   }
 }
@@ -63,222 +55,52 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
 @layer components {
-  /* Modern Card Styles */
   .modern-card {
-    @apply bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm;
+    @apply bg-white dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700 shadow-sm;
   }
-  
-  .modern-card:hover {
-    @apply shadow-md transition-shadow duration-200;
-  }
-  
-  /* Modern Button Styles */
+
   .modern-button {
-    @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
+    @apply bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .modern-button-secondary {
-    @apply bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-lg font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
+    @apply bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded-md font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900;
   }
-  
-  /* Modern Input Styles */
+
   .modern-input {
-    @apply rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200;
+    @apply w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-gray-900 dark:text-gray-100 placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all duration-200;
   }
-  
-  /* Modern Badge Styles */
+
   .modern-badge { @apply inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200; }
   .modern-badge-success { @apply inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200; }
   .modern-badge-warning { @apply inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200; }
   .modern-badge-error { @apply inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200; }
   .modern-badge-info { @apply inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200; }
-  
-  /* Modern Progress Bar */
-  .modern-progress {
-    @apply h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden;
+
+  .modern-table {
+    @apply w-full rounded-md overflow-hidden border border-gray-200 dark:border-gray-700;
   }
-  
-  .modern-progress-bar {
-    @apply h-full bg-blue-600 transition-all duration-500 ease-out;
+
+  .modern-table th {
+    @apply bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700;
   }
-  
-  /* Modern Scrollbar */
-  .modern-scrollbar::-webkit-scrollbar {
-    @apply w-2;
+
+  .modern-table td {
+    @apply px-4 py-3 border-b border-gray-100 dark:border-gray-800 transition-colors duration-200;
   }
-  
-  .modern-scrollbar::-webkit-scrollbar-track {
-    @apply bg-gray-100 dark:bg-gray-800 rounded-full;
+
+  .modern-table tr:last-child td {
+    @apply border-b-0;
   }
-  
-  .modern-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+
+  .modern-table tbody tr:hover {
+    @apply bg-gray-50 dark:bg-gray-800/50;
   }
-  
-  .modern-scrollbar::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-400 dark:bg-gray-500;
-  }
-  
-  /* Subtle gradient for backgrounds only */
-  .subtle-gradient-bg {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-  }
-  
-  .dark .subtle-gradient-bg {
-    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-  }
-}
-
-/* Custom Animations */
-@keyframes shimmer {
-  0% {
-    background-position: -200px 0;
-  }
-  100% {
-    background-position: calc(200px + 100%) 0;
-  }
-}
-
-.shimmer {
-  animation: shimmer 2s linear infinite;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(212, 175, 55, 0.4),
-    transparent
-  );
-  background-size: 200px 100%;
-}
-
-/* Luxury Loading Spinner */
-.luxury-spinner {
-  @apply w-8 h-8 border-4 border-luxury-platinum/20 border-t-luxury-gold rounded-full animate-spin;
-}
-
-/* Pulse Glow Effect */
-.pulse-glow-luxury {
-  animation: pulse-glow 2s ease-in-out infinite;
-  box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
-}
-
-/* Floating Animation */
-.floating {
-  animation: float 3s ease-in-out infinite;
-}
-
-/* Luxury Grid Pattern */
-.luxury-grid {
-  background-image: 
-    linear-gradient(rgba(212, 175, 55, 0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(212, 175, 55, 0.1) 1px, transparent 1px);
-  background-size: 50px 50px;
-}
-
-/* Text Shadow for Luxury */
-.luxury-text-shadow {
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(212, 175, 55, 0.2);
-}
-
-/* Border Animation */
-.luxury-border-animation {
-  @apply relative;
-}
-
-.luxury-border-animation::before {
-  @apply absolute inset-0 rounded-lg opacity-0 transition-opacity duration-300;
-  content: '';
-  background: linear-gradient(45deg, #D4AF37, #E0115F, #0F52BA, #50C878, #D4AF37);
-  background-size: 400% 400%;
-  animation: gradient-shift 3s ease infinite;
-  z-index: -1;
-}
-
-.luxury-border-animation:hover::before {
-  @apply opacity-100;
-  padding: 2px;
-}
-
-/* Modern Table Styles */
-.modern-table {
-  @apply w-full rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700;
-}
-
-.modern-table th {
-  @apply bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-700;
-}
-
-.modern-table td {
-  @apply px-4 py-3 border-b border-gray-100 dark:border-gray-800 transition-colors duration-200;
-}
-
-.modern-table tr:last-child td {
-  @apply border-b-0;
-}
-
-.modern-table tbody tr:hover {
-  @apply bg-gray-50 dark:bg-gray-800/50;
-}
-
-/* Modern Status Indicators */
-.status-online {
-  @apply w-3 h-3 rounded-full bg-green-500;
-}
-
-.status-offline {
-  @apply w-3 h-3 rounded-full bg-red-500;
-}
-
-.status-warning {
-  @apply w-3 h-3 rounded-full bg-yellow-500;
-}
-
-/* Modern Metric Cards */
-.metric-card {
-  @apply modern-card p-6 hover:shadow-md transition-all duration-200;
-}
-
-.metric-value {
-  @apply text-2xl font-bold text-gray-900 dark:text-gray-100;
-}
-
-.metric-label {
-  @apply text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider;
-}
-
-.metric-change {
-  @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium;
-}
-
-.metric-change.positive {
-  @apply modern-badge-success;
-}
-
-.metric-change.negative {
-  @apply modern-badge-error;
-}
-
-.metric-change.warning {
-  @apply modern-badge-warning;
-}
-
-.metric-change.positive {
-  @apply modern-badge-success;
-}
-
-.metric-change.negative {
-  @apply modern-badge-error;
-}
-
-/* Gradient Text */
-.gradient-text {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #fda085 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-fill-color: transparent;
 }

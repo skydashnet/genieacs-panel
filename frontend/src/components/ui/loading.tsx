@@ -33,8 +33,8 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
     <LoadingContext.Provider value={value}>
       {children}
       {visible && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 shadow-lg">
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40">
+          <div className="flex items-center gap-3 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 shadow-lg">
             <Spinner />
             <div className="text-sm text-gray-700 dark:text-gray-300">{message || 'Loading...'}</div>
           </div>

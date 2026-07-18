@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTheme } from '@/contexts/theme-context'
 import { useAuth } from '@/contexts/auth-context'
+import { Icon } from '@/components/ui/icon'
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -29,14 +30,14 @@ export default function Sidebar() {
   }, [])
 
   const menuItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: '📊' },
-    { href: '/devices', label: 'Devices', icon: '📡' },
-    { href: '/network-map', label: 'Network Map', icon: '🗺️' },
-    { href: '/settings', label: 'Settings', icon: '⚙️' },
+    { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
+    { href: '/devices', label: 'Devices', icon: 'devices' },
+    { href: '/network-map', label: 'Network Map', icon: 'map' },
+    { href: '/settings', label: 'Settings', icon: 'settings' },
   ]
 
   const isActive = (href: string) => pathname === href
-  const hideOnRoutes = ['/login']
+  const hideOnRoutes = ['/login', '/setup']
   const shouldHideSidebar = hideOnRoutes.some((route) => pathname.startsWith(route))
   if (shouldHideSidebar) {
     return null
@@ -66,7 +67,7 @@ export default function Sidebar() {
       {isMobile && (
         <button
           onClick={() => setIsMobileOpen(true)}
-          className="fixed top-4 left-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 md:hidden"
+          className="fixed top-4 left-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-200 dark:border-gray-700 md:hidden"
         >
           <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -147,8 +148,8 @@ function SidebarContent({
       <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
         {!isCollapsed && (
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-blue-600 rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-xs">GP</span>
+            <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
+              <span className="text-white font-semibold text-xs">GP</span>
             </div>
             <span className="text-base font-semibold text-gray-800 dark:text-gray-200">{appName}</span>
           </Link>
@@ -169,7 +170,7 @@ function SidebarContent({
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                 }`}
               >
-                <span className="text-base">{item.icon}</span>
+                <Icon name={item.icon} size={20} />
                 {!isCollapsed && <span className="text-sm">{item.label}</span>}
               </Link>
             </li>
@@ -184,7 +185,7 @@ function SidebarContent({
         {!isCollapsed ? (
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">
                 {initial}
               </div>
               <div className="flex flex-col">
@@ -205,7 +206,7 @@ function SidebarContent({
             <button
               onClick={logout}
               title="Logout"
-              className="p-2 rounded-lg text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              className="p-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7" />

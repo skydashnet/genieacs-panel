@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { vendorsAPI, settingsAPI, authAPI } from '@/lib/api'
+import { vendorsAPI, settingsAPI, authAPI, databaseAPI, type DbConfigPayload } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { useLoading } from '@/components/ui/loading'
-import type { Vendor as VendorType, WifiSecurityConfig as WifiSecurityConfigType } from '@/types' // Hapus WifiSecurityMappingType
+import { Icon } from '@/components/ui/icon'
+import type { Vendor as VendorType, WifiSecurityConfig as WifiSecurityConfigType } from '@/types'
 
 export default function Settings() {
   const [settings, setSettings] = useState({
@@ -23,6 +24,12 @@ export default function Settings() {
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [testResult, setTestResult] = useState<{success: boolean, message: string, deviceCount?: number} | null>(null)
+  const [dbForm, setDbForm] = useState<DbConfigPayload>({
+    client: 'mysql2', host: 'localhost', port: 3306, user: '', password: '', database: '', migrateData: true
+  })
+  const [activeDb, setActiveDb] = useState<{ client: string; host?: string; database?: string } | null>(null)
+  const [dbTesting, setDbTesting] = useState(false)
+  const [dbSwitching, setDbSwitching] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -35,6 +42,47 @@ export default function Settings() {
     })()
     return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (activeTab !== 'database') return
+    let cancelled = false
+    ;(async () => {
+      const res = await databaseAPI.getConfig()
+      if (!cancelled && res.success && res.data) {
+        setActiveDb(res.data as any)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [activeTab])
+
+  const handleDbTest = async () => {
+    setDbTesting(true)
+    try {
+      const res = await databaseAPI.test(dbForm)
+      setNotification({ success: res.success, message: res.message || (res.success ? 'Connection successful' : 'Connection failed') })
+    } catch (e: any) {
+      setNotification({ success: false, message: e?.message || 'Test failed' })
+    } finally {
+      setDbTesting(false)
+      setTimeout(() => setNotification(null), 4000)
+    }
+  }
+
+  const handleDbSwitch = async () => {
+    const label = dbForm.client === 'sqlite3' ? 'SQLite (local file)' : `MySQL ${dbForm.database}@${dbForm.host}`
+    if (!confirm(`Switch database to ${label}?\n\n${dbForm.migrateData ? 'Existing data WILL be copied to the new database.' : 'New database will be seeded with defaults (no data copy).'}\n\nThe service must be restarted afterwards.`)) return
+    setDbSwitching(true)
+    try {
+      const res = await databaseAPI.switch(dbForm)
+      setNotification({ success: res.success, message: res.message || (res.success ? 'Database switched' : 'Switch failed') })
+      if (res.success && res.data) setActiveDb(res.data as any)
+    } catch (e: any) {
+      setNotification({ success: false, message: e?.message || 'Switch failed' })
+    } finally {
+      setDbSwitching(false)
+      setTimeout(() => setNotification(null), 6000)
+    }
+  }
 
   const handleTestConnection = async () => {
     setLoading(true)
@@ -65,7 +113,6 @@ export default function Settings() {
   const toast = useToast()
   const loadingCtl = useLoading()
 
-  // Change Username & Password forms
   const [usernameForm, setUsernameForm] = useState<{ currentUsername: string; newUsername: string }>({
     currentUsername: '',
     newUsername: ''
@@ -131,7 +178,6 @@ export default function Settings() {
     }
   }
 
-  // ===== Vendor Management State/Actions =====
   const [vendorList, setVendorList] = useState<VendorType[]>([])
   const [vendorsLoading, setVendorsLoading] = useState(false)
   const [creatingVendor, setCreatingVendor] = useState(false)
@@ -251,10 +297,9 @@ export default function Settings() {
     }
   }
 
-  // ===== WiFi Security Configs =====
   const [wifiConfigs, setWifiConfigs] = useState<WifiSecurityConfigType[]>([])
   const [wifiConfigLoading, setWifiConfigLoading] = useState(false)
-  const [creatingConfig, setCreatingConfig] = useState(false) // State buat nampilin form
+  const [creatingConfig, setCreatingConfig] = useState(false)
   const [configForm, setConfigForm] = useState<{ product_class: string; security_types: string; password_param_path: string }>({
     product_class: '',
     security_types: '',
@@ -384,6 +429,16 @@ export default function Settings() {
             >
               WiFi Security Config
             </button>
+            <button
+              onClick={() => setActiveTab('database')}
+              className={`px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'database'
+                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              Database
+            </button>
           </div>
         </div>
 
@@ -424,15 +479,13 @@ export default function Settings() {
               </div>
 
               {testResult && (
-                <div className={`mt-4 p-4 rounded-lg ${
+                <div className={`mt-4 p-4 rounded-md ${
                   testResult.success
                     ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800'
                     : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
                 }`}>
                   <div className="flex items-center">
-                    <span className="text-lg mr-2">
-                      {testResult.success ? '✅' : '❌'}
-                    </span>
+                    <Icon name={testResult.success ? 'check' : 'x'} size={18} className="mr-2" />
                     <span className="font-medium">{testResult.message}</span>
                     {testResult.deviceCount && (
                       <span className="ml-2 text-sm">
@@ -471,7 +524,7 @@ export default function Settings() {
           <div className="modern-card p-6">
             <h2 className="text-lg font-semibold mb-6 text-gray-900 dark:text-gray-100">Security Settings</h2>
             <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
                 <div>
                   <h3 className="font-medium text-gray-900 dark:text-gray-100">Session Timeout</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Automatically logout after inactivity</p>
@@ -484,7 +537,7 @@ export default function Settings() {
                   <option>Never</option>
                 </select>
               </div>
-              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
                 <div>
                   <h3 className="font-medium text-gray-900 dark:text-gray-100">Two-Factor Authentication</h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Add an extra layer of security</p>
@@ -495,7 +548,7 @@ export default function Settings() {
               </div>
 
               {/* Change Username */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
                 <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Change Username</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -523,7 +576,7 @@ export default function Settings() {
               </div>
 
               {/* Change Password */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
                 <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Change Password</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
@@ -581,7 +634,7 @@ export default function Settings() {
               </div>
 
               {(creatingVendor || editingVendor) && (
-                <div className="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                <div className="mb-6 p-4 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     
                     {/* General Info */}
@@ -810,15 +863,17 @@ export default function Settings() {
                                 }}
                                 className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                                 title="Edit"
+                                aria-label="Edit"
                               >
-                                ✏️
+                                <Icon name="edit" size={18} />
                               </button>
                               <button
                                 onClick={() => deleteVendor(v.id)}
                                 className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
                                 title="Delete"
+                                aria-label="Delete"
                               >
-                                🗑️
+                                <Icon name="trash" size={18} />
                               </button>
                             </div>
                           </td>
@@ -850,7 +905,7 @@ export default function Settings() {
                 </button>
               </div>
               {(creatingConfig || editingConfig) && (
-                <div className="mb-6 p-4 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                <div className="mb-6 p-4 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Product Class</label>
@@ -955,17 +1010,87 @@ export default function Settings() {
           </div>
         )}
 
+        {activeTab === 'database' && (
+          <div className="modern-card p-6 max-w-2xl">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Database</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Active: <span className="font-mono font-semibold">
+                {activeDb ? (activeDb.client === 'mysql2' ? `MySQL (${activeDb.database}@${activeDb.host})` : 'SQLite (local file)') : '...'}
+              </span>
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+              <select
+                value={dbForm.client}
+                onChange={(e) => setDbForm({ ...dbForm, client: e.target.value as DbConfigPayload['client'] })}
+                className="modern-input w-full"
+              >
+                <option value="mysql2">MySQL / MariaDB</option>
+                <option value="sqlite3">SQLite (local file)</option>
+              </select>
+            </div>
+
+            {dbForm.client === 'mysql2' && (
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Host</label>
+                  <input className="modern-input w-full" value={dbForm.host || ''}
+                    onChange={(e) => setDbForm({ ...dbForm, host: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Port</label>
+                  <input type="number" className="modern-input w-full" value={dbForm.port || 3306}
+                    onChange={(e) => setDbForm({ ...dbForm, port: Number(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">User</label>
+                  <input className="modern-input w-full" value={dbForm.user || ''}
+                    onChange={(e) => setDbForm({ ...dbForm, user: e.target.value })} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Password</label>
+                  <input type="password" className="modern-input w-full" value={dbForm.password || ''}
+                    onChange={(e) => setDbForm({ ...dbForm, password: e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Database</label>
+                  <input className="modern-input w-full" value={dbForm.database || ''}
+                    onChange={(e) => setDbForm({ ...dbForm, database: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 mb-6 text-sm text-gray-700 dark:text-gray-300">
+              <input type="checkbox" checked={Boolean(dbForm.migrateData)}
+                onChange={(e) => setDbForm({ ...dbForm, migrateData: e.target.checked })} />
+              Copy existing data to the new database
+            </label>
+
+            <div className="flex gap-3">
+              <button onClick={handleDbTest} disabled={dbTesting} className="modern-button-secondary">
+                {dbTesting ? 'Testing...' : 'Test Connection'}
+              </button>
+              <button onClick={handleDbSwitch} disabled={dbSwitching} className="modern-button">
+                {dbSwitching ? 'Switching...' : 'Switch Database'}
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 mt-4">
+              After switching, restart the service (skygenpanel restart) for the change to take effect.
+            </p>
+          </div>
+        )}
+
         {/* Notification */}
         {notification && (
-          <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg transition-all duration-300 ${
+          <div className={`fixed top-4 right-4 z-50 p-4 rounded-md shadow-lg transition-all duration-300 ${
             notification.success
               ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800'
               : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
           }`}>
             <div className="flex items-center">
-              <span className="text-lg mr-2">
-                {notification.success ? '✅' : '❌'}
-              </span>
+              <Icon name={notification.success ? 'check' : 'x'} size={18} className="mr-2" />
               <span className="font-medium">{notification.message}</span>
             </div>
           </div>
