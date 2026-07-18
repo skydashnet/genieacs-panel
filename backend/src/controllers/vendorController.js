@@ -1,6 +1,6 @@
 import Vendor from '../models/Vendor.js';
-import VendorService from '../services/vendorService.js';
 import WifiSecurityConfig from '../models/WifiSecurityConfig.js';
+import WifiSecurityMapping from '../models/WifiSecurityMapping.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
 class VendorController {
@@ -139,7 +139,7 @@ class VendorController {
         );
       }
 
-      const mappings = await VendorService.getWiFiSecurityMappings(vendorId);
+      const mappings = await WifiSecurityMapping.getByVendor(vendorId);
       
       return res.json(
         createResponse('WiFi security mappings retrieved successfully', mappings)
@@ -162,15 +162,8 @@ class VendorController {
         );
       }
 
-      const { executeQuery } = await import('../config/database.js');
-      
-      const query = `
-        INSERT INTO wifi_security_mappings (vendor_id, raw_security_value, normalized_security, description)
-        VALUES (?, ?, ?, ?)
-      `;
-      
-      await executeQuery(query, [vendor_id, raw_security_value, normalized_security, description]);
-      
+      await WifiSecurityMapping.create({ vendor_id, raw_security_value, normalized_security, description });
+
       return res.status(201).json(
         createResponse('WiFi security mapping created successfully')
       );
@@ -193,17 +186,9 @@ class VendorController {
         );
       }
 
-      const { executeQuery } = await import('../config/database.js');
-      
-      const query = `
-        UPDATE wifi_security_mappings SET 
-          raw_security_value = ?, normalized_security = ?, description = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `;
-      
-      const result = await executeQuery(query, [raw_security_value, normalized_security, description, id]);
-      
-      if (result.affectedRows === 0) {
+      const updated = await WifiSecurityMapping.update(id, { raw_security_value, normalized_security, description });
+
+      if (!updated) {
         return res.status(404).json(
           createErrorResponse('WiFi security mapping not found')
         );
@@ -230,12 +215,9 @@ class VendorController {
         );
       }
 
-      const { executeQuery } = await import('../config/database.js');
-      
-      const query = 'DELETE FROM wifi_security_mappings WHERE id = ?';
-      const result = await executeQuery(query, [id]);
-      
-      if (result.affectedRows === 0) {
+      const deleted = await WifiSecurityMapping.delete(id);
+
+      if (!deleted) {
         return res.status(404).json(
           createErrorResponse('WiFi security mapping not found')
         );

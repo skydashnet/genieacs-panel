@@ -93,42 +93,24 @@ class DeviceController {
   }
 
   static async summonDevice(req, res) {
-    const { id } = req.params;
-    const { parameters = [] } = req.body;
+    const { deviceId, parameters = [] } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json(
+        createErrorResponse('Device ID is required')
+      );
+    }
 
     try {
-      const genieAcsUrl = await DeviceService.getGenieAcsUrl();
-      if (!genieAcsUrl) {
-        throw new Error('GenieACS URL not configured');
-      }
-      let url = new URL(genieAcsUrl);
-      if (!url.pathname.startsWith('/devices')) {
-        url.pathname = '/devices';
-      }
-
-      const tasksUrl = `${url.toString()}/${id}/tasks?connection_request=1`;
-
-      const task = {
-        name: 'getParameterValues',
-        parameterNames: [
-          'InternetGatewayDevice.DeviceInfo.SerialNumber',
-          ...parameters
-        ]
-      };
-      const data = await DeviceService.fetchFromGenieAcs(tasksUrl, {}, 'POST', task);
-      if (data && data.fault && data.fault.faultString) {
-        console.error('GenieACS Task Fault:', data.fault.faultString);
-        throw new Error(data.fault.faultString);
-      }
-      res.json({
-        success: true,
-        message: 'Device summon task queued.',
-        data: data
-      });
-      
+      const data = await DeviceService.summonDevice(deviceId, parameters);
+      return res.json(
+        createResponse('Device summon task queued.', data)
+      );
     } catch (error) {
       console.error('Error summoning device:', error.message);
-      res.status(500).json({ success: false, message: error.message || 'Failed to summon device' });
+      return res.status(500).json(
+        createErrorResponse('Failed to summon device', error.message)
+      );
     }
   }
 

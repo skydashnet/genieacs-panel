@@ -24,44 +24,70 @@ class DeviceService {
     };
   }
 
-  static async fetchFromGenieAcs(endpoint, query = {}) {
+  static async getDevicesBaseUrl() {
+    const baseUrl = await this.getGenieAcsUrl();
+    if (!baseUrl) {
+      throw new Error('GenieACS URL not configured');
+    }
+    const url = new URL(baseUrl);
+    if (!url.pathname.startsWith('/devices')) {
+      url.pathname = '/devices';
+    }
+    return url.toString().replace(/\/+$/, '');
+  }
+
+  static async buildGenieAcsUrl(endpoint = '', query = {}) {
+    const base = await this.getDevicesBaseUrl();
+
+    let urlStr;
+    if (/^https?:\/\//i.test(endpoint)) {
+      urlStr = endpoint;
+    } else if (!endpoint) {
+      urlStr = base;
+    } else if (endpoint.startsWith('?')) {
+      urlStr = `${base}${endpoint}`;
+    } else {
+      urlStr = `${base}/${endpoint.replace(/^\/+/, '')}`;
+    }
+
+    const url = new URL(urlStr);
+    Object.keys(query || {}).forEach(key => {
+      if (query[key] !== undefined && query[key] !== null) {
+        url.searchParams.append(key, query[key]);
+      }
+    });
+    return url;
+  }
+
+  static async fetchFromGenieAcs(endpoint, query = {}, method = 'GET', body = null) {
     try {
-      const baseUrl = await this.getGenieAcsUrl();
-      
-      if (!baseUrl) {
-        throw new Error('GenieACS URL not configured');
-      }
-      let url = new URL(baseUrl);
-      if (!url.pathname.startsWith('/devices')) {
-        url.pathname = '/devices';
-      }
-      url = new URL(endpoint, url);
-      
-      Object.keys(query).forEach(key => {
-        if (query[key] !== undefined && query[key] !== null) {
-          url.searchParams.append(key, query[key]);
-        }
-      });
-      
+      const url = await this.buildGenieAcsUrl(endpoint, query);
+
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       try {
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json'
-          },
+        const options = {
+          method,
+          headers: { 'Accept': 'application/json' },
           signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          throw new Error(`GenieACS API responded with status: ${response.status}`);
+        };
+        if (body !== null && body !== undefined) {
+          options.headers['Content-Type'] = 'application/json';
+          options.body = typeof body === 'string' ? body : JSON.stringify(body);
         }
-        
-        return await response.json();
+
+        const response = await fetch(url, options);
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          throw new Error(`GenieACS API responded with status: ${response.status}${errorText ? ` - ${errorText}` : ''}`);
+        }
+
+        const text = await response.text();
+        return text ? JSON.parse(text) : null;
       } catch (error) {
         clearTimeout(timeoutId);
         throw error;
@@ -192,134 +218,111 @@ class DeviceService {
       throw new Error('Device ID is required');
     }
 
-    try {
-      const baseUrl = await this.getGenieAcsUrl();
-      
-      if (!baseUrl) {
-        throw new Error('GenieACS URL not configured in settings');
+    const virtualParams = await this.getVirtualParameters();
+    const vendorConfigurations = await Vendor.getAll();
+
+    const projection = [
+      '_id',
+      '_deviceId._ProductClass',
+      '_deviceId._SerialNumber',
+      '_deviceId._Manufacturer',
+      '_deviceId._OUI',
+      virtualParams.vpPppoeUsername,
+      virtualParams.vpWanBridge,
+      virtualParams.vpRxPower,
+      virtualParams.vpTemperature,
+      virtualParams.vpActiveDevices,
+      virtualParams.vpSuperAdmin,
+      virtualParams.vpSuperPassword,
+      virtualParams.vpUserAdmin,
+      virtualParams.vpUserPassword,
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Channel',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.Channel',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.Channel',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.Channel',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.Channel',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.Channel',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.Channel',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.Enable',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.SSID',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.PreSharedKey.1.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.KeyPassphrase',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.BeaconType',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.TotalAssociations',
+      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.Channel',
+      'InternetGatewayDevice.DeviceInfo.HardwareVersion',
+      'InternetGatewayDevice.DeviceInfo.SoftwareVersion',
+      'InternetGatewayDevice.DeviceInfo.UpTime',
+      'InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress',
+      'InternetGatewayDevice.WANDevice.1.WANEthernetInterfaceConfig.MACAddress',
+      'InternetGatewayDevice.WANDevice',
+      '_lastInform',
+      '_lastBoot',
+      '_registered',
+      'InternetGatewayDevice.LANDevice.1.Hosts.Host'
+    ];
+
+    vendorConfigurations.forEach(vendor => {
+      if (vendor.http_wan_enable_path) {
+        projection.push(vendor.http_wan_enable_path);
       }
-
-      const virtualParams = await this.getVirtualParameters();
-      const vendorConfigurations = await Vendor.getAll();
-
-      const projection = [
-        '_id',
-        '_deviceId._ProductClass',
-        '_deviceId._SerialNumber',
-        '_deviceId._Manufacturer',
-        '_deviceId._OUI',
-        virtualParams.vpPppoeUsername,
-        virtualParams.vpWanBridge,
-        virtualParams.vpRxPower,
-        virtualParams.vpTemperature,
-        virtualParams.vpActiveDevices,
-        virtualParams.vpSuperAdmin,
-        virtualParams.vpSuperPassword,
-        virtualParams.vpUserAdmin,
-        virtualParams.vpUserPassword,
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Channel',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.Channel',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.3.Channel',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.4.Channel',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.Channel',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6.Channel',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.7.Channel',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.Enable',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.SSID',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.PreSharedKey.1.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.KeyPassphrase',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.BeaconType',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.TotalAssociations',
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.Channel',
-        'InternetGatewayDevice.DeviceInfo.HardwareVersion',
-        'InternetGatewayDevice.DeviceInfo.SoftwareVersion',
-        'InternetGatewayDevice.DeviceInfo.UpTime',
-        'InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress',
-        'InternetGatewayDevice.WANDevice.1.WANEthernetInterfaceConfig.MACAddress',
-        'InternetGatewayDevice.WANDevice',
-        '_lastInform',
-        '_lastBoot',
-        '_registered',
-        'InternetGatewayDevice.LANDevice.1.Hosts.Host'
-      ];
-
-      vendorConfigurations.forEach(vendor => {
-        if (vendor.http_wan_enable_path) {
-          projection.push(vendor.http_wan_enable_path);
-        }
-        if (vendor.firewall_level_path) {
-          projection.push(vendor.firewall_level_path);
-        }
-      });
-
-      const query = JSON.stringify({ _id: deviceId });
-      const apiUrl = `${baseUrl}?query=${encodeURIComponent(query)}&projection=${encodeURIComponent(projection.join(','))}`;
-
-      const response = await fetch(apiUrl, {
-        timeout: 15000,
-        headers: {
-          'Accept-Encoding': 'gzip'
-        }
-      });
-
-      const data = await response.json();
-
-      if (!Array.isArray(data) || data.length === 0) {
-        throw new Error('Device not found');
+      if (vendor.firewall_level_path) {
+        projection.push(vendor.firewall_level_path);
       }
+    });
 
-      return await this.processDetailDeviceData(data[0], virtualParams, vendorConfigurations);
-    } catch (error) {
-      if (error.response) {
-        throw new Error(`GenieACS API error: ${error.response.status} - ${error.response.statusText}`);
-      } else if (error.request) {
-        throw new Error('No response from GenieACS server');
-      } else {
-        throw error;
-      }
+    const data = await this.fetchFromGenieAcs('', {
+      query: JSON.stringify({ _id: deviceId }),
+      projection: projection.join(',')
+    });
+
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('Device not found');
     }
+
+    return await this.processDetailDeviceData(data[0], virtualParams, vendorConfigurations);
   }
 
   static async processDetailDeviceData(item, virtualParams, vendorConfigurations) {
@@ -558,73 +561,52 @@ class DeviceService {
     };
   }
 
+  static async postTask(deviceId, task) {
+    const endpoint = `${encodeURIComponent(deviceId)}/tasks`;
+    return this.fetchFromGenieAcs(endpoint, { connection_request: 1 }, 'POST', task);
+  }
+
   static async deleteDevice(deviceId) {
-    try {
-      const baseUrl = await this.getGenieAcsUrl();
-      
-      if (!baseUrl) {
-        throw new Error('GenieACS URL not configured');
-      }
-      
-      const url = `${baseUrl}/${encodeURIComponent(deviceId)}`;
-      
-      const response = await fetch(url, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`GenieACS delete API error: ${response.status} - ${errorText}`);
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Error deleting device:', error);
-      throw error;
+    const base = await this.getDevicesBaseUrl();
+    const url = `${base}/${encodeURIComponent(deviceId)}`;
+
+    const response = await fetch(url, { method: 'DELETE' });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`GenieACS delete API error: ${response.status} - ${errorText}`);
     }
+
+    return true;
   }
 
   static async rebootDevice(deviceId) {
-    try {
-      const baseUrl = await this.getGenieAcsUrl();
-      
-      if (!baseUrl) {
-        throw new Error('GenieACS URL not configured');
-      }
-      
-      const taskPayload = {
-        name: 'reboot'
-      };
-
-      const taskUrl = `${baseUrl}/${encodeURIComponent(deviceId)}/tasks?timeout=3000&connection_request`;
-
-      const response = await fetch(taskUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(taskPayload)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`GenieACS reboot API error: ${response.status} - ${errorText}`);
-      }
-
-      const result = await response.json().catch(() => null);
-      return result;
-    } catch (error) {
-      console.error('Error rebooting device:', error);
-      throw error;
-    }
+    return this.postTask(deviceId, { name: 'reboot' });
   }
-  
+
+  static async summonDevice(deviceId, parameters = []) {
+    const data = await this.postTask(deviceId, {
+      name: 'getParameterValues',
+      parameterNames: [
+        'InternetGatewayDevice.DeviceInfo.SerialNumber',
+        ...parameters
+      ]
+    });
+
+    if (data && data.fault && data.fault.faultString) {
+      throw new Error(data.fault.faultString);
+    }
+
+    return data;
+  }
+
   static async updateWanConfig(deviceId, wanIndex, formData) {
-    const rawDeviceData = await this.fetchFromGenieAcs(deviceId, {});
+    const rawDeviceData = await this.fetchFromGenieAcs('', {
+      query: JSON.stringify({ _id: deviceId })
+    });
+    if (!Array.isArray(rawDeviceData) || rawDeviceData.length === 0) {
+      throw new Error('Device not found');
+    }
     const item = rawDeviceData[0];
     const manufacturer = item._deviceId?._Manufacturer || null;
     const productClass = item._deviceId?._ProductClass || null;
@@ -639,15 +621,11 @@ class DeviceService {
     
     if (!connDev) throw new Error('WAN Connection path not found in raw data.');
 
-    let connection = null;
-    let connType = null;
     let basePath = null;
-    
+
     if (connDev.WANPPPConnection) {
-        for (const pppKey in connDev.WANPPPConnection) {
+      for (const pppKey in connDev.WANPPPConnection) {
         if (pppKey.startsWith('_')) continue;
-        connection = connDev.WANPPPConnection[pppKey];
-        connType = 'PPPoE';
         basePath = `InternetGatewayDevice.WANDevice.${devKey}.WANConnectionDevice.${connKey}.WANPPPConnection.${pppKey}`;
         break;
       }
@@ -676,8 +654,8 @@ class DeviceService {
         ]
       });
     }
-    if (password) { 
-        tasks.push({
+    if (password) {
+      tasks.push({
         name: 'setParameterValues',
         parameterValues: [
           [`${basePath}.Password`, password, 'xsd:string']
@@ -703,34 +681,20 @@ class DeviceService {
         });
       }
     }
-    const genieAcsUrl = await this.getGenieAcsUrl();
-    const tasksUrl = `${genieAcsUrl}/${deviceId}/tasks?connection_request=1`;
-    
     for (const task of tasks) {
-      const res = await fetch(tasksUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(task)
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        console.error('GenieACS Task Failed:', error);
-        throw new Error(`GenieACS task ${task.name} failed`);
-      }
+      await this.postTask(deviceId, task);
     }
-    
+
     return { success: true, message: 'WAN configuration updated. Device will refresh on next inform.' };
   }
 
   static async updateCredentials(deviceId, type, password) {
-    const settings = await Setting.getAllAsObject();
-    let userPath, passPath;
+    const settings = await Setting.getAll();
+    let passPath;
 
     if (type === 'super') {
-      userPath = settings.vpSuperAdmin;
       passPath = settings.vpSuperPassword;
     } else if (type === 'user') {
-      userPath = settings.vpUserAdmin;
       passPath = settings.vpUserPassword;
     } else {
       throw new Error('Invalid credential type specified.');
@@ -739,26 +703,13 @@ class DeviceService {
     if (!passPath) {
       throw new Error(`VirtualParameter path for ${type} password is not set in settings.`);
     }
-    const task = {
+
+    await this.postTask(deviceId, {
       name: 'setParameterValues',
       parameterValues: [
         [passPath, password, 'xsd:string']
       ]
-    };
-    const genieAcsUrl = await this.getGenieAcsUrl();
-    const tasksUrl = `${genieAcsUrl}/${deviceId}/tasks?connection_request=1`;
-
-    const res = await fetch(tasksUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(task)
     });
-
-    if (!res.ok) {
-      const error = await res.json();
-      console.error('GenieACS Task Failed:', error);
-      throw new Error(`GenieACS task setParameterValues failed`);
-    }
 
     return { success: true, message: `${type} admin password update task queued.` };
   }
