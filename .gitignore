@@ -19,6 +19,7 @@ yarn-error.log*
 dist/
 build/
 **/.next/
+**/out/
 
 # Database
 *.db
@@ -40,6 +41,4 @@ coverage/
 .nyc_output/
 
 # Misc
-import-csv-to-mariadb.mjs
 **/exported_all_db
-**/scripts
