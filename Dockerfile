@@ -1,16 +1,11 @@
-FROM node:18-alpine AS builder
-WORKDIR /app
-
-COPY package*.json ./
-RUN npm ci --only=production
-
 FROM node:18-alpine
 WORKDIR /app
 
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package*.json ./
-COPY . .
+COPY backend/package*.json ./
+RUN npm ci --omit=dev
 
-EXPOSE 3000
+COPY backend/ ./
+
+EXPOSE 3001
 
 CMD ["node", "src/server.js"]

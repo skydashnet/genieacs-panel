@@ -1,0 +1,14 @@
+{
+  "name": "skygenpanel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GenieACS management panel — single service (UI + API on one port).",
+  "scripts": {
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && node src/server.js",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}
