@@ -1,49 +1,43 @@
-import { executeQuery } from '../config/database.js';
+import { getDb } from '../config/database.js';
 
 class Setting {
   static async getAll() {
-    const query = 'SELECT `key`, `value` FROM settings';
-    const rows = await executeQuery(query);
-    
+    const rows = await getDb()('settings').select('key', 'value');
     const settings = {};
-    rows.forEach(row => {
+    rows.forEach((row) => {
       settings[row.key] = row.value;
     });
-    
     return settings;
   }
 
   static async getByKey(key) {
-    const query = 'SELECT `value` FROM settings WHERE `key` = ?';
-    const rows = await executeQuery(query, [key]);
-    return rows.length > 0 ? rows[0].value : null;
+    const row = await getDb()('settings').where({ key }).first();
+    return row ? row.value : null;
   }
 
   static async create(key, value) {
-    const query = 'INSERT INTO settings (`key`, `value`) VALUES (?, ?)';
-    await executeQuery(query, [key, value]);
+    await getDb()('settings').insert({ key, value });
     return true;
   }
 
   static async update(key, value) {
-    const query = 'UPDATE settings SET `value` = ?, updated_at = CURRENT_TIMESTAMP WHERE `key` = ?';
-    const result = await executeQuery(query, [value, key]);
-    return result.affectedRows > 0;
+    const affected = await getDb()('settings')
+      .where({ key })
+      .update({ value, updated_at: new Date() });
+    return affected > 0;
   }
 
   static async upsert(key, value) {
     const exists = await this.getByKey(key);
-    if (exists) {
+    if (exists !== null) {
       return await this.update(key, value);
-    } else {
-      return await this.create(key, value);
     }
+    return await this.create(key, value);
   }
 
   static async delete(key) {
-    const query = 'DELETE FROM settings WHERE `key` = ?';
-    const result = await executeQuery(query, [key]);
-    return result.affectedRows > 0;
+    const affected = await getDb()('settings').where({ key }).del();
+    return affected > 0;
   }
 }
 

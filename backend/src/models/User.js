@@ -1,33 +1,40 @@
-import { executeQuery } from '../config/database.js';
+import { getDb } from '../config/database.js';
 
 class User {
   static async findByUsername(username) {
-    const query = 'SELECT * FROM users WHERE username = ?';
-    const rows = await executeQuery(query, [username]);
-    return rows.length > 0 ? rows[0] : null;
+    return (await getDb()('users').where({ username }).first()) || null;
   }
 
   static async findById(id) {
-    const query = 'SELECT id, username, role, password, created_at, updated_at FROM users WHERE id = ?';
-    const rows = await executeQuery(query, [id]);
-    return rows.length > 0 ? rows[0] : null;
+    return (
+      (await getDb()('users')
+        .select('id', 'username', 'role', 'password', 'created_at', 'updated_at')
+        .where({ id })
+        .first()) || null
+    );
+  }
+
+  static async count() {
+    const row = await getDb()('users').count({ n: '*' }).first();
+    return Number(row?.n || 0);
   }
 
   static async create(userData) {
     const { username, password, role = 'user' } = userData;
-    const query = 'INSERT INTO users (username, password, role) VALUES (?, ?, ?)';
-    const result = await executeQuery(query, [username, password, role]);
-    return result.insertId;
+    const [id] = await getDb()('users').insert({ username, password, role });
+    return id;
   }
 
   static async updatePassword(id, hashedPassword) {
-    const query = 'UPDATE users SET password = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
-    await executeQuery(query, [hashedPassword, id]);
+    await getDb()('users')
+      .where({ id })
+      .update({ password: hashedPassword, updated_at: new Date() });
   }
 
   static async updateUsername(id, newUsername) {
-    const query = 'UPDATE users SET username = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
-    await executeQuery(query, [newUsername, id]);
+    await getDb()('users')
+      .where({ id })
+      .update({ username: newUsername, updated_at: new Date() });
   }
 }
 

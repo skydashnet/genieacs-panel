@@ -126,39 +126,6 @@ class VendorService {
     
     return false;
   }
-
-  static async normalizeWiFiSecurity(vendorId, rawSecurityValue) {
-    if (!rawSecurityValue) return 'Unknown';
-
-    const { executeQuery } = await import('../config/database.js');
-    
-    try {
-      const query = 'SELECT normalized_security FROM wifi_security_mappings WHERE vendor_id = ? AND raw_security_value = ?';
-      const rows = await executeQuery(query, [vendorId, rawSecurityValue]);
-      
-      if (rows.length > 0) {
-        return rows[0].normalized_security;
-      }
-      
-      return rawSecurityValue;
-    } catch (error) {
-      console.error('Error normalizing WiFi security:', error);
-      return rawSecurityValue;
-    }
-  }
-
-  static async getWiFiSecurityMappings(vendorId) {
-    const { executeQuery } = await import('../config/database.js');
-    
-    try {
-      const query = 'SELECT * FROM wifi_security_mappings WHERE vendor_id = ? ORDER BY raw_security_value ASC';
-      const rows = await executeQuery(query, [vendorId]);
-      return rows;
-    } catch (error) {
-      console.error('Error getting WiFi security mappings:', error);
-      return [];
-    }
-  }
 }
 
 export default VendorService;

@@ -7,17 +7,20 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node src/server.js",
-    "import:csv": "node scripts/import-csv.js"
+    "db:init": "node scripts/init-db.js",
+    "reset-password": "node scripts/reset-password.js"
   },
   "dependencies": {
-    "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "mysql2": "^3.6.5",
-    "csv-parse": "^5.5.2"
+    "knex": "^3.3.0",
+    "mysql2": "^3.6.5"
   },
   "engines": {
     "node": ">=18.0.0"
