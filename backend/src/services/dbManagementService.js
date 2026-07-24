@@ -14,7 +14,8 @@ const COPY_TABLES = [
   'mapping_nodes',
   'mapping_edges',
   'map_settings',
-  'customer_accounts'
+  'customer_accounts',
+  'customer_wifi_credentials'
 ];
 
 function normalizeConfig(input) {

@@ -23,11 +23,13 @@ type PortalOverview = {
     ssid: unknown
     enabled: boolean | null
     connectedDevices: unknown
+    hasSavedPassword?: boolean
   }>
   generatedAt: string
 }
 
 type ApiResult<T> = { success: boolean; message?: string; data?: T }
+type WifiEditor = { index: number; ssid: string; password: string }
 
 async function portalRequest<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   const response = await fetch(`/api/customer${path}`, {
@@ -98,9 +100,20 @@ export default function CustomerPortal() {
   const [authenticated, setAuthenticated] = useState(false)
   const [customerId, setCustomerId] = useState('')
   const [password, setPassword] = useState('')
+  const [showLoginPassword, setShowLoginPassword] = useState(false)
   const [overview, setOverview] = useState<PortalOverview | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [wifiEditor, setWifiEditor] = useState<WifiEditor | null>(null)
+  const [wifiSaving, setWifiSaving] = useState(false)
+  const [showWifiPassword, setShowWifiPassword] = useState(false)
+  const [visibleSavedPasswordIndex, setVisibleSavedPasswordIndex] = useState<number | null>(null)
+  const [revealedWifiPasswords, setRevealedWifiPasswords] = useState<Record<number, string>>({})
+  const [revealingWifiPasswordIndex, setRevealingWifiPasswordIndex] = useState<number | null>(null)
+  const [wifiFeedback, setWifiFeedback] = useState<{
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
 
   const loadOverview = useCallback(async () => {
     setLoading(true)
@@ -140,6 +153,17 @@ export default function CustomerPortal() {
     return () => window.clearInterval(timer)
   }, [authenticated, loadOverview])
 
+  useEffect(() => {
+    if (authenticated) return
+    setOverview(null)
+    setWifiEditor(null)
+    setShowWifiPassword(false)
+    setVisibleSavedPasswordIndex(null)
+    setRevealedWifiPasswords({})
+    setRevealingWifiPasswordIndex(null)
+    setWifiFeedback(null)
+  }, [authenticated])
+
   const login = async (event: FormEvent) => {
     event.preventDefault()
     setLoading(true)
@@ -155,6 +179,7 @@ export default function CustomerPortal() {
       }
       setAuthenticated(true)
       setPassword('')
+      setShowLoginPassword(false)
       await loadOverview()
     } catch {
       setError('Portal tidak dapat terhubung ke server. Coba lagi.')
@@ -169,6 +194,111 @@ export default function CustomerPortal() {
     setOverview(null)
     setCustomerId('')
     setPassword('')
+    setShowLoginPassword(false)
+  }
+
+  const openWifiEditor = (index: number, ssid: unknown) => {
+    setWifiEditor({ index, ssid: text(ssid), password: '' })
+    setShowWifiPassword(false)
+    setVisibleSavedPasswordIndex(null)
+    setWifiFeedback(null)
+  }
+
+  const toggleSavedWifiPassword = async (index: number) => {
+    if (visibleSavedPasswordIndex === index) {
+      setVisibleSavedPasswordIndex(null)
+      return
+    }
+    if (revealedWifiPasswords[index]) {
+      setVisibleSavedPasswordIndex(index)
+      return
+    }
+
+    setRevealingWifiPasswordIndex(index)
+    setWifiFeedback(null)
+    try {
+      const result = await portalRequest<{ password: string }>(`/wifi/${index}/password`)
+      if (!result.success || !result.data?.password) {
+        if (result.message?.toLowerCase().includes('session')) setAuthenticated(false)
+        setWifiFeedback({
+          type: 'error',
+          message: result.message || 'Password WiFi belum dapat dibuka.'
+        })
+        return
+      }
+      setRevealedWifiPasswords((current) => ({
+        ...current,
+        [index]: result.data!.password
+      }))
+      setVisibleSavedPasswordIndex(index)
+    } catch {
+      setWifiFeedback({
+        type: 'error',
+        message: 'Portal tidak dapat terhubung ke server. Coba lagi.'
+      })
+    } finally {
+      setRevealingWifiPasswordIndex(null)
+    }
+  }
+
+  const saveWifi = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!wifiEditor) return
+    const ssid = wifiEditor.ssid.trim()
+    if (!ssid || ssid.length > 32) {
+      setWifiFeedback({ type: 'error', message: 'Nama WiFi harus berisi 1 sampai 32 karakter.' })
+      return
+    }
+    if (wifiEditor.password && !/^[\x20-\x7e]{8,63}$/.test(wifiEditor.password)) {
+      setWifiFeedback({ type: 'error', message: 'Password WiFi harus terdiri dari 8 sampai 63 karakter.' })
+      return
+    }
+
+    setWifiSaving(true)
+    setWifiFeedback(null)
+    try {
+      const result = await portalRequest<{ index: number; ssid: string }>('/wifi', {
+        method: 'PUT',
+        body: JSON.stringify({
+          index: wifiEditor.index,
+          ssid,
+          password: wifiEditor.password
+        }),
+      })
+      if (!result.success) {
+        if (result.message?.toLowerCase().includes('session')) setAuthenticated(false)
+        setWifiFeedback({
+          type: 'error',
+          message: result.message || 'Perubahan WiFi belum dapat dikirim.'
+        })
+        return
+      }
+      setOverview((current) => current ? {
+        ...current,
+        wifi: current.wifi.map((network) => (
+          network.index === wifiEditor.index
+            ? {
+                ...network,
+                ssid,
+                hasSavedPassword: Boolean(wifiEditor.password) || network.hasSavedPassword
+              }
+            : network
+        ))
+      } : current)
+      setWifiEditor(null)
+      setShowWifiPassword(false)
+      setWifiFeedback({
+        type: 'success',
+        message: result.message || 'Perubahan WiFi dikirim ke ONT.'
+      })
+    } catch {
+      setWifiFeedback({
+        type: 'error',
+        message: 'Portal tidak dapat terhubung ke server. Coba lagi.'
+      })
+    } finally {
+      setWifiSaving(false)
+    }
   }
 
   if (checkingSession) {
@@ -216,19 +346,30 @@ export default function CustomerPortal() {
               </div>
               <div>
                 <label className="field-label" htmlFor="customer-password">Password</label>
-                <input
-                  id="customer-password"
-                  className="modern-input font-mono"
-                  type="password"
-                  inputMode="numeric"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value.replace(/\D/g, '').slice(0, 6))}
-                  autoComplete="current-password"
-                  placeholder="6 digit"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    id="customer-password"
+                    className="modern-input pr-12 font-mono"
+                    type={showLoginPassword ? 'text' : 'password'}
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    autoComplete="current-password"
+                    placeholder="6 digit"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-1 top-1/2 inline-flex size-10 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-secondary"
+                    onClick={() => setShowLoginPassword((visible) => !visible)}
+                    aria-label={showLoginPassword ? 'Sembunyikan password login' : 'Tampilkan password login'}
+                    aria-pressed={showLoginPassword}
+                  >
+                    <Icon name={showLoginPassword ? 'eye-off' : 'eye'} size={18} />
+                  </button>
+                </div>
               </div>
               {error && (
                 <div className="rounded-md border border-destructive/35 bg-destructive/10 p-3 text-sm text-foreground" role="alert">
@@ -342,7 +483,20 @@ export default function CustomerPortal() {
 
               <section className="modern-card p-5 sm:p-6">
                 <h2 className="section-heading">Jaringan WiFi</h2>
-                <p className="section-description mb-5">Nama jaringan dan jumlah perangkat yang sedang terhubung.</p>
+                <p className="section-description mb-5">Lihat atau ubah nama dan password jaringan di ONT Anda.</p>
+                {wifiFeedback && (
+                  <div
+                    className={`mb-4 rounded-md border p-3 text-sm ${
+                      wifiFeedback.type === 'success'
+                        ? 'border-[hsl(var(--status-success))]/40 bg-[hsl(var(--status-success))]/10'
+                        : 'border-destructive/40 bg-destructive/10'
+                    }`}
+                    role={wifiFeedback.type === 'error' ? 'alert' : 'status'}
+                    aria-live="polite"
+                  >
+                    {wifiFeedback.message}
+                  </div>
+                )}
                 {overview.wifi.length ? (
                   <div className="space-y-3">
                     {overview.wifi.map((network) => (
@@ -352,13 +506,148 @@ export default function CustomerPortal() {
                             <p className="truncate font-semibold">{text(network.ssid)}</p>
                             <p className="mt-1 text-xs text-muted-foreground">WiFi #{network.index}</p>
                           </div>
-                          <span className={network.enabled === false ? 'modern-badge-error' : 'modern-badge-success'}>
-                            {network.enabled === false ? 'Nonaktif' : 'Aktif'}
+                          <span className={
+                            network.enabled === false
+                              ? 'modern-badge-error'
+                              : network.enabled === true
+                                ? 'modern-badge-success'
+                                : 'modern-badge'
+                          }>
+                            {
+                              network.enabled === false
+                                ? 'Nonaktif'
+                                : network.enabled === true
+                                  ? 'Aktif'
+                                  : 'Status belum dilaporkan'
+                            }
                           </span>
                         </div>
                         <p className="mt-3 text-sm text-muted-foreground">
                           <strong className="text-foreground">{text(network.connectedDevices)}</strong> perangkat terhubung
                         </p>
+                        <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2">
+                          <div className="min-w-0">
+                            <p className="text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">Password tersimpan</p>
+                            <p className="mt-1 truncate font-mono text-sm">
+                              {network.hasSavedPassword
+                                ? (
+                                    visibleSavedPasswordIndex === network.index &&
+                                    revealedWifiPasswords[network.index]
+                                      ? revealedWifiPasswords[network.index]
+                                      : '••••••••••••'
+                                  )
+                                : 'Belum tersimpan'}
+                            </p>
+                          </div>
+                          {network.hasSavedPassword && (
+                            <button
+                              type="button"
+                              className="inline-flex size-10 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-secondary"
+                              disabled={revealingWifiPasswordIndex === network.index}
+                              onClick={() => void toggleSavedWifiPassword(network.index)}
+                              aria-label={
+                                visibleSavedPasswordIndex === network.index
+                                  ? 'Sembunyikan password tersimpan'
+                                  : 'Tampilkan password tersimpan'
+                              }
+                              aria-pressed={visibleSavedPasswordIndex === network.index}
+                            >
+                              <Icon
+                                name={
+                                  revealingWifiPasswordIndex === network.index
+                                    ? 'refresh'
+                                    : visibleSavedPasswordIndex === network.index
+                                      ? 'eye-off'
+                                      : 'eye'
+                                }
+                                size={18}
+                                className={revealingWifiPasswordIndex === network.index ? 'animate-spin' : ''}
+                              />
+                            </button>
+                          )}
+                        </div>
+                        <p className="mt-1.5 text-[0.68rem] leading-5 text-muted-foreground">
+                          Hanya password terakhir yang pernah dikirim melalui portal ini.
+                        </p>
+                        {wifiEditor?.index === network.index ? (
+                          <form className="mt-4 space-y-4 border-t border-border pt-4" onSubmit={saveWifi}>
+                            <div>
+                              <label className="field-label" htmlFor={`wifi-ssid-${network.index}`}>Nama WiFi</label>
+                              <input
+                                id={`wifi-ssid-${network.index}`}
+                                className="modern-input"
+                                value={wifiEditor.ssid}
+                                maxLength={32}
+                                onChange={(event) => setWifiEditor((current) => (
+                                  current ? { ...current, ssid: event.target.value } : current
+                                ))}
+                                autoComplete="off"
+                                required
+                              />
+                              <p className="field-hint">Maksimal 32 karakter.</p>
+                            </div>
+                            <div>
+                              <label className="field-label" htmlFor={`wifi-password-${network.index}`}>Password baru</label>
+                              <div className="relative">
+                                <input
+                                  id={`wifi-password-${network.index}`}
+                                  className="modern-input pr-12 font-mono"
+                                  type={showWifiPassword ? 'text' : 'password'}
+                                  value={wifiEditor.password}
+                                  minLength={wifiEditor.password ? 8 : undefined}
+                                  maxLength={63}
+                                  onChange={(event) => setWifiEditor((current) => (
+                                    current ? { ...current, password: event.target.value } : current
+                                  ))}
+                                  autoComplete="new-password"
+                                  placeholder="Kosongkan jika tidak diubah"
+                                />
+                                <button
+                                  type="button"
+                                  className="absolute right-1 top-1/2 inline-flex size-10 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-secondary"
+                                  onClick={() => setShowWifiPassword((visible) => !visible)}
+                                  aria-label={showWifiPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                                  aria-pressed={showWifiPassword}
+                                >
+                                  <Icon name={showWifiPassword ? 'eye-off' : 'eye'} size={18} />
+                                </button>
+                              </div>
+                              <p className="field-hint">8–63 karakter. Kosongkan untuk mempertahankan password saat ini.</p>
+                            </div>
+                            <div className="rounded-md border border-[hsl(var(--status-warning))]/35 bg-[hsl(var(--status-warning))]/10 p-3 text-xs leading-5">
+                              Perangkat yang memakai jaringan ini dapat terputus dan harus tersambung ulang setelah perubahan diterapkan.
+                            </div>
+                            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                              <button
+                                type="button"
+                                className="modern-button-secondary"
+                                disabled={wifiSaving}
+                                onClick={() => setWifiEditor(null)}
+                              >
+                                Batal
+                              </button>
+                              <button
+                                type="submit"
+                                className="modern-button"
+                                disabled={
+                                  wifiSaving ||
+                                  (!wifiEditor.password && wifiEditor.ssid.trim() === text(network.ssid))
+                                }
+                              >
+                                <Icon name={wifiSaving ? 'refresh' : 'check'} size={17} className={wifiSaving ? 'animate-spin' : ''} />
+                                {wifiSaving ? 'Mengirim…' : 'Simpan perubahan'}
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            className="modern-button-secondary mt-4 w-full"
+                            onClick={() => openWifiEditor(network.index, network.ssid)}
+                          >
+                            <Icon name="edit" size={17} /> Ubah nama atau password
+                          </button>
+                        )}
                       </article>
                     ))}
                   </div>

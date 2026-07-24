@@ -23,6 +23,7 @@ function sqlite(filename) {
 }
 
 async function seedGraph(db, suffix) {
+  const accountId = suffix === 'source' ? 1 : 2;
   await db('vendors').insert({
     id: suffix === 'source' ? 1 : 2,
     name: `Vendor ${suffix}`,
@@ -55,6 +56,22 @@ async function seedGraph(db, suffix) {
     edge_id: `${suffix}-edge`,
     source: `${suffix}-a`,
     target: `${suffix}-b`
+  });
+  await db('customer_accounts').insert({
+    id: accountId,
+    customer_id: suffix === 'source' ? 'CSG-SOURCE2-111111' : 'CSG-TARGET2-222222',
+    device_id: `${suffix}-device`,
+    identity_hash: (suffix === 'source' ? 'a' : 'b').repeat(64),
+    software_id: 'V1',
+    pppoe_username: `${suffix}-pppoe`
+  });
+  await db('customer_wifi_credentials').insert({
+    account_id: accountId,
+    wifi_index: 1,
+    ssid: `${suffix}-wifi`,
+    password_ciphertext: `${suffix}-ciphertext`,
+    password_iv: `${suffix}-iv`,
+    password_tag: `${suffix}-tag`
   });
 }
 
@@ -109,6 +126,16 @@ test('database migration replaces related tables atomically with foreign keys en
     assert.deepEqual(
       (await target('mapping_edges').select('edge_id', 'source', 'target')),
       [{ edge_id: 'source-edge', source: 'source-a', target: 'source-b' }]
+    );
+    assert.deepEqual(
+      (await target('customer_wifi_credentials')
+        .select('account_id', 'wifi_index', 'ssid', 'password_ciphertext')),
+      [{
+        account_id: 1,
+        wifi_index: 1,
+        ssid: 'source-wifi',
+        password_ciphertext: 'source-ciphertext'
+      }]
     );
   } finally {
     await source.destroy();

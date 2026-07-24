@@ -10,6 +10,7 @@ Panel manajemen perangkat jaringan di atas GenieACS. Panel operator dan portal p
 - Dashboard monitoring, manajemen ONT/ODP/ODC, peta jaringan, konfigurasi multi-vendor, dan keamanan WiFi.
 - Autentikasi JWT dengan refresh token dan role-based access control.
 - ID Customer permanen yang dapat dibuat otomatis dari SoftwareVersion + PPPoE, serta portal mandiri tanpa menampilkan konfigurasi WAN.
+- Pelanggan dapat mengganti nama dan password WiFi milik ONT-nya sendiri. Password terakhir yang dikirim lewat portal dapat dilihat kembali dan disimpan terenkripsi di database.
 
 ## Instalasi
 
@@ -69,7 +70,8 @@ Lewat **Settings → Database** (admin): lihat konfigurasi aktif, uji koneksi My
 - JWT dengan refresh token, role-based access control, password hashing bcrypt.
 - Default terikat ke `127.0.0.1`; akses jaringan opt-in via `skygenpanel expose`.
 - systemd unit di-harden (`NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths` terbatas).
-- Security headers/CSP ketat, validasi same-origin, rate limit login, sesi pelanggan via cookie HttpOnly, dan revokasi sesi admin ketika password berubah atau logout.
+- Security headers/CSP ketat, validasi same-origin, rate limit login dan mutasi WiFi, sesi pelanggan via cookie HttpOnly, serta revokasi sesi admin ketika password berubah atau logout.
+- Target perubahan portal selalu diambil dari sesi pelanggan, bukan dari request browser. Password WiFi tersimpan memakai enkripsi terautentikasi AES-256-GCM dan tidak pernah dikirim dalam respons mutasi.
 
 ## Docker
 
@@ -81,7 +83,7 @@ docker run -p 5890:5890 -p 5891:5891 -v skygp-data:/var/lib/skygenpanel \
   genieacs-panel
 ```
 
-Simpan nilai `JWT_SECRET` dan gunakan nilai yang sama setiap container dibuat ulang agar sesi pengguna tidak terputus.
+Simpan nilai `JWT_SECRET` dan gunakan nilai yang sama setiap container dibuat ulang agar sesi pengguna dan password WiFi terenkripsi tetap dapat dibuka.
 
 ## Lisensi
 

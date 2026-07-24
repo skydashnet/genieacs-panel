@@ -250,10 +250,32 @@ const portalApiLimiter = rateLimit({
   legacyHeaders: false,
   message: { success: false, message: 'Terlalu banyak permintaan. Coba lagi sebentar.' }
 });
+const portalMutationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Terlalu banyak perubahan WiFi. Tunggu 15 menit lalu coba lagi.'
+  }
+});
+const portalRevealLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Terlalu banyak permintaan password. Tunggu 15 menit lalu coba lagi.'
+  }
+});
 
 portalApp.use(portalOriginGuard);
 portalApp.use(express.json({ limit: '16kb' }));
 portalApp.use('/api/customer/login', portalLoginLimiter);
+portalApp.use('/api/customer/wifi/:index/password', portalRevealLimiter);
+portalApp.use('/api/customer/wifi', portalMutationLimiter);
 portalApp.use('/api', portalApiLimiter);
 portalApp.use('/api/customer', customerPortalRoutes);
 portalApp.get('/api/health', (req, res) => {

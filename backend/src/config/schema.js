@@ -135,4 +135,20 @@ export async function ensureSchema(db = getDb()) {
       t.timestamp('updated_at').defaultTo(db.fn.now());
     });
   }
+
+  if (!(await db.schema.hasTable('customer_wifi_credentials'))) {
+    await db.schema.createTable('customer_wifi_credentials', (t) => {
+      t.increments('id').primary();
+      t.integer('account_id').unsigned().notNullable()
+        .references('id').inTable('customer_accounts').onDelete('CASCADE');
+      t.integer('wifi_index').notNullable();
+      t.string('ssid', 32).notNullable();
+      t.text('password_ciphertext');
+      t.string('password_iv', 32);
+      t.string('password_tag', 32);
+      t.timestamp('created_at').defaultTo(db.fn.now());
+      t.timestamp('updated_at').defaultTo(db.fn.now());
+      t.unique(['account_id', 'wifi_index']);
+    });
+  }
 }

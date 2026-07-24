@@ -75,6 +75,23 @@ test('GenieACS metadata-only nodes and typed tuples never escape as renderable o
   assert.equal(DeviceService.getParameterValue(item, 'VirtualParameters.PPPUsername'), null);
 });
 
+test('WiFi enabled values normalize GenieACS boolean variants consistently', () => {
+  for (const value of [
+    true,
+    1,
+    '1',
+    'true',
+    ' TRUE ',
+    'enabled',
+    ['TRUE', 'xsd:boolean']
+  ]) {
+    assert.equal(DeviceService.isEnabledValue(value), true, `${JSON.stringify(value)} should be enabled`);
+  }
+  for (const value of [false, 0, '0', 'false', ' FALSE ', 'disabled', null]) {
+    assert.equal(DeviceService.isEnabledValue(value), false, `${JSON.stringify(value)} should be disabled`);
+  }
+});
+
 test('customer portal requests only safe ONT and WiFi fields and never returns admin configuration', async () => {
   const originalVirtual = DeviceService.getVirtualParameters;
   const originalFetch = DeviceService.fetchFromGenieAcs;
@@ -105,7 +122,7 @@ test('customer portal requests only safe ONT and WiFi fields and never returns a
           1: {
             WLANConfiguration: {
               1: {
-                Enable: { _value: true },
+                Enable: { _value: [' TRUE ', 'xsd:boolean'] },
                 SSID: { _value: 'Home WiFi' },
                 TotalAssociations: { _value: 2 }
               }
@@ -129,6 +146,7 @@ test('customer portal requests only safe ONT and WiFi fields and never returns a
     assert.doesNotMatch(projection, /Password|KeyPassphrase/i);
     assert.equal(result.ont.serialNumber, 'SN-PORTAL');
     assert.equal(result.wifi[0].ssid, 'Home WiFi');
+    assert.equal(result.wifi[0].enabled, true);
     assert.equal(result.pppoe, undefined);
     assert.equal(result.wan, undefined);
   } finally {

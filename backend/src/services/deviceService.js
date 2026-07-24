@@ -50,7 +50,12 @@ class DeviceService {
   }
 
   static isEnabledValue(value) {
-    return value === true || value === 1 || value === '1' || value === 'true';
+    const normalized = this.normalizeParameterValue(value);
+    if (normalized === true || normalized === 1) return true;
+    if (typeof normalized !== 'string') return false;
+    return ['1', 'true', 'yes', 'on', 'enabled'].includes(
+      normalized.trim().toLowerCase()
+    );
   }
 
   static resolveParameterPath(basePath, configuredPath) {
