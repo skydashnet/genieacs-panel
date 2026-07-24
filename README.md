@@ -8,9 +8,12 @@
 
   <p>
     <a href="https://github.com/skydashnet/genieacs-panel/tags"><img alt="Latest release" src="https://img.shields.io/github/v/tag/skydashnet/genieacs-panel?sort=semver&style=for-the-badge&label=Release&color=173F35"></a>
+    <a href="https://github.com/skydashnet/genieacs-panel/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/skydashnet/genieacs-panel?style=for-the-badge&logo=github&color=D97706"></a>
+    <a href="https://github.com/skydashnet/genieacs-panel/forks"><img alt="GitHub forks" src="https://img.shields.io/github/forks/skydashnet/genieacs-panel?style=for-the-badge&logo=github&color=2563EB"></a>
     <img alt="Node.js 20 or newer" src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=nodedotjs&logoColor=white">
     <img alt="React and Vite" src="https://img.shields.io/badge/React%20%2B%20Vite-Production-646CFF?style=for-the-badge&logo=vite&logoColor=white">
     <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/License-MIT-D97706?style=for-the-badge"></a>
+    <a href="https://saweria.co/skydashnet"><img alt="Support SkyDashNET on Saweria" src="https://img.shields.io/badge/Support-Saweria-FAAE2B?style=for-the-badge&labelColor=173F35"></a>
   </p>
 
   <p>
@@ -44,6 +47,25 @@ SkyGenPanel is a management layer for GenieACS deployments. It combines an opera
 - Automatic Customer ID generation that can be enabled or disabled in Settings.
 - Encrypted recovery of the last WiFi password changed through the customer portal.
 - Automatic Linux dependency and Node.js installation through the production installer.
+
+## Screenshots
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center"><strong>Operator panel</strong></td>
+      <td align="center"><strong>Customer portal</strong></td>
+    </tr>
+    <tr>
+      <td><img src="docs/screenshots/operator-panel.png" alt="SkyGenPanel operator access screen" width="680"></td>
+      <td><img src="docs/screenshots/customer-portal.png" alt="SkyGenPanel customer portal access screen" width="680"></td>
+    </tr>
+    <tr>
+      <td align="center"><sub>Secure access to fleet operations and GenieACS management.</sub></td>
+      <td align="center"><sub>Isolated self-service access for each authenticated customer.</sub></td>
+    </tr>
+  </table>
+</div>
 
 ## Installation
 
