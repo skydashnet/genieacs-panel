@@ -1,250 +1,196 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { useTheme } from '@/contexts/theme-context'
 import { useAuth } from '@/contexts/auth-context'
 import { Icon } from '@/components/ui/icon'
 import { BrandMark } from '@/components/brand-mark'
 
+const menuItems = [
+  { href: '/dashboard', label: 'Operations', description: 'Fleet health', icon: 'dashboard' },
+  { href: '/devices', label: 'Device Inventory', description: 'ONT and CPE', icon: 'devices' },
+  { href: '/network-map', label: 'Network Topology', description: 'Physical nodes', icon: 'map' },
+  { href: '/settings', label: 'Configuration', description: 'ACS and vendors', icon: 'settings' },
+]
+
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
-  const pathname = usePathname()
+  const { pathname } = useLocation()
 
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768)
-      if (window.innerWidth < 768) {
-        setIsCollapsed(true)
-        setIsMobileOpen(false)
-      }
-    }
+    setIsMobileOpen(false)
+  }, [pathname])
 
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-
-  const menuItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' },
-    { href: '/devices', label: 'Devices', icon: 'devices' },
-    { href: '/network-map', label: 'Network Map', icon: 'map' },
-    { href: '/settings', label: 'Settings', icon: 'settings' },
-  ]
-
-  const isActive = (href: string) => pathname === href
   const hideOnRoutes = ['/login', '/setup']
-  const shouldHideSidebar = hideOnRoutes.some((route) => pathname.startsWith(route))
-  if (shouldHideSidebar) {
-    return null
-  }
-  if (isMobile && isMobileOpen) {
-    return (
-      <div className="fixed inset-0 z-50 md:hidden">
-        <div 
-          className="fixed inset-0 bg-black/50" 
-          onClick={() => setIsMobileOpen(false)}
-        />
-        <div className="fixed left-0 top-0 h-full w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
-          <SidebarContent 
-            isCollapsed={false} 
-            menuItems={menuItems} 
-            isActive={isActive} 
-            setIsMobileOpen={setIsMobileOpen}
-          />
-        </div>
-      </div>
-    )
-  }
+  if (hideOnRoutes.some((route) => pathname.startsWith(route))) return null
+
+  const isActive = (href: string) => pathname === href || pathname.startsWith(`${href}/`)
 
   return (
     <>
-      {/* Mobile menu button */}
-      {isMobile && (
+      <header className="fixed inset-x-0 top-0 z-[1200] flex h-16 items-center justify-between border-b border-border bg-card px-4 md:hidden">
+        <Link to="/dashboard" className="flex min-w-0 items-center gap-2.5" aria-label="SkyGenPanel operations">
+          <BrandMark className="size-8 shrink-0" />
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold leading-tight">SkyGenPanel</div>
+            <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">ACS operations</div>
+          </div>
+        </Link>
         <button
+          type="button"
           onClick={() => setIsMobileOpen(true)}
-          className="fixed top-4 left-4 z-40 p-2 bg-white dark:bg-gray-800 rounded-md shadow-md border border-gray-200 dark:border-gray-700 md:hidden"
+          className="icon-button"
+          aria-label="Open navigation"
+          aria-expanded={isMobileOpen}
         >
-          <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
+          <Icon name="menu" size={23} />
         </button>
+      </header>
+
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-[2000] md:hidden" role="dialog" aria-modal="true" aria-label="Main navigation">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/55"
+            onClick={() => setIsMobileOpen(false)}
+            aria-label="Close navigation"
+          />
+          <aside className="relative flex h-full w-[min(86vw,19rem)] flex-col bg-[#18211d] text-[#f4f3ed] shadow-2xl">
+            <SidebarContent isCollapsed={false} isActive={isActive} closeMobile={() => setIsMobileOpen(false)} />
+          </aside>
+        </div>
       )}
-      
-      {/* Desktop sidebar */}
-      <div className={`relative hidden md:flex md:flex-col h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 ${isCollapsed ? 'w-16' : 'w-56'}`}>
-        <SidebarContent
-          isCollapsed={isCollapsed}
-          menuItems={menuItems}
-          isActive={isActive}
-        />
+
+      <aside
+        className={`relative hidden h-screen shrink-0 flex-col bg-[#18211d] text-[#f4f3ed] transition-[width] duration-200 md:flex ${
+          isCollapsed ? 'w-[4.75rem]' : 'w-[16.5rem]'
+        }`}
+      >
+        <SidebarContent isCollapsed={isCollapsed} isActive={isActive} />
         <button
-          onClick={() => setIsCollapsed(!isCollapsed)}
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="absolute top-1/2 -right-3 z-10 w-6 h-12 flex items-center justify-center bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full shadow hover:shadow-md hover:scale-105 transform -translate-y-1/2 transition"
+          type="button"
+          onClick={() => setIsCollapsed((value) => !value)}
+          aria-label={isCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+          className="absolute -right-3 top-[5.1rem] z-10 flex size-7 items-center justify-center rounded-full border border-[#3a4942] bg-[#202c27] text-[#cad3ce] shadow-sm transition-colors hover:bg-[#2b3933] hover:text-white"
         >
-          {isCollapsed ? (
-            <svg className="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          ) : (
-            <svg className="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          )}
+          <Icon name={isCollapsed ? 'chevron-right' : 'chevron-left'} size={15} />
         </button>
-      </div>
+      </aside>
     </>
   )
 }
 
 function SidebarContent({
   isCollapsed,
-  menuItems,
   isActive,
-  setIsMobileOpen
+  closeMobile,
 }: {
   isCollapsed: boolean
-  menuItems: { href: string; label: string; icon: string }[]
   isActive: (href: string) => boolean
-  setIsMobileOpen?: (open: boolean) => void
+  closeMobile?: () => void
 }) {
-  const themeContext = useTheme()
-  const { isDarkMode = false, toggleDarkMode = () => {} } = themeContext || {}
+  const { isDarkMode, toggleDarkMode } = useTheme()
   const { user, logout } = useAuth()
-  const displayName = user?.username
-  const initial = (displayName?.[0] || 'U').toUpperCase()
-  const [appName, setAppName] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'GenieACS'
-    return localStorage.getItem('appName') || 'GenieACS'
-  })
+  const displayName = user?.username || 'Operator'
+  const initial = displayName.slice(0, 1).toUpperCase()
+  const [appName, setAppName] = useState('SkyGenPanel')
 
   useEffect(() => {
-    const handler = (e: any) => {
-      const name = typeof e?.detail === 'string' ? e.detail : localStorage.getItem('appName')
-      if (name) setAppName(name)
+    const syncName = (event?: Event) => {
+      const detail = (event as CustomEvent<string> | undefined)?.detail
+      setAppName(detail || localStorage.getItem('appName') || 'SkyGenPanel')
     }
-    try {
-      const initial = localStorage.getItem('appName')
-      if (initial) setAppName(initial)
-    } catch {}
-    window.addEventListener('appNameChanged', handler as any)
-    return () => window.removeEventListener('appNameChanged', handler as any)
+    syncName()
+    window.addEventListener('appNameChanged', syncName)
+    return () => window.removeEventListener('appNameChanged', syncName)
   }, [])
-  
-  const handleLinkClick = () => {
-    if (setIsMobileOpen) {
-      setIsMobileOpen(false)
-    }
-  }
 
   return (
     <>
-      {/* Header */}
-      <div className={`flex items-center border-b border-gray-200 dark:border-gray-700 ${isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'}`}>
-        <Link
-          href="/"
-          aria-label={`${appName} home`}
-          title={isCollapsed ? appName : undefined}
-          className="flex min-w-0 items-center gap-2.5"
-        >
-          <BrandMark className="h-9 w-9 shrink-0 drop-shadow-sm" />
+      <div className={`flex h-[4.75rem] items-center border-b border-white/10 ${isCollapsed ? 'justify-center px-2' : 'px-4'}`}>
+        <Link to="/dashboard" onClick={closeMobile} className="flex min-w-0 items-center gap-3" title={isCollapsed ? appName : undefined}>
+          <BrandMark className="size-10 shrink-0" />
           {!isCollapsed && (
-            <span className="truncate text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-              {appName}
-            </span>
+            <div className="min-w-0">
+              <div className="truncate text-[0.95rem] font-bold leading-tight text-white">{appName}</div>
+              <div className="mt-0.5 text-[0.63rem] font-bold uppercase tracking-[0.14em] text-[#9aa9a2]">ACS operations</div>
+            </div>
           )}
         </Link>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-4">
-        <ul className="space-y-2">
-          {menuItems.map((item) => (
-            <li key={item.href}>
-              <Link
-                href={item.href}
-                onClick={handleLinkClick}
-                className={`flex items-center space-x-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                  isActive(item.href)
-                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                <Icon name={item.icon} size={20} />
-                {!isCollapsed && <span className="text-sm">{item.label}</span>}
-              </Link>
-            </li>
-          ))}
+      <nav className={`flex-1 overflow-y-auto py-5 ${isCollapsed ? 'px-2.5' : 'px-3'}`} aria-label="Primary">
+        {!isCollapsed && <div className="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.16em] text-[#829188]">Monitor & manage</div>}
+        <ul className="space-y-1">
+          {menuItems.map((item) => {
+            const active = isActive(item.href)
+            return (
+              <li key={item.href}>
+                <Link
+                  to={item.href}
+                  onClick={closeMobile}
+                  title={isCollapsed ? item.label : undefined}
+                  aria-current={active ? 'page' : undefined}
+                  className={`group flex min-h-12 items-center rounded-md transition-colors ${
+                    isCollapsed ? 'justify-center px-2' : 'gap-3 px-3'
+                  } ${
+                    active
+                      ? 'bg-[#eef0e8] text-[#173f35]'
+                      : 'text-[#c9d2cd] hover:bg-white/7 hover:text-white'
+                  }`}
+                >
+                  <Icon name={item.icon} size={20} className="shrink-0" />
+                  {!isCollapsed && (
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold leading-tight">{item.label}</span>
+                      <span className={`mt-0.5 block truncate text-[0.68rem] ${active ? 'text-[#52665d]' : 'text-[#839189]'}`}>
+                        {item.description}
+                      </span>
+                    </span>
+                  )}
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       </nav>
 
-      {/* Footer */}
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-
-        {/* User Info + Logout */}
-        {!isCollapsed ? (
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold">
-                {initial}
-              </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-medium">
-                  {displayName}
-                </span>
-              </div>
+      <div className={`border-t border-white/10 ${isCollapsed ? 'p-2.5' : 'p-3'}`}>
+        <div className={`mb-2 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'}`}>
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#d97706] text-sm font-bold text-[#1f251f]">
+            {initial}
+          </div>
+          {!isCollapsed && (
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-white">{displayName}</div>
+              <div className="text-[0.68rem] text-[#91a098]">Administrator</div>
             </div>
-            <button
-              onClick={logout}
-              className="px-2 py-1 rounded-md text-red-600 border border-red-200 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            >
-              Logout
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center mb-3">
-            <button
-              onClick={logout}
-              title="Logout"
-              className="p-2 rounded-md text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7" />
-              </svg>
-            </button>
-          </div>
-        )}
-        
-        {/* Dark Mode Toggle */}
-        <button
-          onClick={toggleDarkMode}
-          className="w-full flex items-center justify-center space-x-2 px-2 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-sm"
-        >
-          {isDarkMode ? (
-            <>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-              </svg>
-              {!isCollapsed && <span>Light Mode</span>}
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-              </svg>
-              {!isCollapsed && <span>Dark Mode</span>}
-            </>
           )}
-        </button>
-        {!isCollapsed && (
-          <div className="text-xs text-gray-500 dark:text-gray-400 text-center mt-3">
-            Copyright © SkydashNET
-          </div>
-        )}
+        </div>
+        <div className={`grid gap-1 ${isCollapsed ? 'grid-cols-1' : 'grid-cols-2'}`}>
+          <button
+            type="button"
+            onClick={toggleDarkMode}
+            className={`flex min-h-11 items-center justify-center rounded-md text-[#bdc8c2] transition-colors hover:bg-white/8 hover:text-white ${isCollapsed ? '' : 'gap-2 px-2 text-xs font-semibold'}`}
+            aria-label={isDarkMode ? 'Use light theme' : 'Use dark theme'}
+            title={isCollapsed ? (isDarkMode ? 'Light theme' : 'Dark theme') : undefined}
+          >
+            <Icon name={isDarkMode ? 'sun' : 'moon'} size={18} />
+            {!isCollapsed && <span>{isDarkMode ? 'Light' : 'Dark'}</span>}
+          </button>
+          <button
+            type="button"
+            onClick={logout}
+            className={`flex min-h-11 items-center justify-center rounded-md text-[#e8afa8] transition-colors hover:bg-[#9e3930]/25 hover:text-[#ffd8d3] ${isCollapsed ? '' : 'gap-2 px-2 text-xs font-semibold'}`}
+            aria-label="Sign out"
+            title={isCollapsed ? 'Sign out' : undefined}
+          >
+            <Icon name="logout" size={18} />
+            {!isCollapsed && <span>Sign out</span>}
+          </button>
+        </div>
       </div>
     </>
   )

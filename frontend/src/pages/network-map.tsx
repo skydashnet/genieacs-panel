@@ -324,113 +324,73 @@ export default function NetworkMap() {
   }
 
   return (
-    <div className="p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="page-shell">
+      <div className="page-frame">
+        <header className="page-header">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Network Map</h1>
-            <p className="text-gray-600 dark:text-gray-400">Visualize and manage your network topology</p>
+            <p className="page-kicker">Outside plant</p>
+            <h1 className="page-title">Network topology</h1>
+            <p className="page-description">Tinjau posisi ODC, ODP, server, dan ONT beserta kondisi operasionalnya.</p>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleRefresh}
               disabled={loading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-md font-medium transition-colors bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
+              className="modern-button-secondary"
             >
               <Icon name="refresh" size={16} className={loading ? 'animate-spin' : ''} />
-              {loading ? 'Refreshing...' : 'Refresh'}
+              {loading ? 'Refreshing…' : 'Refresh nodes'}
             </button>
-            <button
-              onClick={() => setMapView('map')}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                mapView === 'map'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              Map View
-            </button>
-            <button
-              onClick={() => setMapView('list')}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
-                mapView === 'list'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300'
-              }`}
-            >
-              List View
-            </button>
+            <div className="flex rounded-md border border-border bg-card p-1" role="group" aria-label="Topology view">
+              <button type="button" onClick={() => setMapView('map')} aria-pressed={mapView === 'map'}
+                className={`min-h-9 rounded px-3 text-sm font-semibold ${mapView === 'map' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                Map
+              </button>
+              <button type="button" onClick={() => setMapView('list')} aria-pressed={mapView === 'list'}
+                className={`min-h-9 rounded px-3 text-sm font-semibold ${mapView === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+                Node list
+              </button>
+            </div>
           </div>
-        </div>
+        </header>
 
-        {/* Last Refresh Info */}
-        <div className="mb-4 text-sm text-gray-500 dark:text-gray-400">
-          Last refreshed: {lastRefresh ? lastRefresh.toLocaleTimeString() : '—'}
-        </div>
-
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="modern-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Nodes</p>
-                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{nodes.length}</p>
-              </div>
-              <Icon name="globe" size={28} className="text-gray-400 dark:text-gray-500" />
-            </div>
+        <section className="mb-4 grid grid-cols-2 overflow-hidden rounded-[var(--radius)] border border-border bg-card sm:grid-cols-4" aria-label="Topology status">
+          <div className="border-b border-r border-border p-4 sm:border-b-0">
+            <p className="metric-label">Mapped nodes</p>
+            <p className="mt-1 font-mono text-xl font-semibold">{nodes.length}</p>
           </div>
-          <div className="modern-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Online</p>
-                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {nodes.filter(n => n.status === 'online').length}
-                </p>
-              </div>
-              <Icon name="check" size={28} className="text-green-500" />
-            </div>
+          <div className="border-b border-border p-4 sm:border-b-0 sm:border-r">
+            <p className="metric-label">Online</p>
+            <p className="mt-1 font-mono text-xl font-semibold text-[hsl(var(--status-success))]">{nodes.filter(n => n.status === 'online').length}</p>
           </div>
-          <div className="modern-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Offline</p>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  {nodes.filter(n => n.status === 'offline').length}
-                </p>
-              </div>
-              <Icon name="x" size={28} className="text-red-500" />
-            </div>
+          <div className="border-r border-border p-4">
+            <p className="metric-label">Offline</p>
+            <p className="mt-1 font-mono text-xl font-semibold text-[hsl(var(--status-danger))]">{nodes.filter(n => n.status === 'offline').length}</p>
           </div>
-          <div className="modern-card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Warning</p>
-                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                  {nodes.filter(n => n.status === 'warning').length}
-                </p>
-              </div>
-              <Icon name="warning" size={28} className="text-yellow-500" />
-            </div>
+          <div className="p-4">
+            <p className="metric-label">Last refresh</p>
+            <p className="mt-1 font-mono text-sm font-semibold">{lastRefresh ? lastRefresh.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '—'}</p>
           </div>
-        </div>
+        </section>
 
         {/* Content */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-8 h-8 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 rounded-full animate-spin"></div>
-            <p className="ml-4 text-gray-500 dark:text-gray-400">Loading network map...</p>
+          <div className="modern-card h-[36rem] animate-pulse bg-muted" role="status">
+            <span className="sr-only">Loading network topology</span>
           </div>
         ) : (
           <>
             {mapView === 'map' ? (
-              <div className="modern-card p-6">
-                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Network Topology</h2>
+              <div className="modern-card overflow-hidden">
+                <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="section-heading">Physical node map</h2>
+                    <p className="text-xs text-muted-foreground">Click a node for capacity, coordinates, and subscriber reference.</p>
+                  </div>
                   <div
                     role="group"
                     aria-label="Basemap"
-                    className="inline-flex w-fit rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-900"
+                    className="inline-flex w-fit rounded-md border border-border bg-muted p-1"
                   >
                     {([
                       ['osm', 'OpenStreetMap'],
@@ -441,10 +401,10 @@ export default function NetworkMap() {
                         type="button"
                         aria-pressed={basemap === value}
                         onClick={() => handleBasemapChange(value)}
-                        className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                        className={`min-h-9 rounded px-3 py-1.5 text-xs font-semibold transition ${
                           basemap === value
-                            ? 'bg-white text-blue-700 shadow-sm dark:bg-gray-700 dark:text-blue-300'
-                            : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+                            ? 'bg-card text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
                         }`}
                       >
                         {label}
@@ -452,16 +412,16 @@ export default function NetworkMap() {
                     ))}
                   </div>
                 </div>
-                <div className="h-[500px] rounded-md overflow-hidden">
+                <div className="h-[60vh] min-h-[25rem] max-h-[52rem] overflow-hidden">
                   <div ref={mapContainerRef} className="w-full h-full" />
                 </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-4 text-center">
-                  Hover pin untuk lihat detail cepat. Klik pin untuk membuka detail lengkap.
-                </p>
               </div>
             ) : (
-              <div className="modern-card p-6">
-                <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Network Nodes</h2>
+              <div className="modern-card overflow-hidden">
+                <div className="border-b border-border px-5 py-4">
+                  <h2 className="section-heading">Mapped network nodes</h2>
+                  <p className="section-description">Structured inventory for topology verification.</p>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="modern-table">
                     <thead>
@@ -494,7 +454,7 @@ export default function NetworkMap() {
                           <td>
                             <button
                               onClick={() => setSelectedNode(node)}
-                              className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                              className="min-h-11 font-semibold text-primary hover:underline"
                             >
                               View Details
                             </button>
@@ -511,16 +471,16 @@ export default function NetworkMap() {
 
         {/* Node Details Modal */}
         {selectedNode && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-md p-6 max-w-md w-full">
+          <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="node-detail-title">
+            <div className="modern-card max-h-[90vh] w-full max-w-md overflow-y-auto p-5 sm:p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                <h3 id="node-detail-title" className="section-heading">
                   {selectedNode.name}
                 </h3>
                 <button
                   onClick={() => setSelectedNode(null)}
                   aria-label="Close"
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  className="icon-button"
                 >
                   <Icon name="x" size={20} />
                 </button>

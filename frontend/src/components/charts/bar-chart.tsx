@@ -9,33 +9,33 @@ interface BarChartData {
 
 export const BarChart = ({ data }: { data: BarChartData[] }) => {
   const { isDarkMode } = useTheme() || { isDarkMode: false }
-  const textColor = isDarkMode ? '#cbd5e1' : '#4b5563' // gray-300 / gray-600
+  const textColor = isDarkMode ? '#aebbb4' : '#5e6c65'
 
   return (
     <ResponsiveContainer width="100%" height={250}>
-      <RechartsBarChart 
-        data={data} 
+      <RechartsBarChart
+        data={data}
         layout="vertical"
         margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
       >
-        <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#374151' : '#e5e7eb'} />
+        <CartesianGrid horizontal={true} vertical={false} stroke={isDarkMode ? '#34413b' : '#d8ddd8'} />
         <XAxis type="number" stroke={textColor} />
-        <YAxis 
-          dataKey="name" 
-          type="category" 
-          width={100} 
-          stroke={textColor} 
-          tick={{ fontSize: 12 }} 
+        <YAxis
+          dataKey="name"
+          type="category"
+          width={100}
+          stroke={textColor}
+          tick={{ fontSize: 12 }}
         />
         <Tooltip
           formatter={(value) => [value, 'Devices']}
           contentStyle={{
             backgroundColor: isDarkMode ? 'rgb(31 41 55)' : '#fff',
-            borderColor: isDarkMode ? 'rgb(55 65 81)' : '#ddd',
-            borderRadius: '0.5rem',
+            borderColor: isDarkMode ? '#34413b' : '#cbd2cc',
+            borderRadius: '0.375rem',
           }}
         />
-        <Bar dataKey="value" fill="#3b82f6" />
+        <Bar dataKey="value" fill={isDarkMode ? '#72b69b' : '#25644f'} radius={[0, 3, 3, 0]} />
       </RechartsBarChart>
     </ResponsiveContainer>
   )

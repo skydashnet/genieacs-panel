@@ -1,7 +1,28 @@
 {
-  "extends": ["next/core-web-vitals", "next/typescript"],
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2022": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint", "react-hooks"],
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:react-hooks/recommended"
+  ],
+  "parserOptions": {
+    "ecmaVersion": "latest",
+    "sourceType": "module",
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
   "rules": {
     "@typescript-eslint/no-explicit-any": "off",
-    "react/no-unescaped-entities": "off"
+    "@typescript-eslint/no-unused-vars": "off",
+    "@typescript-eslint/no-require-imports": "off",
+    "react-hooks/set-state-in-effect": "off",
+    "no-empty": "off"
   }
 }

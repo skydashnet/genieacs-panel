@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useToast } from '@/components/ui/toast'
 import { useLoading } from '@/components/ui/loading'
 import { devicesAPI } from '@/lib/api'
@@ -97,14 +97,14 @@ function EditWanModal({
       SSID5: false, SSID6: false, SSID7: false, SSID8: false,
     }
   });
-  
+
   const [isVlanConfigurable, setIsVlanConfigurable] = useState(false);
 
   useEffect(() => {
     if (wanData) {
       const isVlanSet = wanData.vlanId !== null && wanData.vlanId !== undefined;
       setIsVlanConfigurable(Boolean(wanData.vlanConfigurable));
-      
+
       const newBindings: WanFormState['bindings'] = {
         LAN1: false, LAN2: false, LAN3: false, LAN4: false,
         SSID1: false, SSID2: false, SSID3: false, SSID4: false,
@@ -145,11 +145,11 @@ function EditWanModal({
   if (!isOpen || !wanData) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="modern-card w-full max-w-2xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="wan-dialog-title">
+      <div className="modern-card flex max-h-[90vh] w-full max-w-2xl flex-col">
         {/* Header Modal */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <h3 id="wan-dialog-title" className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             Edit WAN Connection
           </h3>
           <button
@@ -187,8 +187,8 @@ function EditWanModal({
                 disabled={!isVlanConfigurable}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:bg-gray-200 disabled:cursor-not-allowed"
               />
-              <label 
-                htmlFor="vlanEnabled" 
+              <label
+                htmlFor="vlanEnabled"
                 className={`text-sm ${!isVlanConfigurable ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed' : ''}`}
               >
                 Enable VLAN
@@ -205,7 +205,7 @@ function EditWanModal({
               className="modern-input w-full mt-2"
             />
           </div>
-          
+
           {/* 3. PPP Username */}
           <div>
             <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">PPP Username</label>
@@ -216,7 +216,7 @@ function EditWanModal({
               className="modern-input w-full font-mono"
             />
           </div>
-          
+
           {/* 4. PPP Password */}
           <div>
             <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">PPP Password</label>
@@ -321,17 +321,17 @@ function EditCredentialModal({
       setPassword('');
     }
   };
-  
+
   const title = credentialType === 'super' ? 'Superadmin (ISP)' : 'Useradmin (Client)';
 
   if (!isOpen || !credentialType) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="credential-dialog-title">
       <div className="modern-card w-full max-w-md">
         {/* Header Modal */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
+          <h3 id="credential-dialog-title" className="text-xl font-semibold text-gray-900 dark:text-gray-100">
             Update {title}
           </h3>
           <button
@@ -343,7 +343,7 @@ function EditCredentialModal({
             </svg>
           </button>
         </div>
-        
+
         {/* Form Body */}
         <div className="p-6 space-y-4">
            <div>
@@ -366,7 +366,7 @@ function EditCredentialModal({
             />
           </div>
         </div>
-        
+
         {/* Footer Modal */}
         <div className="flex items-center justify-end p-5 space-x-3 border-t border-gray-200 dark:border-gray-700">
           <button
@@ -389,8 +389,10 @@ function EditCredentialModal({
 }
 
 
-export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
-  const router = useRouter()
+export default function DeviceDetailPage() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const deviceId = searchParams.get('id') || ''
   const [device, setDevice] = useState<ProcessedDeviceDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
@@ -401,8 +403,8 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
   const [editingWan, setEditingWan] = useState<WanConnection | null>(null)
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
   const [credentialType, setCredentialType] = useState<'super' | 'user' | null>(null);
-  
-  
+
+
   const handleOpenEditModal = (wan: WanConnection) => {
     setEditingWan(wan);
     setIsWanModalOpen(true);
@@ -422,19 +424,19 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
         return
       }
     }
-    
+
     loadingCtl.show('Saving WAN changes...');
     try {
       const res = await devicesAPI.updateWanConfig(deviceId, editingWan.index, formData);
-      
+
       if (res.success) {
         toast.success(res.message || 'WAN config updated!');
         handleCloseWanModal();
-        
+
         setTimeout(() => {
           fetchDeviceDetails(true);
         }, 1500);
-        
+
       } else {
         toast.error(res.message || 'Failed to update WAN config');
       }
@@ -444,22 +446,22 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
       loadingCtl.hide();
     }
   }
-  
+
   const handleOpenCredentialModal = (type: 'super' | 'user') => {
     setCredentialType(type);
     setIsCredentialModalOpen(true);
   }
-  
+
   const handleCloseCredentialModal = () => {
     setIsCredentialModalOpen(false);
     setCredentialType(null);
   }
-  
+
   const handleSaveCredentials = async (type: 'super' | 'user', password: string) => {
     loadingCtl.show('Updating credentials...');
     try {
       const res = await devicesAPI.updateCredentials(deviceId, type, password);
-      
+
       if (res.success) {
         toast.success(res.message || 'Credentials update task queued!');
         handleCloseCredentialModal();
@@ -480,7 +482,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
     if (!isRefresh) {
       setLoading(true);
     }
-    
+
     try {
       if (!deviceId) {
         setDevice(null)
@@ -506,6 +508,9 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
   }, [fetchDeviceDetails]);
 
   const handleReboot = async () => {
+    if (!window.confirm(`Reboot ${device?._id || deviceId}?\n\nThe subscriber connection may be unavailable while the device restarts. Existing configuration is preserved.`)) {
+      return
+    }
     setRebooting(true)
     loadingCtl.show('Sending reboot command...')
     try {
@@ -541,46 +546,46 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
 
   const getSignalStrengthInfo = (rxPowerStr: string | number | null | undefined) => {
     const rxpower = parseFloat(String(rxPowerStr));
-    
+
     if (isNaN(rxpower)) {
-      return { 
+      return {
         color: 'text-gray-500 dark:text-gray-400',
         label: 'N/A',
-        badgeClass: 'modern-badge' 
+        badgeClass: 'modern-badge'
       };
     }
-    
+
     if (rxpower >= -21.99) {
-      return { 
+      return {
         color: 'text-green-600 dark:text-green-400',
         label: 'Excellent',
         badgeClass: 'modern-badge-success'
       };
     }
     if (rxpower >= -24.99) {
-      return { 
+      return {
         color: 'text-blue-600 dark:text-blue-400',
         label: 'Good',
         badgeClass: 'modern-badge-info'
       };
     }
     if (rxpower >= -26.99) {
-      return { 
+      return {
         color: 'text-yellow-600 dark:text-yellow-400',
         label: 'Poor',
         badgeClass: 'modern-badge-warning'
       };
     }
-    return { 
+    return {
       color: 'text-red-600 dark:text-red-400',
       label: 'Danger',
       badgeClass: 'modern-badge-error'
     };
   }
-  
+
   const getStatusBadge = (status: string | undefined) => {
     if (!status) return <span className="modern-badge">Unknown</span>
-    
+
     if (status.includes(':') || status.includes('Z')) {
        try {
          const lastSeen = new Date(status)
@@ -589,7 +594,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
          }
          const now = new Date()
          const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60))
-         
+
          if (diffMinutes < 10) {
            return <span className="modern-badge-success">Online</span>
          } else if (diffMinutes < 60) {
@@ -601,7 +606,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
           return <span className="modern-badge">Invalid Date</span>
        }
     }
-    
+
     switch (status.toLowerCase()) {
       case 'connected':
         return <span className="modern-badge-success">Connected</span>
@@ -618,9 +623,9 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
 
   const renderBindingBox = (label: string, isBound: boolean) => (
     <div className={`
-      relative flex flex-col items-center justify-center p-2 rounded-md 
+      relative flex flex-col items-center justify-center p-2 rounded-md
       transition-all duration-200 ease-in-out
-      ${isBound 
+      ${isBound
         ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border border-blue-300 dark:border-blue-700'
         : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
       }
@@ -643,11 +648,12 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
 
   if (loading) {
     return (
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto flex justify-center items-center h-[60vh]">
-          <div className="flex flex-col items-center">
-            <div className="w-12 h-12 border-4 border-gray-200 dark:border-gray-700 border-t-blue-600 rounded-full animate-spin"></div>
-            <p className="mt-4 text-lg text-gray-600 dark:text-gray-400">Loading Device Details...</p>
+      <div className="page-shell">
+        <div className="page-frame">
+          <div className="mb-5 h-28 animate-pulse rounded-md bg-muted" />
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="h-64 animate-pulse rounded-md bg-muted" />
+            <div className="h-64 animate-pulse rounded-md bg-muted" />
           </div>
         </div>
       </div>
@@ -656,73 +662,75 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
 
   if (!device) {
     return (
-      <div className="p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center py-20">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Device Not Found</h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-4">The device you're looking for doesn't exist or has been removed.</p>
+      <div className="page-shell">
+        <div className="page-frame">
+          <div className="modern-card empty-state">
+            <div className="empty-state-icon"><Icon name="server" size={22} /></div>
+            <h2 className="empty-state-title">Device could not be opened</h2>
+            <p className="empty-state-copy">Perangkat mungkin sudah dihapus atau GenieACS tidak mengembalikan detailnya. Kembali ke inventory lalu cari ulang serial perangkat.</p>
             <button
-              onClick={() => router.push('/devices')}
-              className="modern-button"
+              onClick={() => navigate('/devices')} className="modern-button mt-5"
             >
-              Back to Devices
+              Back to inventory
             </button>
           </div>
         </div>
       </div>
     )
   }
-  
+
   const vp = device.virtualParameters || {}
   const deviceInfo = device.deviceInfo || {}
   const primaryWAN = (device.wan && device.wan.length > 0) ? device.wan[0] : null
   const signalInfo = getSignalStrengthInfo(vp.rxpower?.value);
 
   return (
-    <div className="p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="page-shell">
+      <div className="page-frame">
+        <header className="page-header">
           <div>
-            <div className="flex items-center space-x-2 mb-2">
+            <div className="mb-3">
               <button
-                onClick={() => router.push('/devices')}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                onClick={() => navigate('/devices')}
+                className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
               >
-                ← Back to Devices
+                <Icon name="back" size={17} /> Device inventory
               </button>
             </div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-              Device Details: {device._id}
+            <p className="page-kicker">Managed endpoint</p>
+            <h1 className="page-title break-all">
+              {deviceInfo.serialNumber || device._id}
             </h1>
-            <div className="flex items-center space-x-4">
+            <div className="mt-2 flex flex-wrap items-center gap-3">
               {getStatusBadge(device._lastInform)}
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                Last Inform: {formatDate(device._lastInform)}
+              <span className="text-xs text-muted-foreground">
+                Last Inform {formatDate(device._lastInform)}
               </span>
+              <span className="max-w-full truncate font-mono text-[0.68rem] text-muted-foreground">{device._id}</span>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleReboot}
               disabled={rebooting}
               className="modern-button-secondary"
             >
-              {rebooting ? 'Rebooting...' : 'Reboot Device'}
+              <Icon name="power" size={17} />
+              {rebooting ? 'Rebooting…' : 'Reboot device'}
             </button>
             <button
               onClick={handleSummon}
               className="modern-button inline-flex items-center gap-1.5"
               title="Summon Device"
             >
-              <Icon name="bell" size={16} /> Summon
+              <Icon name="bell" size={16} /> Request Inform
             </button>
           </div>
-        </div>
+        </header>
 
         {/* Device Info Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="modern-card p-6">
+        <div className="mb-6 grid grid-cols-2 overflow-hidden rounded-[var(--radius)] border border-border bg-card lg:grid-cols-4">
+          <div className="border-b border-r border-border p-4 lg:border-b-0">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Signal Strength</span>
               <span className={signalInfo.badgeClass}>{signalInfo.label}</span>
@@ -731,7 +739,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
               {vp.rxpower?.value !== null && vp.rxpower?.value !== undefined ? `${vp.rxpower.value} dBm` : 'N/A'}
             </div>
           </div>
-          <div className="modern-card p-6">
+          <div className="border-b border-border p-4 lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Temperature</span>
               <Icon name="thermometer" size={20} className="text-gray-400 dark:text-gray-500" />
@@ -740,7 +748,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
               {vp.temperature?.value ?? 'N/A'}
             </div>
           </div>
-          <div className="modern-card p-6">
+          <div className="border-r border-border p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Devices</span>
               <Icon name="phone" size={20} className="text-gray-400 dark:text-gray-500" />
@@ -749,7 +757,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
               {vp.activedevices?.value || 0}
             </div>
           </div>
-          <div className="modern-card p-6">
+          <div className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Model</span>
               <Icon name="server" size={20} className="text-gray-400 dark:text-gray-500" />
@@ -761,45 +769,41 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
         </div>
 
         {/* Tabs */}
-        <div className="mb-8">
-          <div className="flex space-x-1 border-b border-gray-200 dark:border-gray-700">
+        <div className="mb-6">
+          <div className="tab-rail" role="tablist" aria-label="Device details">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`px-6 py-3 font-medium transition-colors ${
-                activeTab === 'overview'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'overview'}
+              role="tab"
+              aria-selected={activeTab === 'overview'}
             >
               Overview
             </button>
             <button
               onClick={() => setActiveTab('wan')}
-              className={`px-6 py-3 font-medium transition-colors ${
-                activeTab === 'wan'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'wan'}
+              role="tab"
+              aria-selected={activeTab === 'wan'}
             >
               WAN
             </button>
             <button
               onClick={() => setActiveTab('wifi')}
-              className={`px-6 py-3 font-medium transition-colors ${
-                activeTab === 'wifi'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'wifi'}
+              role="tab"
+              aria-selected={activeTab === 'wifi'}
             >
               WiFi
             </button>
             <button
               onClick={() => setActiveTab('advanced')}
-              className={`px-6 py-3 font-medium transition-colors ${
-                activeTab === 'advanced'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'advanced'}
+              role="tab"
+              aria-selected={activeTab === 'advanced'}
             >
               Advanced
             </button>
@@ -884,7 +888,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
                         </h3>
                         {getStatusBadge(wan.status || 'Disconnected')}
                       </div>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 pt-3 border-t border-gray-200 dark:border-gray-700">
                         <div className="space-y-3">
                           <div className="flex justify-between">
@@ -1061,7 +1065,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
                     <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Superadmin (ISP)</h4>
                     <p className="text-sm text-gray-500">User: {vp.superAdmin?.value || 'N/A'}</p>
                     <p className="text-sm text-gray-500">Pass: {vp.superPassword?.value ? '******' : 'N/A'}</p>
-                    <button 
+                    <button
                       onClick={() => handleOpenCredentialModal('super')}
                       className="modern-button mt-3"
                     >
@@ -1072,7 +1076,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
                     <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Useradmin (Client)</h4>
                     <p className="text-sm text-gray-500">User: {vp.userAdmin?.value || 'N/A'}</p>
                     <p className="text-sm text-gray-500">Pass: {vp.userPassword?.value ? '******' : 'N/A'}</p>
-                    <button 
+                    <button
                       onClick={() => handleOpenCredentialModal('user')}
                       className="modern-button mt-3"
                     >

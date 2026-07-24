@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let dataDir;
+let frontendDir;
 let port;
 let baseUrl;
 let server;
@@ -60,6 +61,13 @@ async function request(endpoint, {
 
 before(async () => {
   dataDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skygenpanel-api-'));
+  frontendDir = path.join(dataDir, 'frontend');
+  await fs.mkdir(path.join(frontendDir, 'assets'), { recursive: true });
+  await fs.writeFile(
+    path.join(frontendDir, 'index.html'),
+    '<!doctype html><html><body><div id="root"></div><script type="module" src="/assets/app-test.js"></script></body></html>'
+  );
+  await fs.writeFile(path.join(frontendDir, 'assets', 'app-test.js'), 'document.querySelector("#root").textContent = "SkyGenPanel";');
   port = await getFreePort();
   baseUrl = `http://127.0.0.1:${port}`;
   server = spawn(process.execPath, ['src/server.js'], {
@@ -71,6 +79,7 @@ before(async () => {
       APP_ENV: 'production',
       JWT_SECRET: 'integration-test-secret-that-is-long-and-random-enough',
       DATA_DIR: dataDir,
+      FRONTEND_DIR: frontendDir,
       CORS_ORIGINS: 'http://localhost:5890'
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -232,11 +241,12 @@ test('production error handling, CSP, and static fallback are safe', async () =>
   assert.match(csp, /tile\.openstreetmap\.org/);
   assert.match(csp, /basemaps\.cartocdn\.com/);
   assert.match(csp, /mt1\.google\.com/);
-  assert.match(csp, /script-src 'self' 'unsafe-inline'/);
+  assert.match(csp, /script-src 'self'/);
+  assert.doesNotMatch(csp, /script-src[^;]*'unsafe-inline'/);
   assert.match(csp, /script-src-attr 'none'/);
   assert.doesNotMatch(csp, /upgrade-insecure-requests/);
   assert.equal(page.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
-  assert.match(await page.text(), /<script>self\.__next_f/);
+  assert.match(await page.text(), /<script type="module" src="\/assets\/app-test\.js">/);
 
   const missingAsset = await fetch(`${baseUrl}/missing-script.js`);
   assert.equal(missingAsset.status, 404);

@@ -7,19 +7,35 @@ import { useLoading } from '@/components/ui/loading'
 import { Icon } from '@/components/ui/icon'
 import type { Vendor as VendorType, WifiSecurityConfig as WifiSecurityConfigType } from '@/types'
 
+const INSTALLER_VIRTUAL_PARAMETERS = {
+  vpPppoeUsername: 'VirtualParameters.PPPUsername',
+  vpWanBridge: 'VirtualParameters.WANBridge',
+  vpRxPower: 'VirtualParameters.OpticalRXPower',
+  vpTemperature: 'VirtualParameters.OpticalTemperature',
+  vpActiveDevices: 'VirtualParameters.TotalStations',
+  vpSuperAdmin: 'VirtualParameters.LoginSuperUser',
+  vpSuperPassword: 'VirtualParameters.LoginSuperPass',
+  vpUserAdmin: '',
+  vpUserPassword: ''
+}
+
+const VIRTUAL_PARAMETER_FIELDS = [
+  { key: 'vpPppoeUsername', label: 'PPPoE username', description: 'PPPUsername' },
+  { key: 'vpWanBridge', label: 'WAN bridge status', description: 'WANBridge' },
+  { key: 'vpRxPower', label: 'Optical RX power', description: 'OpticalRXPower' },
+  { key: 'vpTemperature', label: 'Optical temperature', description: 'OpticalTemperature' },
+  { key: 'vpActiveDevices', label: 'Connected stations', description: 'TotalStations' },
+  { key: 'vpSuperAdmin', label: 'Super-admin username', description: 'LoginSuperUser' },
+  { key: 'vpSuperPassword', label: 'Super-admin password', description: 'LoginSuperPass' },
+  { key: 'vpUserAdmin', label: 'Operator username', description: 'Optional; not supplied by genieacs-installer' },
+  { key: 'vpUserPassword', label: 'Operator password', description: 'Optional; not supplied by genieacs-installer' }
+] as const
+
 export default function Settings() {
   const [settings, setSettings] = useState({
-    appName: 'GenieACS Panel',
-    genieAcsUrl: 'http://localhost:7557/devices',
-    vpPppoeUsername: 'VirtualParameters.pppoeUsername',
-    vpWanBridge: 'VirtualParameters.WANBRIDGE',
-    vpRxPower: 'VirtualParameters.RXPower',
-    vpTemperature: 'VirtualParameters.gettemp',
-    vpActiveDevices: 'VirtualParameters.activedevices',
-    vpSuperAdmin: 'VirtualParameters.superAdmin',
-    vpSuperPassword: 'VirtualParameters.superPassword',
-    vpUserAdmin: 'VirtualParameters.userAdmin',
-    vpUserPassword: 'VirtualParameters.userPassword'
+    appName: 'SkyGenPanel',
+    genieAcsUrl: 'http://127.0.0.1:7557',
+    ...INSTALLER_VIRTUAL_PARAMETERS
   })
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
@@ -182,7 +198,7 @@ export default function Settings() {
   const [vendorsLoading, setVendorsLoading] = useState(false)
   const [creatingVendor, setCreatingVendor] = useState(false)
   const [editingVendor, setEditingVendor] = useState<VendorType | null>(null)
-  
+
   const [vendorForm, setVendorForm] = useState<{
     name: string
     parameter_prefix: string
@@ -284,7 +300,8 @@ export default function Settings() {
   }
 
   const deleteVendor = async (id: number) => {
-    if (!confirm('Delete this vendor?')) return
+    const vendor = vendorList.find((item) => item.id === id)
+    if (!confirm(`Delete vendor profile "${vendor?.name || id}"?\n\nDevices will no longer use this profile for parameter discovery. This cannot be undone.`)) return
     const res = await vendorsAPI.delete(id)
     if (res.success) {
       setVendorList(prev => prev.filter(v => v.id !== id))
@@ -354,7 +371,8 @@ export default function Settings() {
   }
 
   const deleteWifiConfig = async (id: number) => {
-    if (!confirm('Delete this config?')) return
+    const config = wifiConfigs.find((item) => item.id === id)
+    if (!confirm(`Delete WiFi mapping for "${config?.product_class || id}"?\n\nPassword and security parameters for this product class will no longer be resolved. This cannot be undone.`)) return
     const res = await vendorsAPI.deleteWifiSecurityConfig(id)
     if (res.success) {
       setWifiConfigs(prev => prev.filter(c => c.id !== id))
@@ -368,76 +386,71 @@ export default function Settings() {
   }
 
   return (
-    <div className="p-6">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Settings</h1>
-          <p className="text-gray-600 dark:text-gray-400">Configure system settings and virtual parameters</p>
-        </div>
+    <div className="page-shell">
+      <div className="page-frame">
+        <header className="page-header">
+          <div>
+            <p className="page-kicker">System administration</p>
+            <h1 className="page-title">Panel configuration</h1>
+            <p className="page-description">Kelola koneksi GenieACS, jalur parameter vendor, akun administrator, dan penyimpanan data panel.</p>
+          </div>
+        </header>
 
-        {/* Tabs */}
-        <div className="mb-8">
-          <div className="flex flex-wrap gap-1 border-b border-gray-200 dark:border-gray-700">
+        <div className="mb-6">
+          <div className="tab-rail" role="tablist" aria-label="Configuration sections">
             <button
               onClick={() => setActiveTab('general')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'general'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'general'}
+              role="tab"
+              aria-selected={activeTab === 'general'}
             >
-              General
+              Panel & ACS
             </button>
             <button
               onClick={() => setActiveTab('virtual-params')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'virtual-params'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'virtual-params'}
+              role="tab"
+              aria-selected={activeTab === 'virtual-params'}
             >
-              Virtual Parameters
+              TR-069 parameters
             </button>
             <button
               onClick={() => setActiveTab('security')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'security'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'security'}
+              role="tab"
+              aria-selected={activeTab === 'security'}
             >
-              Security
+              Account access
             </button>
             <button
               onClick={() => setActiveTab('vendors')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'vendors'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'vendors'}
+              role="tab"
+              aria-selected={activeTab === 'vendors'}
             >
-              Vendor Management
+              Vendor profiles
             </button>
             <button
               onClick={() => setActiveTab('wifi-security')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'wifi-security'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'wifi-security'}
+              role="tab"
+              aria-selected={activeTab === 'wifi-security'}
             >
-              WiFi Security Config
+              WiFi mappings
             </button>
             <button
               onClick={() => setActiveTab('database')}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                activeTab === 'database'
-                  ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
-                  : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
+              className="tab-button"
+              data-active={activeTab === 'database'}
+              role="tab"
+              aria-selected={activeTab === 'database'}
             >
-              Database
+              Data store
             </button>
           </div>
         </div>
@@ -446,12 +459,14 @@ export default function Settings() {
         {activeTab === 'general' && (
           <div className="space-y-6">
             {/* App Settings */}
-            <div className="modern-card p-6">
-              <h2 className="text-lg font-semibold mb-6 text-gray-900 dark:text-gray-100">Application Settings</h2>
+            <div className="modern-card max-w-3xl p-5 sm:p-6">
+              <h2 className="section-heading">Panel identity and ACS endpoint</h2>
+              <p className="section-description mb-6">Nama tampil panel dan alamat northbound API GenieACS.</p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Application Name</label>
+                  <label htmlFor="application-name" className="field-label">Application name</label>
                   <input
+                    id="application-name"
                     type="text"
                     value={settings.appName}
                     onChange={(e) => setSettings({...settings, appName: e.target.value})}
@@ -459,22 +474,25 @@ export default function Settings() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">GenieACS URL</label>
-                  <div className="flex space-x-2">
-                    <input
-                      type="url"
-                      value={settings.genieAcsUrl}
-                      onChange={(e) => setSettings({...settings, genieAcsUrl: e.target.value})}
-                      className="modern-input flex-1"
+                  <label htmlFor="genieacs-url" className="field-label">GenieACS URL</label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="genieacs-url"
+                    type="url"
+                    placeholder="http://127.0.0.1:7557"
+                    value={settings.genieAcsUrl}
+                    onChange={(e) => setSettings({...settings, genieAcsUrl: e.target.value})}
+                    className="modern-input flex-1"
                     />
                     <button
                       onClick={handleTestConnection}
                       disabled={loading}
                       className="modern-button"
                     >
-                      {loading ? 'Testing...' : 'Test'}
+                      {loading ? 'Testing…' : 'Test connection'}
                     </button>
                   </div>
+                  <p className="field-hint">Masukkan base URL northbound API (NBI), biasanya port 7557. Path <code>/devices</code> ditambahkan otomatis.</p>
                 </div>
               </div>
 
@@ -500,20 +518,41 @@ export default function Settings() {
         )}
 
         {activeTab === 'virtual-params' && (
-          <div className="modern-card p-6">
-            <h2 className="text-lg font-semibold mb-6 text-gray-900 dark:text-gray-100">Virtual Parameters</h2>
+          <div className="modern-card p-5 sm:p-6">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="section-heading">Virtual parameter mappings</h2>
+                <p className="section-description mt-1">
+                  Preset ini mengikuti nama virtual parameter dari repository <span className="font-mono">skydashnet/genieacs-installer</span>.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="modern-button-secondary shrink-0"
+                onClick={() => setSettings((current) => ({ ...current, ...INSTALLER_VIRTUAL_PARAMETERS }))}
+              >
+                <Icon name="refresh" size={17} />
+                Use installer preset
+              </button>
+            </div>
+            <div className="mb-6 rounded-md border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.08)] p-4 text-sm text-foreground">
+              SkyGenPanel hanya membaca mapping ini. Script virtual parameter harus sudah diimpor ke GenieACS menggunakan installer tersebut.
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(settings).filter(([key]) => key.startsWith('vp')).map(([key, value]) => (
-                <div key={key}>
-                  <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">
-                    {key.replace('vp', '').replace(/([A-Z])/g, ' $1')}
+              {VIRTUAL_PARAMETER_FIELDS.map((field) => (
+                <div key={field.key}>
+                  <label htmlFor={field.key} className="field-label">
+                    {field.label}
                   </label>
                   <input
+                    id={field.key}
                     type="text"
-                    value={value}
-                    onChange={(e) => setSettings({...settings, [key]: e.target.value})}
+                    value={settings[field.key]}
+                    placeholder={field.description.startsWith('Optional') ? 'Leave empty if unavailable' : undefined}
+                    onChange={(e) => setSettings({...settings, [field.key]: e.target.value})}
                     className="modern-input w-full font-mono text-sm"
                   />
+                  <p className="field-hint">{field.description}</p>
                 </div>
               ))}
             </div>
@@ -521,35 +560,13 @@ export default function Settings() {
         )}
 
         {activeTab === 'security' && (
-          <div className="modern-card p-6">
-            <h2 className="text-lg font-semibold mb-6 text-gray-900 dark:text-gray-100">Security Settings</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
-                <div>
-                  <h3 className="font-medium text-gray-900 dark:text-gray-100">Session Timeout</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Automatically logout after inactivity</p>
-                </div>
-                <select className="modern-input w-40">
-                  <option>30 minutes</option>
-                  <option>1 hour</option>
-                  <option>2 hours</option>
-                  <option>4 hours</option>
-                  <option>Never</option>
-                </select>
-              </div>
-              <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-md">
-                <div>
-                  <h3 className="font-medium text-gray-900 dark:text-gray-100">Two-Factor Authentication</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Add an extra layer of security</p>
-                </div>
-                <button className="modern-button">
-                  Enable 2FA
-                </button>
-              </div>
-
-              {/* Change Username */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
-                <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Change Username</h3>
+          <div className="modern-card max-w-5xl p-5 sm:p-6">
+            <h2 className="section-heading">Administrator credentials</h2>
+            <p className="section-description mb-6">Perubahan berlaku pada sesi login panel, bukan kredensial perangkat atau GenieACS.</p>
+            <div className="space-y-6">
+              <section className="rounded-md border border-border bg-[hsl(var(--surface-subtle))] p-4">
+                <h3 className="font-semibold text-foreground">Change username</h3>
+                <p className="mb-4 mt-1 text-sm text-muted-foreground">Masukkan username saat ini untuk mengonfirmasi kepemilikan akun.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Current Username</label>
@@ -570,14 +587,14 @@ export default function Settings() {
                     />
                   </div>
                 </div>
-                <div className="mt-3">
+                <div className="mt-4">
                   <button onClick={submitChangeUsername} className="modern-button">Update Username</button>
                 </div>
-              </div>
+              </section>
 
-              {/* Change Password */}
-              <div className="p-4 bg-gray-50 dark:bg-gray-800 rounded-md border border-gray-200 dark:border-gray-700">
-                <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-3">Change Password</h3>
+              <section className="rounded-md border border-border bg-[hsl(var(--surface-subtle))] p-4">
+                <h3 className="font-semibold text-foreground">Change password</h3>
+                <p className="mb-4 mt-1 text-sm text-muted-foreground">Gunakan minimal 8 karakter dan password yang berbeda dari akun ONT.</p>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Current Password</label>
@@ -610,10 +627,10 @@ export default function Settings() {
                     />
                   </div>
                 </div>
-                <div className="mt-3">
+                <div className="mt-4">
                   <button onClick={submitChangePassword} className="modern-button">Update Password</button>
                 </div>
-              </div>
+              </section>
             </div>
           </div>
         )}
@@ -636,7 +653,7 @@ export default function Settings() {
               {(creatingVendor || editingVendor) && (
                 <div className="mb-6 p-4 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    
+
                     {/* General Info */}
                     <div className="md:col-span-3">
                       <label className="block text-sm font-medium mb-1">Name *</label>
@@ -647,7 +664,7 @@ export default function Settings() {
                         placeholder="Vendor name"
                       />
                     </div>
-                    
+
                     <div className="md:col-span-3">
                       <label className="block text-sm font-medium mb-1">Manufacturer Patterns (Comma-separated) *</label>
                       <input
@@ -657,7 +674,7 @@ export default function Settings() {
                         placeholder="huawei, hw"
                       />
                     </div>
-                    
+
                     <div className="md:col-span-3">
                       <label className="block text-sm font-medium mb-1">Product Patterns (Comma-separated) *</label>
                       <input
@@ -667,7 +684,7 @@ export default function Settings() {
                         placeholder="hg8, eg8, f660"
                       />
                     </div>
-                    
+
                     <div className="md:col-span-3">
                       <label className="block text-sm font-medium mb-1">Parameter Prefix</label>
                       <input
@@ -680,7 +697,7 @@ export default function Settings() {
 
                     {/* WAN Connection Parameters */}
                     <h3 className="md:col-span-3 text-md font-semibold text-gray-800 dark:text-gray-200 mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">WAN Connection Parameters</h3>
-                    
+
                     <div>
                       <label className="block text-sm font-medium mb-1">Service List Path</label>
                       <input
@@ -733,7 +750,7 @@ export default function Settings() {
                         placeholder="e.g. ...AclServices.HTTPWanEnable"
                       />
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium mb-1">Firewall Level Path</label>
                       <input
@@ -757,7 +774,7 @@ export default function Settings() {
                         placeholder="10"
                       />
                     </div>
-                    
+
                     <div>
                       <label className="block text-sm font-medium mb-1">Status</label>
                       <select
@@ -895,8 +912,8 @@ export default function Settings() {
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">WiFi Security Configuration</h2>
                 <button
-                  onClick={() => { 
-                    resetConfigForm(); 
+                  onClick={() => {
+                    resetConfigForm();
                     setCreatingConfig(true);
                   }}
                   className="modern-button"

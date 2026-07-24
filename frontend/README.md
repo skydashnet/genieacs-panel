@@ -1,6 +1,6 @@
 # SkyGenPanel Frontend
 
-Frontend Next.js 15 App Router yang diekspor sebagai situs statis dan disajikan oleh backend pada origin yang sama.
+Frontend Vite + React Router yang dibangun sebagai SPA statis dan disajikan oleh backend pada origin yang sama.
 
 ## Menjalankan
 
@@ -11,7 +11,7 @@ npm ci --include=dev
 npm run dev
 ```
 
-Development server meneruskan `/api` ke backend lokal. Tidak diperlukan `NEXT_PUBLIC_API_URL`; client selalu memakai path relatif `/api`.
+Development server meneruskan `/api` ke backend lokal. Tidak diperlukan `VITE_API_URL`; client secara default memakai path relatif `/api`.
 
 ## Pemeriksaan production
 
@@ -22,4 +22,4 @@ npm run build
 npm audit
 ```
 
-Hasil build berada di `out/` dan otomatis disajikan oleh backend dalam deployment single-service.
+Hasil build berada di `dist/` dan otomatis disajikan oleh backend dalam deployment single-service.

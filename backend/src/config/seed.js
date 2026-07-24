@@ -1,8 +1,23 @@
 import { getDb } from './database.js';
 
 export const DEFAULT_SETTINGS = {
-  appName: 'GenieACS Panel',
+  appName: 'SkyGenPanel',
   genieAcsUrl: '',
+  vpPppoeUsername: 'VirtualParameters.PPPUsername',
+  vpWanBridge: 'VirtualParameters.WANBridge',
+  vpRxPower: 'VirtualParameters.OpticalRXPower',
+  vpTemperature: 'VirtualParameters.OpticalTemperature',
+  vpActiveDevices: 'VirtualParameters.TotalStations',
+  vpSuperAdmin: 'VirtualParameters.LoginSuperUser',
+  vpSuperPassword: 'VirtualParameters.LoginSuperPass',
+  vpUserAdmin: '',
+  vpUserPassword: ''
+};
+
+// Values shipped by older SkyGenPanel releases. Only these exact values are
+// migrated, so an operator's custom mappings are never overwritten.
+export const LEGACY_DEFAULT_SETTINGS = {
+  appName: 'GenieACS Panel',
   vpPppoeUsername: 'VirtualParameters.pppoeUsername',
   vpWanBridge: 'VirtualParameters.WANBRIDGE',
   vpRxPower: 'VirtualParameters.RXPower',
@@ -19,6 +34,13 @@ export async function seedDefaults(db = getDb()) {
     const existing = await db('settings').where({ key }).first();
     if (!existing) {
       await db('settings').insert({ key, value });
+    } else if (
+      Object.hasOwn(LEGACY_DEFAULT_SETTINGS, key) &&
+      existing.value === LEGACY_DEFAULT_SETTINGS[key]
+    ) {
+      await db('settings')
+        .where({ key })
+        .update({ value, updated_at: new Date() });
     }
   }
 

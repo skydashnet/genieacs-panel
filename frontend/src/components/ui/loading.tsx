@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react'
 import clsx from 'clsx'
-import { usePathname } from 'next/navigation'
+import { useLocation } from 'react-router-dom'
 
 type LoadingContextType = {
   visible: boolean
@@ -33,10 +33,13 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
     <LoadingContext.Provider value={value}>
       {children}
       {visible && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40">
-          <div className="flex items-center gap-3 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 shadow-lg">
+        <div className="fixed bottom-4 left-4 right-4 z-[2190] flex justify-center sm:left-auto sm:right-5" role="status" aria-live="polite">
+          <div className="flex min-h-12 w-full items-center gap-3 rounded-md border border-border bg-card px-4 py-3 text-foreground shadow-lg sm:w-auto sm:min-w-64">
             <Spinner />
-            <div className="text-sm text-gray-700 dark:text-gray-300">{message || 'Loading...'}</div>
+            <div>
+              <div className="text-sm font-semibold">{message || 'Processing request'}</div>
+              <div className="text-xs text-muted-foreground">You can keep reviewing this page.</div>
+            </div>
           </div>
         </div>
       )}
@@ -63,7 +66,7 @@ export function Spinner({ className, size = 24 }: SpinnerProps) {
     <div
       role="status"
       aria-live="polite"
-      className={clsx('rounded-full border-gray-200 dark:border-gray-700 border-t-blue-600 animate-spin', className)}
+      className={clsx('animate-spin rounded-full border-border border-t-primary', className)}
       style={style}
     />
   )
@@ -78,7 +81,7 @@ type SkeletonProps = {
 
 export function Skeleton({ className, width = '100%', height = 12, rounded = 'rounded-md' }: SkeletonProps) {
   const style: React.CSSProperties = { width, height }
-  return <div className={clsx('bg-gray-200 dark:bg-gray-700 animate-pulse', rounded, className)} style={style} />
+  return <div className={clsx('animate-pulse bg-muted', rounded, className)} style={style} />
 }
 
 /**
@@ -86,21 +89,11 @@ export function Skeleton({ className, width = '100%', height = 12, rounded = 'ro
  * Should be used inside LoadingProvider (already wrapped in layout).
  */
 export function RouteChangeLoader() {
-  const pathname = usePathname()
-  const { show, hide } = useLoading()
+  const { pathname } = useLocation()
 
   useEffect(() => {
-    let cancelled = false
-    show('Loading...')
-    const t = setTimeout(() => {
-      if (!cancelled) hide()
-    }, 400)
-    return () => {
-      cancelled = true
-      clearTimeout(t)
-      hide()
-    }
-  }, [pathname, show, hide])
+    document.documentElement.dataset.route = pathname
+  }, [pathname])
 
   return null
 }

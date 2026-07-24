@@ -1,7 +1,7 @@
 {
   "name": "genieacs-panel-api",
   "version": "1.0.0",
-  "description": "API for GenieACS Panel",
+  "description": "API for SkyGenPanel",
   "main": "src/server.js",
   "type": "module",
   "scripts": {

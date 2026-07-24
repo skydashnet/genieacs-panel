@@ -36,20 +36,20 @@ function genId() {
 
 const typeStyles: Record<ToastType, { base: string; icon: string }> = {
   success: {
-    base: 'border-green-200 dark:border-green-900/40 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300',
-    icon: 'check-circle'
+    base: 'border-[hsl(var(--status-success)/.3)] bg-[hsl(var(--status-success)/.08)] text-[hsl(var(--status-success))]',
+    icon: 'check'
   },
   error: {
-    base: 'border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300',
-    icon: 'x-circle'
+    base: 'border-[hsl(var(--status-danger)/.3)] bg-[hsl(var(--status-danger)/.08)] text-[hsl(var(--status-danger))]',
+    icon: 'x'
   },
   info: {
-    base: 'border-blue-200 dark:border-blue-900/40 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300',
+    base: 'border-[hsl(var(--status-info)/.3)] bg-[hsl(var(--status-info)/.08)] text-[hsl(var(--status-info))]',
     icon: 'info'
   },
   warning: {
-    base: 'border-yellow-200 dark:border-yellow-900/40 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-300',
-    icon: 'alert'
+    base: 'border-[hsl(var(--status-warning)/.3)] bg-[hsl(var(--status-warning)/.08)] text-[hsl(var(--status-warning))]',
+    icon: 'warning'
   }
 }
 
@@ -120,15 +120,15 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {/* Toast Container */ }
-      <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 w-[90vw] max-w-sm">
+      <div className="fixed left-4 right-4 top-20 z-[2200] flex flex-col gap-2 sm:left-auto sm:right-5 sm:top-5 sm:w-[24rem]">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`border rounded-md shadow-sm px-4 py-3 flex items-start gap-3 animate-in fade-in slide-in-from-right-4 ${typeStyles[t.type].base}`}
-            role="status"
-            aria-live="polite"
+            className={`flex min-h-14 items-start gap-3 rounded-md border px-4 py-3 shadow-lg animate-in fade-in slide-in-from-right-4 ${typeStyles[t.type].base}`}
+            role={t.type === 'error' ? 'alert' : 'status'}
+            aria-live={t.type === 'error' ? 'assertive' : 'polite'}
           >
-            <div className="text-lg">{typeStyles[t.type].icon}</div>
+            <Icon name={typeStyles[t.type].icon} size={19} className="mt-0.5 shrink-0" />
             <div className="flex-1">
               {t.title ? (
                 <div className="font-semibold mb-0.5">{t.title}</div>
@@ -137,9 +137,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </div>
             <button
               onClick={() => dismiss(t.id)}
-              className="text-sm opacity-70 hover:opacity-100 transition"
-              aria-label="Dismiss"
-              title="Dismiss"
+              className="flex size-8 shrink-0 items-center justify-center rounded text-current opacity-70 transition hover:bg-black/5 hover:opacity-100"
+              aria-label="Dismiss notification"
             >
               <Icon name="x" size={16} />
             </button>

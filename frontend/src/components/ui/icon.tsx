@@ -24,7 +24,20 @@ import {
   ChartBarIcon,
   SignalIcon,
   PowerIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  Bars3Icon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  SunIcon,
+  MoonIcon,
+  ArrowRightStartOnRectangleIcon,
+  MagnifyingGlassIcon,
+  ArrowTopRightOnSquareIcon,
+  WifiIcon,
+  CircleStackIcon,
+  CommandLineIcon,
+  EyeIcon,
+  EyeSlashIcon
 } from '@heroicons/react/24/outline'
 
 const ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
@@ -52,7 +65,20 @@ const ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> 
   chart: ChartBarIcon,
   signal: SignalIcon,
   power: PowerIcon,
-  back: ArrowLeftIcon
+  back: ArrowLeftIcon,
+  menu: Bars3Icon,
+  'chevron-left': ChevronLeftIcon,
+  'chevron-right': ChevronRightIcon,
+  sun: SunIcon,
+  moon: MoonIcon,
+  logout: ArrowRightStartOnRectangleIcon,
+  search: MagnifyingGlassIcon,
+  external: ArrowTopRightOnSquareIcon,
+  wifi: WifiIcon,
+  database: CircleStackIcon,
+  terminal: CommandLineIcon,
+  eye: EyeIcon,
+  'eye-off': EyeSlashIcon
 }
 
 interface IconProps extends React.SVGProps<SVGSVGElement> {

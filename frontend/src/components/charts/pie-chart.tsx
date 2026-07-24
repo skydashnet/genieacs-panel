@@ -10,7 +10,7 @@ interface PieChartData {
 
 export const PieChart = ({ data }: { data: PieChartData[] }) => {
   const { isDarkMode } = useTheme() || { isDarkMode: false }
-  
+
   return (
     <ResponsiveContainer width="100%" height={250}>
       <RechartsPieChart>
@@ -20,8 +20,10 @@ export const PieChart = ({ data }: { data: PieChartData[] }) => {
           nameKey="name"
           cx="50%"
           cy="50%"
-          outerRadius={80}
-          fill="#8884d8"
+          innerRadius={43}
+          outerRadius={78}
+          paddingAngle={2}
+          stroke="none"
         >
           {data.map((entry, index) => (
             <Cell key={`cell-${index}`} fill={entry.color} />
@@ -31,12 +33,12 @@ export const PieChart = ({ data }: { data: PieChartData[] }) => {
           formatter={(value) => [value, 'Devices']}
           contentStyle={{
             backgroundColor: isDarkMode ? 'rgb(31 41 55)' : '#fff',
-            borderColor: isDarkMode ? 'rgb(55 65 81)' : '#ddd',
-            borderRadius: '0.5rem',
+            borderColor: isDarkMode ? '#34413b' : '#cbd2cc',
+            borderRadius: '0.375rem',
           }}
         />
-        <Legend 
-          iconType="circle" 
+        <Legend
+          iconType="circle"
           wrapperStyle={{ fontSize: '14px' }}
         />
       </RechartsPieChart>

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import knexFactory from 'knex';
 import { ensureSchema } from '../src/config/schema.js';
+import { DEFAULT_SETTINGS, seedDefaults } from '../src/config/seed.js';
 import { copyData } from '../src/services/dbManagementService.js';
 
 function sqlite(filename) {
@@ -56,6 +57,34 @@ async function seedGraph(db, suffix) {
     target: `${suffix}-b`
   });
 }
+
+test('default virtual parameter mappings migrate to genieacs-installer names without overwriting custom values', async () => {
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skygenpanel-seed-'));
+  const db = sqlite(path.join(tempDir, 'settings.sqlite'));
+  try {
+    await ensureSchema(db);
+    await db('settings').insert([
+      { key: 'appName', value: 'GenieACS Panel' },
+      { key: 'vpPppoeUsername', value: 'VirtualParameters.pppoeUsername' },
+      { key: 'vpRxPower', value: 'VirtualParameters.CustomRxPower' },
+      { key: 'vpUserPassword', value: 'VirtualParameters.userPassword' }
+    ]);
+
+    await seedDefaults(db);
+
+    const rows = Object.fromEntries(
+      (await db('settings').select('key', 'value')).map(({ key, value }) => [key, value])
+    );
+    assert.equal(rows.appName, 'SkyGenPanel');
+    assert.equal(rows.vpPppoeUsername, 'VirtualParameters.PPPUsername');
+    assert.equal(rows.vpRxPower, 'VirtualParameters.CustomRxPower');
+    assert.equal(rows.vpUserPassword, '');
+    assert.equal(rows.vpWanBridge, DEFAULT_SETTINGS.vpWanBridge);
+  } finally {
+    await db.destroy();
+    await fs.rm(tempDir, { recursive: true, force: true });
+  }
+});
 
 test('database migration replaces related tables atomically with foreign keys enabled', async () => {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'skygenpanel-db-'));

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect } from 'react'
 import { apiClient, authAPI } from '@/lib/api'
-import { useRouter, usePathname } from 'next/navigation'
+import { useNavigate } from 'react-router-dom'
 import type { User } from '@/types'
 
 interface AuthContextType {
@@ -22,8 +22,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
   const [needsSetup, setNeedsSetup] = useState(false)
-  const router = useRouter()
-  const pathname = usePathname()
+  const navigate = useNavigate()
 
   useEffect(() => {
     const checkAuthStatus = async () => {
@@ -72,38 +71,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const handleUnauthorized = () => {
       setUser(null)
       setIsAuthenticated(false)
-      if (!needsSetup) {
-        router.push('/login')
-      }
+      navigate(needsSetup ? '/setup' : '/login', { replace: true })
     }
     window.addEventListener('auth:unauthorized', handleUnauthorized)
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized)
-  }, [needsSetup, router])
-
-  useEffect(() => {
-    if (loading) return
-
-    const isSetupPage = pathname === '/setup'
-    const isAuthPage = pathname === '/login'
-
-    if (needsSetup) {
-      if (!isSetupPage) router.push('/setup')
-      return
-    }
-
-    if (isSetupPage) {
-      router.push(isAuthenticated ? '/dashboard' : '/login')
-      return
-    }
-
-    if (!isAuthenticated && !isAuthPage) {
-      router.push('/login');
-    }
-    
-    if (isAuthenticated && isAuthPage) {
-      router.push('/dashboard');
-    }
-  }, [isAuthenticated, needsSetup, loading, pathname, router])
+  }, [navigate, needsSetup])
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
@@ -115,11 +87,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           user: User
         }
         apiClient.setTokens(token, refreshToken)
-        
+
         setUser(user)
         setIsAuthenticated(true)
-        
-        router.push('/dashboard')
+
+        navigate('/dashboard')
         return true
       } else {
         apiClient.clearTokens()
@@ -148,7 +120,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(user)
         setIsAuthenticated(true)
         setNeedsSetup(false)
-        router.push('/dashboard')
+        navigate('/dashboard')
         return true
       }
       return false
@@ -163,11 +135,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     apiClient.clearTokens()
     setUser(null)
     setIsAuthenticated(false)
-    router.push('/login')
+    navigate('/login')
   }
-  
+
   const value = { user, isAuthenticated, loading, needsSetup, login, completeSetup, logout }
-  
+
   return (
     <AuthContext.Provider value={value}>
       {children}

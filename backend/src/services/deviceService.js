@@ -1,6 +1,7 @@
 import Setting from '../models/Setting.js';
 import VendorService from './vendorService.js';
 import Vendor from '../models/Vendor.js';
+import { DEFAULT_SETTINGS } from '../config/seed.js';
 
 class DeviceService {
   static getParameterNode(obj, parameterPath) {
@@ -44,18 +45,12 @@ class DeviceService {
 
   static async getVirtualParameters() {
     const settings = await Setting.getAll();
-    
-    return {
-      vpPppoeUsername: settings.vpPppoeUsername || 'VirtualParameters.pppoeUsername',
-      vpWanBridge: settings.vpWanBridge || 'VirtualParameters.WANBRIDGE',
-      vpRxPower: settings.vpRxPower || 'VirtualParameters.RXPower',
-      vpTemperature: settings.vpTemperature || 'VirtualParameters.gettemp',
-      vpActiveDevices: settings.vpActiveDevices || 'VirtualParameters.activedevices',
-      vpSuperAdmin: settings.vpSuperAdmin || 'VirtualParameters.superAdmin',
-      vpSuperPassword: settings.vpSuperPassword || 'VirtualParameters.superPassword',
-      vpUserAdmin: settings.vpUserAdmin || 'VirtualParameters.userAdmin',
-      vpUserPassword: settings.vpUserPassword || 'VirtualParameters.userPassword'
-    };
+
+    return Object.fromEntries(
+      Object.keys(DEFAULT_SETTINGS)
+        .filter((key) => key.startsWith('vp'))
+        .map((key) => [key, settings[key] ?? DEFAULT_SETTINGS[key]])
+    );
   }
 
   static async getDevicesBaseUrl() {
@@ -162,7 +157,7 @@ class DeviceService {
         'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.SSID',
         '_lastInform',
         '_registered'
-      ];
+      ].filter(Boolean);
 
       const apiUrl = `?projection=${encodeURIComponent(projection.join(','))}`;
       const data = await this.fetchFromGenieAcs(apiUrl);
@@ -324,7 +319,7 @@ class DeviceService {
 
     const data = await this.fetchFromGenieAcs('', {
       query: JSON.stringify({ _id: deviceId }),
-      projection: projection.join(',')
+      projection: projection.filter(Boolean).join(',')
     });
 
     if (!Array.isArray(data) || data.length === 0) {

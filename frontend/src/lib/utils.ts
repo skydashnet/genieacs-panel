@@ -20,26 +20,26 @@ export function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString)
   const now = new Date()
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
-  
+
   if (diffInSeconds < 60) {
     return 'Just now'
   }
-  
+
   const diffInMinutes = Math.floor(diffInSeconds / 60)
   if (diffInMinutes < 60) {
     return `${diffInMinutes} minute${diffInMinutes > 1 ? 's' : ''} ago`
   }
-  
+
   const diffInHours = Math.floor(diffInMinutes / 60)
   if (diffInHours < 24) {
     return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`
   }
-  
+
   const diffInDays = Math.floor(diffInHours / 24)
   if (diffInDays < 7) {
     return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`
   }
-  
+
   return formatDate(dateString)
 }
 
@@ -62,7 +62,7 @@ export function getSignalStrengthColor(rxpower: number | null | undefined): stri
   if (rxpower === null || rxpower === undefined) {
     return 'text-gray-500'
   }
-  
+
   if (rxpower >= -25) {
     return 'text-green-600'
   } else if (rxpower >= -50) {
@@ -78,7 +78,7 @@ export function debounce<T extends (...args: any[]) => any>(
   func: T,
   waitFor: number
 ): (...args: Parameters<T>) => void {
-  let timeout: NodeJS.Timeout
+  let timeout: ReturnType<typeof setTimeout>
   return (...args: Parameters<T>) => {
     clearTimeout(timeout)
     timeout = setTimeout(() => func(...args), waitFor)
@@ -110,7 +110,7 @@ export function copyToClipboard(text: string): Promise<boolean> {
 
 export function formatDate(isoString: string | undefined | null): string {
   if (!isoString) return 'N/A';
-  
+
   try {
     const date = new Date(isoString);
     const options: Intl.DateTimeFormatOptions = {
@@ -123,10 +123,10 @@ export function formatDate(isoString: string | undefined | null): string {
       hour12: false,
       timeZone: 'Asia/Jakarta'
     };
-    
+
     let formatted = new Intl.DateTimeFormat('id-ID', options).format(date);
     formatted = formatted.replace(/\//g, '-').replace(/\./g, ':').replace(',', '');
-    
+
     return formatted;
   } catch {
     return 'Invalid Date';

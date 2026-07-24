@@ -1,4 +1,4 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || ''
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 export interface ApiResponse<T = any> {
   success: boolean
@@ -26,7 +26,7 @@ class ApiClient {
     retryAfterRefresh = true
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}/api${endpoint}`
-    
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...options.headers as Record<string, string>,
@@ -176,19 +176,19 @@ export const authAPI = {
 
   login: (username: string, password: string) =>
     apiClient.post('/auth/login', { username, password }),
-  
+
   getCurrentUser: () =>
     apiClient.get('/auth/user'),
-  
+
   logout: () =>
     apiClient.post('/auth/logout'),
-  
+
   refreshToken: (refreshToken: string) =>
     apiClient.post('/auth/refresh', { refreshToken }),
-  
+
   changePassword: (currentPassword: string, newPassword: string) =>
     apiClient.post('/auth/change-password', { currentPassword, newPassword }),
-  
+
   changeUsername: (currentUsername: string, newUsername: string) =>
     apiClient.post('/auth/change-username', { currentUsername, newUsername }),
 }
@@ -197,16 +197,16 @@ export const authAPI = {
 export const devicesAPI = {
   getDevices: () =>
     apiClient.get('/devices'),
-  
+
   getDevice: (deviceId: string) =>
     apiClient.get(`/devices/${encodeURIComponent(deviceId)}`),
-  
+
   deleteDevice: (deviceId: string) =>
     apiClient.delete(`/devices/${encodeURIComponent(deviceId)}`),
-  
+
   rebootDevice: (deviceId: string) =>
     apiClient.post('/devices/reboot', { deviceId }),
-  
+
   summonDevice: (deviceId: string, parameters?: string[]) =>
     apiClient.post('/devices/summon', { deviceId, parameters }),
 
@@ -223,19 +223,19 @@ export const devicesAPI = {
 export const settingsAPI = {
   getAll: () =>
     apiClient.get('/settings'),
-  
+
   get: (key: string) =>
     apiClient.get(`/settings/${key}`),
-  
+
   create: (key: string, value: string) =>
     apiClient.post('/settings', { key, value }),
-  
+
   update: (key: string, value: string) =>
     apiClient.put(`/settings/${key}`, { value }),
-  
+
   delete: (key: string) =>
     apiClient.delete(`/settings/${key}`),
-  
+
   testGenieAcs: (url: string) =>
     apiClient.post('/settings/test-genieacs', { url }),
 }
@@ -294,37 +294,37 @@ export const vendorsAPI = {
 export const mappingAPI = {
   getNodes: () =>
     apiClient.get('/mapping-data/nodes'),
-  
+
   getNode: (nodeId: string) =>
     apiClient.get(`/mapping-data/nodes/${nodeId}`),
-  
+
   createNode: (nodeData: any) =>
     apiClient.post('/mapping-data/nodes', nodeData),
-  
+
   updateNode: (nodeId: string, nodeData: any) =>
     apiClient.put(`/mapping-data/nodes/${nodeId}`, nodeData),
-  
+
   deleteNode: (nodeId: string) =>
     apiClient.delete(`/mapping-data/nodes/${nodeId}`),
-  
+
   getEdges: () =>
     apiClient.get('/mapping-data/edges'),
-  
+
   getEdge: (edgeId: string) =>
     apiClient.get(`/mapping-data/edges/${edgeId}`),
-  
+
   createEdge: (edgeData: any) =>
     apiClient.post('/mapping-data/edges', edgeData),
-  
+
   updateEdge: (edgeId: string, edgeData: any) =>
     apiClient.put(`/mapping-data/edges/${edgeId}`, edgeData),
-  
+
   deleteEdge: (edgeId: string) =>
     apiClient.delete(`/mapping-data/edges/${edgeId}`),
-  
+
   syncData: (data: { nodes: any[], edges: any[] }) =>
     apiClient.post('/mapping-data/sync', data),
-  
+
   resetData: (password: string) =>
     apiClient.requestWithBody('DELETE', '/mapping-data/reset', { password }),
 }
@@ -333,10 +333,10 @@ export const mappingAPI = {
 export const mapSettingsAPI = {
   get: () =>
     apiClient.get('/map-settings'),
-  
+
   update: (settings: any) =>
     apiClient.put('/map-settings', settings),
-  
+
   reset: () =>
     apiClient.post('/map-settings/reset'),
 }

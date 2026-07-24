@@ -12,21 +12,21 @@ test('device normalization preserves valid false, zero, and empty-string values'
       _Manufacturer: 'Vendor'
     },
     VirtualParameters: {
-      pppoeUsername: { _value: '' },
-      WANBRIDGE: { _value: false },
-      RXPower: { _value: 0 },
-      gettemp: { _value: 0 },
-      activedevices: { _value: 0 }
+      PPPUsername: { _value: '' },
+      WANBridge: { _value: false },
+      OpticalRXPower: { _value: 0 },
+      OpticalTemperature: { _value: 0 },
+      TotalStations: { _value: 0 }
     },
     _lastInform: '2026-07-24T00:00:00.000Z',
     _registered: '2026-07-23T00:00:00.000Z'
   };
   const virtualParameters = {
-    vpPppoeUsername: 'VirtualParameters.pppoeUsername',
-    vpWanBridge: 'VirtualParameters.WANBRIDGE',
-    vpRxPower: 'VirtualParameters.RXPower',
-    vpTemperature: 'VirtualParameters.gettemp',
-    vpActiveDevices: 'VirtualParameters.activedevices'
+    vpPppoeUsername: 'VirtualParameters.PPPUsername',
+    vpWanBridge: 'VirtualParameters.WANBridge',
+    vpRxPower: 'VirtualParameters.OpticalRXPower',
+    vpTemperature: 'VirtualParameters.OpticalTemperature',
+    vpActiveDevices: 'VirtualParameters.TotalStations'
   };
 
   const result = DeviceService.processDeviceData(item, virtualParameters);
@@ -63,15 +63,15 @@ test('WAN discovery keeps every IP and PPP instance and updates the selected PPP
     }
   };
   const virtualParameters = {
-    vpPppoeUsername: 'VirtualParameters.pppoeUsername',
-    vpWanBridge: 'VirtualParameters.WANBRIDGE',
-    vpRxPower: 'VirtualParameters.RXPower',
-    vpTemperature: 'VirtualParameters.gettemp',
-    vpActiveDevices: 'VirtualParameters.activedevices',
-    vpSuperAdmin: 'VirtualParameters.superAdmin',
-    vpSuperPassword: 'VirtualParameters.superPassword',
-    vpUserAdmin: 'VirtualParameters.userAdmin',
-    vpUserPassword: 'VirtualParameters.userPassword'
+    vpPppoeUsername: 'VirtualParameters.PPPUsername',
+    vpWanBridge: 'VirtualParameters.WANBridge',
+    vpRxPower: 'VirtualParameters.OpticalRXPower',
+    vpTemperature: 'VirtualParameters.OpticalTemperature',
+    vpActiveDevices: 'VirtualParameters.TotalStations',
+    vpSuperAdmin: 'VirtualParameters.LoginSuperUser',
+    vpSuperPassword: 'VirtualParameters.LoginSuperPass',
+    vpUserAdmin: '',
+    vpUserPassword: ''
   };
 
   const originalDetectVendor = VendorService.detectVendor;

@@ -26,7 +26,7 @@ const app = express();
 const PORT = Number(process.env.APP_PORT) || 5890;
 const HOST = process.env.APP_HOST || '127.0.0.1';
 const APP_ENV = process.env.APP_ENV || 'development';
-const FRONTEND_DIR = process.env.FRONTEND_DIR || path.join(__dirname, '..', '..', 'frontend', 'out');
+const FRONTEND_DIR = process.env.FRONTEND_DIR || path.join(__dirname, '..', '..', 'frontend', 'dist');
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5890')
   .split(',')
@@ -39,9 +39,8 @@ app.use(helmet({
   },
   contentSecurityPolicy: {
     directives: {
-      // Next.js static exports embed hydration/redirect state in inline scripts.
-      // Keep script attributes blocked while allowing only those script blocks.
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      // Vite emits external hashed modules, so inline scripts remain blocked.
+      scriptSrc: ["'self'"],
       // The built-in server defaults to HTTP; upgrading relative assets would
       // make browsers request HTTPS from a port that has no TLS listener.
       upgradeInsecureRequests: null,
@@ -123,9 +122,9 @@ if (fs.existsSync(FRONTEND_DIR)) {
   app.use(express.static(FRONTEND_DIR, {
     maxAge: APP_ENV === 'production' ? '1h' : 0,
     setHeaders(res, filePath) {
-      if (filePath.includes(`${path.sep}_next${path.sep}static${path.sep}`)) {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-      } else if (filePath.endsWith('.html') || filePath.endsWith('.txt')) {
+      } else if (filePath.endsWith('.html')) {
         res.setHeader('Cache-Control', 'no-cache');
       }
     }
@@ -134,6 +133,7 @@ if (fs.existsSync(FRONTEND_DIR)) {
     if (!['GET', 'HEAD'].includes(req.method) || path.extname(req.path)) {
       return next();
     }
+    res.setHeader('Cache-Control', 'no-cache');
     return res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
   });
 } else {

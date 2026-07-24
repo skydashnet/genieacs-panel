@@ -1,4 +1,4 @@
-# GenieACS Panel
+# SkyGenPanel
 
 Panel manajemen perangkat jaringan di atas GenieACS. Berjalan sebagai satu layanan (UI + API dalam satu port) dengan SQLite bawaan, jadi bisa langsung jalan tanpa database eksternal.
 
@@ -43,7 +43,7 @@ git clone https://github.com/skydashnet/genieacs-panel
 cd genieacs-panel
 npm run install:all
 npm run dev:backend    # API + UI di http://localhost:5890
-npm run dev:frontend   # Next.js dev server (proxy /api ke backend)
+npm run dev:frontend   # Vite dev server (proxy /api ke backend)
 ```
 
 Build produksi lokal: `npm run build` lalu `npm start`.
@@ -61,7 +61,7 @@ Lewat **Settings → Database** (admin): lihat konfigurasi aktif, uji koneksi My
 ## Arsitektur
 
 - Backend: Node.js + Express 5, Knex dual-dialect (SQLite via better-sqlite3, MySQL via mysql2), JWT. Menyajikan API sekaligus frontend statis dengan SPA fallback.
-- Frontend: Next.js 15 (App Router, static export), TypeScript, Tailwind CSS.
+- Frontend: Vite, React Router, TypeScript, dan Tailwind CSS.
 
 ## Keamanan
 
