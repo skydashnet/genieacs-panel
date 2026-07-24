@@ -54,6 +54,13 @@ cmd_update() {
   log "Fetching latest ($REPO_BRANCH)"
   git -C "$INSTALL_DIR" fetch --depth 1 origin "$REPO_BRANCH"
   git -C "$INSTALL_DIR" reset --hard "origin/$REPO_BRANCH"
+  log "Removing legacy Next.js build artifacts"
+  for legacy_dir in "$INSTALL_DIR/frontend/.next" "$INSTALL_DIR/frontend/out"; do
+    [ ! -L "$legacy_dir" ] || die "Refusing symbolic-link legacy artifact: $legacy_dir"
+    if [ -e "$legacy_dir" ]; then
+      rm -rf -- "$legacy_dir"
+    fi
+  done
   log "Updating backend dependencies"
   ( cd "$INSTALL_DIR/backend" && npm ci --omit=dev )
   log "Rebuilding frontend"

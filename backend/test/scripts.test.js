@@ -87,6 +87,14 @@ test('installer bootstraps supported package managers and verifies official Node
   assert.doesNotMatch(installer, /Node\.js not found\. Install Node\.js/);
 });
 
+test('updater removes only known legacy Next.js build directories', () => {
+  const updater = fs.readFileSync(path.join(repoDir, 'deploy', 'skygenpanel'), 'utf8');
+  assert.match(updater, /frontend\/\.next/);
+  assert.match(updater, /frontend\/out/);
+  assert.match(updater, /Refusing symbolic-link legacy artifact/);
+  assert.doesNotMatch(updater, /git\s+-C\s+"?\$INSTALL_DIR"?\s+clean/);
+});
+
 test('database automation scripts load .env and reset passwords without sourcing it as shell', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skygenpanel-scripts-'));
   const dataDir = path.join(tempDir, 'data');
