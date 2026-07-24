@@ -17,9 +17,25 @@ class DeviceService {
   static getParameterValue(obj, parameterPath) {
     const current = this.getParameterNode(obj, parameterPath);
     if (current && typeof current === 'object' && '_value' in current) {
-      return current._value ?? null;
+      return this.normalizeParameterValue(current._value);
     }
-    return current ?? null;
+    return this.normalizeParameterValue(current);
+  }
+
+  static normalizeParameterValue(value) {
+    if (value === null || value === undefined) return null;
+    if (
+      Array.isArray(value) &&
+      value.length === 2 &&
+      typeof value[1] === 'string' &&
+      /^(?:xsd:|xs:)/i.test(value[1])
+    ) {
+      return this.normalizeParameterValue(value[0]);
+    }
+    // GenieACS returns metadata-only nodes such as {_object, _writable} when a
+    // projected parameter has no current value. These are not display values.
+    if (typeof value === 'object') return null;
+    return value;
   }
 
   static isEnabledValue(value) {
@@ -336,7 +352,7 @@ class DeviceService {
 
     const getVPValue = getValue;
 
-    const getRelativeValue = (obj, path) => {
+    const getRelativeNode = (obj, path) => {
       if (!path || !obj) return null;
       const parts = path.split('.');
       let current = obj;
@@ -347,7 +363,15 @@ class DeviceService {
           return null;
         }
       }
-      return (current && current._value !== undefined) ? (current._value ?? null) : (current ?? null);
+      return current ?? null;
+    };
+
+    const getRelativeValue = (obj, path) => {
+      const current = getRelativeNode(obj, path);
+      if (current && typeof current === 'object' && '_value' in current) {
+        return this.normalizeParameterValue(current._value);
+      }
+      return this.normalizeParameterValue(current);
     };
 
     const manufacturer = item._deviceId?._Manufacturer || null;
@@ -484,7 +508,7 @@ class DeviceService {
             if (bindingPath) {
               const bindingObj = this.resolveParameterPath(connPath, bindingPath) === bindingPath
                 ? this.getParameterNode(item, bindingPath)
-                : getRelativeValue(connection, bindingPath);
+                : getRelativeNode(connection, bindingPath);
               if (bindingObj && typeof bindingObj === 'object') {
                 bindings = { lan: [], ssid: [] };
                 for (let i = 1; i <= 4; i++) {

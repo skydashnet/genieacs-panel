@@ -246,6 +246,8 @@ test('production error handling, CSP, and static fallback are safe', async () =>
   assert.match(csp, /script-src-attr 'none'/);
   assert.doesNotMatch(csp, /upgrade-insecure-requests/);
   assert.equal(page.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
+  assert.equal(page.headers.get('cross-origin-opener-policy'), null);
+  assert.equal(page.headers.get('origin-agent-cluster'), null);
   assert.match(await page.text(), /<script type="module" src="\/assets\/app-test\.js">/);
 
   const missingAsset = await fetch(`${baseUrl}/missing-script.js`);

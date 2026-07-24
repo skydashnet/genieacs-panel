@@ -34,6 +34,11 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5890')
   .filter(Boolean);
 
 app.use(helmet({
+  // COOP is ignored on plain HTTP public-IP deployments and OAC can produce
+  // persistent browser warnings when an origin previously used site-keying.
+  // SkyGenPanel does not rely on cross-origin isolation, so omit both headers.
+  crossOriginOpenerPolicy: false,
+  originAgentCluster: false,
   referrerPolicy: {
     policy: 'strict-origin-when-cross-origin'
   },
