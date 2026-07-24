@@ -198,6 +198,15 @@ export const devicesAPI = {
   getDevices: () =>
     apiClient.get('/devices'),
 
+  getDashboard: (force = false) =>
+    apiClient.get(`/devices/dashboard${force ? '?refresh=1' : ''}`),
+
+  getFaults: (limit = 50) =>
+    apiClient.get(`/devices/faults?limit=${encodeURIComponent(limit)}`),
+
+  clearFault: (faultId: string) =>
+    apiClient.delete(`/devices/faults/${encodeURIComponent(faultId)}`),
+
   getDevice: (deviceId: string) =>
     apiClient.get(`/devices/${encodeURIComponent(deviceId)}`),
 
@@ -212,6 +221,10 @@ export const devicesAPI = {
 
   updateWanConfig: (deviceId: string, wanIndex: string, formData: any) => {
     return apiClient.post(`/devices/${encodeURIComponent(deviceId)}/update-wan`, { wanIndex, formData });
+  },
+
+  updateWifiConfig: (deviceId: string, index: number, formData: any) => {
+    return apiClient.post(`/devices/${encodeURIComponent(deviceId)}/update-wifi`, { index, formData });
   },
 
   updateCredentials: (deviceId: string, type: 'super' | 'user', password: string) => {
@@ -296,31 +309,31 @@ export const mappingAPI = {
     apiClient.get('/mapping-data/nodes'),
 
   getNode: (nodeId: string) =>
-    apiClient.get(`/mapping-data/nodes/${nodeId}`),
+    apiClient.get(`/mapping-data/nodes/${encodeURIComponent(nodeId)}`),
 
   createNode: (nodeData: any) =>
     apiClient.post('/mapping-data/nodes', nodeData),
 
   updateNode: (nodeId: string, nodeData: any) =>
-    apiClient.put(`/mapping-data/nodes/${nodeId}`, nodeData),
+    apiClient.put(`/mapping-data/nodes/${encodeURIComponent(nodeId)}`, nodeData),
 
   deleteNode: (nodeId: string) =>
-    apiClient.delete(`/mapping-data/nodes/${nodeId}`),
+    apiClient.delete(`/mapping-data/nodes/${encodeURIComponent(nodeId)}`),
 
   getEdges: () =>
     apiClient.get('/mapping-data/edges'),
 
   getEdge: (edgeId: string) =>
-    apiClient.get(`/mapping-data/edges/${edgeId}`),
+    apiClient.get(`/mapping-data/edges/${encodeURIComponent(edgeId)}`),
 
   createEdge: (edgeData: any) =>
     apiClient.post('/mapping-data/edges', edgeData),
 
   updateEdge: (edgeId: string, edgeData: any) =>
-    apiClient.put(`/mapping-data/edges/${edgeId}`, edgeData),
+    apiClient.put(`/mapping-data/edges/${encodeURIComponent(edgeId)}`, edgeData),
 
   deleteEdge: (edgeId: string) =>
-    apiClient.delete(`/mapping-data/edges/${edgeId}`),
+    apiClient.delete(`/mapping-data/edges/${encodeURIComponent(edgeId)}`),
 
   syncData: (data: { nodes: any[], edges: any[] }) =>
     apiClient.post('/mapping-data/sync', data),

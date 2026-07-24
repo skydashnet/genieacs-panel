@@ -2,6 +2,44 @@ import DeviceService from '../services/deviceService.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
 class DeviceController {
+  static async getDashboard(req, res) {
+    try {
+      const dashboard = await DeviceService.getDashboardData(req.query.refresh === '1');
+      return res.json(createResponse('Dashboard data retrieved successfully', dashboard));
+    } catch (error) {
+      console.error('Get dashboard error:', error);
+      return res.status(502).json(
+        createErrorResponse('Failed to get dashboard data from GenieACS', error.message)
+      );
+    }
+  }
+
+  static async getFaults(req, res) {
+    try {
+      const faults = await DeviceService.getFaults(req.query.limit);
+      return res.json(createResponse('Faults retrieved successfully', faults));
+    } catch (error) {
+      console.error('Get faults error:', error);
+      return res.status(502).json(
+        createErrorResponse('Failed to get faults from GenieACS', error.message)
+      );
+    }
+  }
+
+  static async deleteFault(req, res) {
+    try {
+      await DeviceService.deleteFault(req.params.faultId);
+      DeviceService.dashboardCache.expiresAt = 0;
+      return res.json(createResponse('Fault cleared successfully'));
+    } catch (error) {
+      console.error('Delete fault error:', error);
+      const validationError = error.message === 'Invalid fault ID';
+      return res.status(validationError ? 400 : 502).json(
+        createErrorResponse('Failed to clear GenieACS fault', error.message)
+      );
+    }
+  }
+
   static async getDevices(req, res) {
     try {
       const devices = await DeviceService.getDevices();
@@ -150,6 +188,25 @@ class DeviceController {
       const validationError = /^(Invalid credential|Password must|VirtualParameter path)/.test(error.message);
       res.status(validationError ? 400 : 500).json(
         createErrorResponse('Failed to update credentials', error.message)
+      );
+    }
+  }
+
+  static async updateWifiConfig(req, res) {
+    const { id } = req.params;
+    const { index, formData } = req.body || {};
+    if (index === undefined || !formData) {
+      return res.status(400).json(createErrorResponse('WiFi index and form data are required'));
+    }
+    try {
+      const result = await DeviceService.updateWifiConfig(id, index, formData);
+      DeviceService.dashboardCache.expiresAt = 0;
+      return res.json(createResponse(result.message, result));
+    } catch (error) {
+      console.error(`Error in updateWifiConfig for ${id}:`, error);
+      const validationError = /^(WiFi |Device not found)/.test(error.message);
+      return res.status(validationError ? 400 : 500).json(
+        createErrorResponse('Failed to update WiFi configuration', error.message)
       );
     }
   }

@@ -39,8 +39,8 @@ class MappingEdge {
   }
 
   static async update(edgeId, edgeData) {
-    const { fiber_type, distance, waypoints, notes } = edgeData;
-    const patch = { fiber_type, distance, notes, updated_at: getDb().fn.now() };
+    const { source, target, fiber_type, distance, waypoints, notes } = edgeData;
+    const patch = { source, target, fiber_type, distance, notes, updated_at: getDb().fn.now() };
     if (waypoints !== undefined) {
       patch.waypoints = waypoints ? JSON.stringify(waypoints) : null;
     }

@@ -174,7 +174,7 @@ test('initial setup is atomic and authentication token types stay separated', as
     token: loginPayload.data.token,
     body: {
       node_id: 'node-a',
-      type: 'odc',
+      type: 'htb',
       name: 'Node A',
       latitude: -6.2,
       longitude: 106.8
@@ -186,7 +186,7 @@ test('initial setup is atomic and authentication token types stay separated', as
     token: loginPayload.data.token,
     body: {
       node_id: 'node-b',
-      type: 'odp',
+      type: 'olt',
       name: 'Node B',
       latitude: -6.21,
       longitude: 106.81
@@ -200,10 +200,46 @@ test('initial setup is atomic and authentication token types stay separated', as
       edge_id: 'edge-a-b',
       source: 'node-a',
       target: 'node-b',
-      fiber_type: 'distribution'
+      fiber_type: 'backbone',
+      waypoints: [[-6.205, 106.805]]
     }
   });
   assert.equal(edge.status, 201);
+
+  const updatedNode = await request('/api/mapping-data/nodes/node-b', {
+    method: 'PUT',
+    token: loginPayload.data.token,
+    body: {
+      type: 'odc',
+      name: 'Node B updated',
+      latitude: -6.22,
+      longitude: 106.82,
+      capacity: 144
+    }
+  });
+  assert.equal(updatedNode.status, 200);
+
+  const updatedEdge = await request('/api/mapping-data/edges/edge-a-b', {
+    method: 'PUT',
+    token: loginPayload.data.token,
+    body: {
+      source: 'node-a',
+      target: 'node-b',
+      fiber_type: 'feeder',
+      distance: 1250,
+      waypoints: [[-6.206, 106.806]]
+    }
+  });
+  assert.equal(updatedEdge.status, 200);
+
+  const topologyNodes = await request('/api/mapping-data/nodes', { token: loginPayload.data.token });
+  const topologyEdges = await request('/api/mapping-data/edges', { token: loginPayload.data.token });
+  const topologyNodeData = (await topologyNodes.json()).data;
+  const topologyEdgeData = (await topologyEdges.json()).data;
+  assert.equal(topologyNodeData.find((node) => node.node_id === 'node-b').type, 'odc');
+  assert.equal(topologyNodeData.find((node) => node.node_id === 'node-b').capacity, 144);
+  assert.equal(topologyEdgeData[0].fiber_type, 'feeder');
+  assert.deepEqual(topologyEdgeData[0].waypoints, [[-6.206, 106.806]]);
 
   const reset = await request('/api/mapping-data/reset', {
     method: 'DELETE',

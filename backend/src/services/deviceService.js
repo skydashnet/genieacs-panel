@@ -1,9 +1,16 @@
 import Setting from '../models/Setting.js';
 import VendorService from './vendorService.js';
 import Vendor from '../models/Vendor.js';
+import WifiSecurityConfig from '../models/WifiSecurityConfig.js';
 import { DEFAULT_SETTINGS } from '../config/seed.js';
 
 class DeviceService {
+  static dashboardCache = {
+    data: null,
+    expiresAt: 0,
+    promise: null
+  };
+
   static getParameterNode(obj, parameterPath) {
     if (!obj || !parameterPath) return null;
     let current = obj;
@@ -59,17 +66,7 @@ class DeviceService {
     return settings.genieAcsUrl;
   }
 
-  static async getVirtualParameters() {
-    const settings = await Setting.getAll();
-
-    return Object.fromEntries(
-      Object.keys(DEFAULT_SETTINGS)
-        .filter((key) => key.startsWith('vp'))
-        .map((key) => [key, settings[key] ?? DEFAULT_SETTINGS[key]])
-    );
-  }
-
-  static async getDevicesBaseUrl() {
+  static async getGenieAcsRootUrl() {
     const baseUrl = await this.getGenieAcsUrl();
     if (!baseUrl) {
       throw new Error('GenieACS URL not configured');
@@ -81,10 +78,60 @@ class DeviceService {
     if (url.username || url.password) {
       throw new Error('Credentials in the GenieACS URL are not supported');
     }
-    url.pathname = '/devices';
+    url.pathname = '/';
     url.search = '';
     url.hash = '';
     return url.toString().replace(/\/+$/, '');
+  }
+
+  static async getVirtualParameters() {
+    const settings = await Setting.getAll();
+
+    return Object.fromEntries(
+      Object.keys(DEFAULT_SETTINGS)
+        .filter((key) => key.startsWith('vp'))
+        .map((key) => [key, settings[key] ?? DEFAULT_SETTINGS[key]])
+    );
+  }
+
+  static async getDevicesBaseUrl() {
+    return `${await this.getGenieAcsRootUrl()}/devices`;
+  }
+
+  static async fetchGenieAcsCollection(collection, query = {}, method = 'GET', body = null, timeoutMs = 15_000) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(String(collection))) {
+      throw new Error('Invalid GenieACS collection name');
+    }
+    const root = await this.getGenieAcsRootUrl();
+    const url = new URL(`${root}/${collection}`);
+    Object.entries(query || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        url.searchParams.set(key, String(value));
+      }
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const options = {
+        method,
+        headers: { Accept: 'application/json' },
+        signal: controller.signal
+      };
+      if (body !== null && body !== undefined) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = typeof body === 'string' ? body : JSON.stringify(body);
+      }
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`GenieACS ${collection} API responded with status: ${response.status}${errorText ? ` - ${errorText}` : ''}`);
+      }
+      const text = await response.text();
+      return text ? JSON.parse(text) : null;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   static async buildGenieAcsUrl(endpoint = '', query = {}) {
@@ -187,6 +234,27 @@ class DeviceService {
       console.error('Error getting devices:', error);
       throw error;
     }
+  }
+
+  static async getDashboardDevices() {
+    const virtualParams = await this.getVirtualParameters();
+    const projection = [
+      '_id',
+      '_deviceId._ProductClass',
+      '_deviceId._Manufacturer',
+      virtualParams.vpRxPower,
+      virtualParams.vpTemperature,
+      virtualParams.vpActiveDevices,
+      '_lastInform',
+      '_registered'
+    ].filter(Boolean);
+    const data = await this.fetchFromGenieAcs(
+      `?projection=${encodeURIComponent(projection.join(','))}`
+    );
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid GenieACS dashboard response');
+    }
+    return data.map((item) => this.processDeviceData(item, virtualParams));
   }
 
   static processDeviceData(item, virtualParams) {
@@ -312,8 +380,14 @@ class DeviceService {
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.KeyPassphrase',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.BeaconType',
       'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.TotalAssociations',
-      'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.Channel',
-      'InternetGatewayDevice.DeviceInfo.HardwareVersion',
+        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.8.Channel',
+        'VirtualParameters.SSID1-Name',
+        'VirtualParameters.SSID1-Password',
+        'VirtualParameters.SSID1-Security',
+        'VirtualParameters.SSID5-Name',
+        'VirtualParameters.SSID5-Password',
+        'VirtualParameters.SSID5-Security',
+        'InternetGatewayDevice.DeviceInfo.HardwareVersion',
       'InternetGatewayDevice.DeviceInfo.SoftwareVersion',
       'InternetGatewayDevice.DeviceInfo.UpTime',
       'InternetGatewayDevice.LANDevice.1.LANEthernetInterfaceConfig.1.MACAddress',
@@ -440,15 +514,29 @@ class DeviceService {
     if (wlanConfig) {
       for (let i = 1; i <= 8; i++) {
         const ssidData = wlanConfig[i];
-        if (ssidData && ssidData.SSID?._value) {
+        if (ssidData && typeof ssidData === 'object' && !String(i).startsWith('_')) {
+          const virtualPrefix = i === 1 ? 'SSID1' : i === 5 ? 'SSID5' : null;
+          const virtualNamePath = virtualPrefix ? `VirtualParameters.${virtualPrefix}-Name` : null;
+          const virtualPasswordPath = virtualPrefix ? `VirtualParameters.${virtualPrefix}-Password` : null;
+          const virtualSecurityPath = virtualPrefix ? `VirtualParameters.${virtualPrefix}-Security` : null;
+          const hasVirtualMapping = Boolean(
+            virtualNamePath && this.getParameterNode(item, virtualNamePath)
+          );
+          const enableValue = getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.Enable`);
           wifi.push({
             index: i,
-            enable: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.Enable`),
-            ssid: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.SSID`),
-            password: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.KeyPassphrase`) || getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.PreSharedKey.1.KeyPassphrase`),
-            security: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.BeaconType`),
+            enable: enableValue === null ? null : this.isEnabledValue(enableValue),
+            ssid: (virtualNamePath ? getValue(virtualNamePath) : null) ??
+              getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.SSID`),
+            password: (virtualPasswordPath ? getValue(virtualPasswordPath) : null) ??
+              getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.PreSharedKey.1.KeyPassphrase`) ??
+              getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.KeyPassphrase`) ??
+              getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.PreSharedKey.1.PreSharedKey`),
+            security: (virtualSecurityPath ? getValue(virtualSecurityPath) : null) ??
+              getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.BeaconType`),
             channel: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.Channel`),
-            totalAssociations: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.TotalAssociations`)
+            totalAssociations: getValue(`InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.TotalAssociations`),
+            usesVirtualParameters: hasVirtualMapping
           });
         }
       }
@@ -743,6 +831,317 @@ class DeviceService {
     });
 
     return { success: true, message: `${type} admin password update task queued.` };
+  }
+
+  static resolveWifiConfiguredPath(basePath, configuredPath, index) {
+    if (!configuredPath) return null;
+    const expanded = String(configuredPath)
+      .replaceAll('{index}', String(index))
+      .replaceAll('{i}', String(index))
+      .replace('*', String(index));
+    return this.resolveParameterPath(basePath, expanded);
+  }
+
+  static async updateWifiConfig(deviceId, index, formData) {
+    const wifiIndex = Number(index);
+    if (!Number.isInteger(wifiIndex) || wifiIndex < 1 || wifiIndex > 8) {
+      throw new Error('WiFi index must be an integer between 1 and 8.');
+    }
+    const ssid = String(formData?.ssid ?? '').trim();
+    const password = formData?.password === undefined ? '' : String(formData.password);
+    const security = String(formData?.security ?? '').trim();
+    const channelRaw = formData?.channel;
+    if (!ssid || ssid.length > 32) {
+      throw new Error('WiFi SSID must contain 1 to 32 characters.');
+    }
+    if (password && (password.length < 8 || password.length > 63)) {
+      throw new Error('WiFi password must contain 8 to 63 characters.');
+    }
+    if (security.length > 128) {
+      throw new Error('WiFi security value is too long.');
+    }
+    if (
+      channelRaw !== '' && channelRaw !== null && channelRaw !== undefined &&
+      (!Number.isInteger(Number(channelRaw)) || Number(channelRaw) < 0 || Number(channelRaw) > 196)
+    ) {
+      throw new Error('WiFi channel must be an integer between 0 and 196.');
+    }
+
+    const rawDeviceData = await this.fetchFromGenieAcs('', {
+      query: JSON.stringify({ _id: deviceId })
+    });
+    if (!Array.isArray(rawDeviceData) || rawDeviceData.length === 0) {
+      throw new Error('Device not found');
+    }
+    const item = rawDeviceData[0];
+    const basePath = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${wifiIndex}`;
+    const virtualPrefix = wifiIndex === 1 ? 'SSID1' : wifiIndex === 5 ? 'SSID5' : null;
+    const virtualNamePath = virtualPrefix ? `VirtualParameters.${virtualPrefix}-Name` : null;
+    const useVirtual = Boolean(virtualNamePath && this.getParameterNode(item, virtualNamePath));
+    const productClass = this.normalizeParameterValue(item._deviceId?._ProductClass);
+    const manufacturer = this.normalizeParameterValue(item._deviceId?._Manufacturer);
+    const [productConfig, vendor] = await Promise.all([
+      productClass ? WifiSecurityConfig.getByProductClass(productClass) : null,
+      VendorService.detectVendor(manufacturer, productClass, item)
+    ]);
+
+    const parameterValues = [];
+    const enablePath = `${basePath}.Enable`;
+    if (typeof formData?.enable === 'boolean' && this.getParameterNode(item, enablePath)) {
+      parameterValues.push([enablePath, formData.enable, 'xsd:boolean']);
+    }
+    parameterValues.push([
+      useVirtual ? `VirtualParameters.${virtualPrefix}-Name` : `${basePath}.SSID`,
+      ssid,
+      'xsd:string'
+    ]);
+    if (password) {
+      let passwordPath = useVirtual ? `VirtualParameters.${virtualPrefix}-Password` : null;
+      if (!passwordPath) {
+        passwordPath = this.resolveWifiConfiguredPath(
+          basePath,
+          productConfig?.password_param_path || vendor?.wifi_password_path,
+          wifiIndex
+        );
+      }
+      if (!passwordPath) {
+        const candidates = [
+          `${basePath}.PreSharedKey.1.KeyPassphrase`,
+          `${basePath}.KeyPassphrase`,
+          `${basePath}.PreSharedKey.1.PreSharedKey`
+        ];
+        passwordPath = candidates.find((path) => this.getParameterNode(item, path)) || candidates[0];
+      }
+      parameterValues.push([passwordPath, password, 'xsd:string']);
+    }
+    if (security) {
+      parameterValues.push([
+        useVirtual ? `VirtualParameters.${virtualPrefix}-Security` : `${basePath}.BeaconType`,
+        security,
+        'xsd:string'
+      ]);
+    }
+    if (channelRaw !== '' && channelRaw !== null && channelRaw !== undefined) {
+      const channelPath = `${basePath}.Channel`;
+      if (this.getParameterNode(item, channelPath)) {
+        parameterValues.push([channelPath, Number(channelRaw), 'xsd:unsignedInt']);
+      }
+    }
+
+    await this.postTask(deviceId, {
+      name: 'setParameterValues',
+      parameterValues
+    });
+    return {
+      success: true,
+      message: `WiFi SSID ${wifiIndex} update task queued.`,
+      parameterCount: parameterValues.length
+    };
+  }
+
+  static normalizeFault(fault) {
+    if (!fault || typeof fault !== 'object') return null;
+    const id = this.normalizeParameterValue(fault._id);
+    if (!id) return null;
+    const detail = fault.detail && typeof fault.detail === 'object' ? fault.detail : {};
+    const deviceId = this.normalizeParameterValue(fault.device) || String(id).split(':')[0] || null;
+    const timestamp = this.normalizeParameterValue(fault.timestamp) ||
+      this.normalizeParameterValue(fault.retryTimestamp) ||
+      this.normalizeParameterValue(fault._timestamp) ||
+      null;
+    return {
+      id: String(id),
+      deviceId: deviceId ? String(deviceId) : null,
+      channel: String(this.normalizeParameterValue(fault.channel) || String(id).split(':').slice(1).join(':') || 'default'),
+      code: String(
+        this.normalizeParameterValue(fault.code) ||
+        this.normalizeParameterValue(detail.faultCode) ||
+        this.normalizeParameterValue(detail.code) ||
+        'FAULT'
+      ),
+      message: String(
+        this.normalizeParameterValue(fault.message) ||
+        this.normalizeParameterValue(detail.faultString) ||
+        this.normalizeParameterValue(detail.message) ||
+        'GenieACS reported a provisioning fault'
+      ),
+      timestamp: timestamp ? String(timestamp) : null,
+      retries: Number(this.normalizeParameterValue(fault.retries) || 0)
+    };
+  }
+
+  static async getFaults(limit = 50, timeoutMs = 15_000) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const data = await this.fetchGenieAcsCollection(
+      'faults',
+      {
+        limit: safeLimit,
+        sort: JSON.stringify({ timestamp: -1 })
+      },
+      'GET',
+      null,
+      timeoutMs
+    );
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid faults API response');
+    }
+    return data.map((fault) => this.normalizeFault(fault)).filter(Boolean);
+  }
+
+  static async deleteFault(faultId) {
+    if (!faultId || String(faultId).length > 512) {
+      throw new Error('Invalid fault ID');
+    }
+    const root = await this.getGenieAcsRootUrl();
+    const url = `${root}/faults/${encodeURIComponent(String(faultId))}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
+    try {
+      const response = await fetch(url, { method: 'DELETE', signal: controller.signal });
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        throw new Error(`GenieACS fault API responded with status: ${response.status}${errorText ? ` - ${errorText}` : ''}`);
+      }
+      return true;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  static buildDashboardSummary(devices, faults = [], faultsError = null) {
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+    const stats = { total: devices.length, online: 0, offline: 0, new24h: 0 };
+    const rxDistribution = { Excellent: 0, Good: 0, Poor: 0, Danger: 0, Unknown: 0 };
+    const informFreshness = { 'Under 10m': 0, '10–60m': 0, '1–24h': 0, 'Over 24h': 0 };
+    const temperatureDistribution = { Normal: 0, Warm: 0, Hot: 0, Unknown: 0 };
+    const clientDistribution = { '0': 0, '1–5': 0, '6–15': 0, '16+': 0, Unknown: 0 };
+    const productClasses = new Map();
+    const manufacturers = new Map();
+    const registrationDays = Array.from({ length: 7 }, (_, offset) => {
+      const date = new Date(now - (6 - offset) * dayMs);
+      return {
+        key: date.toISOString().slice(0, 10),
+        name: date.toLocaleDateString('id-ID', { weekday: 'short', day: '2-digit' }),
+        value: 0
+      };
+    });
+    const registrationByKey = new Map(registrationDays.map((entry) => [entry.key, entry]));
+
+    for (const device of devices) {
+      const lastInformMs = device._lastInform ? new Date(device._lastInform).getTime() : Number.NaN;
+      const informAge = now - lastInformMs;
+      if (Number.isFinite(informAge) && informAge >= 0 && informAge < 10 * 60 * 1000) {
+        stats.online += 1;
+        informFreshness['Under 10m'] += 1;
+      } else {
+        stats.offline += 1;
+        if (Number.isFinite(informAge) && informAge >= 0 && informAge < 60 * 60 * 1000) {
+          informFreshness['10–60m'] += 1;
+        } else if (Number.isFinite(informAge) && informAge >= 0 && informAge < dayMs) {
+          informFreshness['1–24h'] += 1;
+        } else {
+          informFreshness['Over 24h'] += 1;
+        }
+      }
+
+      const registeredMs = device._registered ? new Date(device._registered).getTime() : Number.NaN;
+      if (Number.isFinite(registeredMs) && now - registeredMs >= 0 && now - registeredMs < dayMs) {
+        stats.new24h += 1;
+      }
+      if (Number.isFinite(registeredMs)) {
+        const registrationKey = new Date(registeredMs).toISOString().slice(0, 10);
+        const registrationEntry = registrationByKey.get(registrationKey);
+        if (registrationEntry) registrationEntry.value += 1;
+      }
+
+      const productClass = String(device.productclass || 'Unknown');
+      const manufacturer = String(device.manufacturer || 'Unknown');
+      productClasses.set(productClass, (productClasses.get(productClass) || 0) + 1);
+      manufacturers.set(manufacturer, (manufacturers.get(manufacturer) || 0) + 1);
+
+      const rxPower = Number(device.rxpower);
+      if (device.rxpower === null || device.rxpower === undefined || !Number.isFinite(rxPower)) {
+        rxDistribution.Unknown += 1;
+      } else if (rxPower >= -21.99) {
+        rxDistribution.Excellent += 1;
+      } else if (rxPower >= -24.99) {
+        rxDistribution.Good += 1;
+      } else if (rxPower >= -26.99) {
+        rxDistribution.Poor += 1;
+      } else {
+        rxDistribution.Danger += 1;
+      }
+
+      const temperature = Number(device.temperature);
+      if (device.temperature === null || device.temperature === undefined || !Number.isFinite(temperature)) {
+        temperatureDistribution.Unknown += 1;
+      } else if (temperature < 50) {
+        temperatureDistribution.Normal += 1;
+      } else if (temperature < 70) {
+        temperatureDistribution.Warm += 1;
+      } else {
+        temperatureDistribution.Hot += 1;
+      }
+
+      const clients = Number(device.activedevices);
+      if (
+        device.activedevices === null ||
+        device.activedevices === undefined ||
+        device.activedevices === '' ||
+        !Number.isFinite(clients)
+      ) clientDistribution.Unknown += 1;
+      else if (clients <= 0) clientDistribution['0'] += 1;
+      else if (clients <= 5) clientDistribution['1–5'] += 1;
+      else if (clients <= 15) clientDistribution['6–15'] += 1;
+      else clientDistribution['16+'] += 1;
+    }
+
+    const topEntries = (map, limit) => Array.from(map.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name))
+      .slice(0, limit);
+
+    return {
+      stats,
+      rxDistribution,
+      informFreshness,
+      temperatureDistribution,
+      clientDistribution,
+      productClasses: topEntries(productClasses, 10),
+      manufacturers: topEntries(manufacturers, 8),
+      registrations: registrationDays,
+      faults,
+      faultsError
+    };
+  }
+
+  static async getDashboardData(force = false) {
+    const cache = this.dashboardCache;
+    if (!force && cache.data && cache.expiresAt > Date.now()) return cache.data;
+    if (!force && cache.promise) return cache.promise;
+
+    const work = (async () => {
+      const [devicesResult, faultsResult] = await Promise.allSettled([
+        this.getDashboardDevices(),
+        this.getFaults(50, 1_500)
+      ]);
+      if (devicesResult.status === 'rejected') throw devicesResult.reason;
+      const faults = faultsResult.status === 'fulfilled' ? faultsResult.value : [];
+      const faultsError = faultsResult.status === 'rejected'
+        ? 'Fault list could not be loaded from GenieACS.'
+        : null;
+      const data = this.buildDashboardSummary(devicesResult.value, faults, faultsError);
+      cache.data = data;
+      cache.expiresAt = Date.now() + 15_000;
+      return data;
+    })();
+    cache.promise = work;
+    try {
+      return await work;
+    } finally {
+      if (cache.promise === work) cache.promise = null;
+    }
   }
 }
 

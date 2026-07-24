@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import DeviceService from '../src/services/deviceService.js';
 import VendorService from '../src/services/vendorService.js';
+import WifiSecurityConfig from '../src/models/WifiSecurityConfig.js';
 
 test('device normalization preserves valid false, zero, and empty-string values', () => {
   const item = {
@@ -137,4 +138,106 @@ test('WAN discovery keeps every IP and PPP instance and updates the selected PPP
     DeviceService.fetchFromGenieAcs = originalFetch;
     DeviceService.postTask = originalPostTask;
   }
+});
+
+test('WiFi update uses installer virtual parameters and typed GenieACS values', async () => {
+  const item = {
+    _id: 'device-wifi',
+    _deviceId: { _Manufacturer: 'ZTE', _ProductClass: 'F663NV3A' },
+    VirtualParameters: {
+      'SSID1-Name': { _value: 'Old SSID', _writable: true },
+      'SSID1-Password': { _value: 'oldpassword', _writable: true },
+      'SSID1-Security': { _value: 'WPA2-PSK', _writable: true }
+    },
+    InternetGatewayDevice: {
+      LANDevice: {
+        1: {
+          WLANConfiguration: {
+            1: {
+              Enable: { _value: true, _writable: true },
+              Channel: { _value: 1, _writable: true }
+            }
+          }
+        }
+      }
+    }
+  };
+  const originalFetch = DeviceService.fetchFromGenieAcs;
+  const originalPostTask = DeviceService.postTask;
+  const originalDetectVendor = VendorService.detectVendor;
+  const originalGetConfig = WifiSecurityConfig.getByProductClass;
+  let submittedTask;
+
+  DeviceService.fetchFromGenieAcs = async () => [item];
+  DeviceService.postTask = async (_deviceId, task) => { submittedTask = task; };
+  VendorService.detectVendor = async () => ({ name: 'ZTE' });
+  WifiSecurityConfig.getByProductClass = async () => null;
+
+  try {
+    const result = await DeviceService.updateWifiConfig('device-wifi', 1, {
+      enable: true,
+      ssid: 'Sky Home',
+      password: 'newpassword',
+      security: 'WPA2-PSK',
+      channel: 6
+    });
+    assert.equal(result.parameterCount, 5);
+    assert.deepEqual(submittedTask, {
+      name: 'setParameterValues',
+      parameterValues: [
+        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable', true, 'xsd:boolean'],
+        ['VirtualParameters.SSID1-Name', 'Sky Home', 'xsd:string'],
+        ['VirtualParameters.SSID1-Password', 'newpassword', 'xsd:string'],
+        ['VirtualParameters.SSID1-Security', 'WPA2-PSK', 'xsd:string'],
+        ['InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Channel', 6, 'xsd:unsignedInt']
+      ]
+    });
+  } finally {
+    DeviceService.fetchFromGenieAcs = originalFetch;
+    DeviceService.postTask = originalPostTask;
+    VendorService.detectVendor = originalDetectVendor;
+    WifiSecurityConfig.getByProductClass = originalGetConfig;
+  }
+});
+
+test('dashboard summary aggregates operations charts and normalizes faults', () => {
+  const now = Date.now();
+  const devices = [
+    {
+      _id: 'online',
+      _lastInform: new Date(now - 60_000).toISOString(),
+      _registered: new Date(now - 60_000).toISOString(),
+      productclass: 'F663',
+      manufacturer: 'ZTE',
+      rxpower: -20,
+      temperature: 41,
+      activedevices: 3
+    },
+    {
+      _id: 'offline',
+      _lastInform: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
+      _registered: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      productclass: 'HG8245',
+      manufacturer: 'Huawei',
+      rxpower: -28,
+      temperature: 75,
+      activedevices: 17
+    }
+  ];
+  const fault = DeviceService.normalizeFault({
+    _id: 'online:default',
+    code: 'cwmp.9002',
+    message: 'Internal error',
+    timestamp: new Date(now).toISOString()
+  });
+  const summary = DeviceService.buildDashboardSummary(devices, [fault]);
+
+  assert.deepEqual(summary.stats, { total: 2, online: 1, offline: 1, new24h: 1 });
+  assert.equal(summary.rxDistribution.Excellent, 1);
+  assert.equal(summary.rxDistribution.Danger, 1);
+  assert.equal(summary.temperatureDistribution.Hot, 1);
+  assert.equal(summary.clientDistribution['16+'], 1);
+  assert.equal(summary.registrations.reduce((sum, point) => sum + point.value, 0), 2);
+  assert.equal(summary.faults[0].deviceId, 'online');
+  assert.equal(summary.faults[0].code, 'cwmp.9002');
 });

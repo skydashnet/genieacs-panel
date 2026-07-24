@@ -7,6 +7,7 @@ import { useLoading } from '@/components/ui/loading'
 import { devicesAPI } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
+import { useAuth } from '@/contexts/auth-context'
 
 interface WanBindingData {
   lan: string[];
@@ -50,17 +51,28 @@ interface ProcessedDeviceDetail {
   virtualParameters: {
     [key: string]: { path: string; value: any }
   };
-  wifi: Array<{
-    index: number;
-    enable: boolean;
-    ssid: string;
-    password?: string;
-    security?: string;
-    channel?: number;
-    totalAssociations?: number;
-  }>;
+  wifi: WifiNetwork[];
   wan: Array<WanConnection>;
   _raw?: any;
+}
+
+interface WifiNetwork {
+  index: number;
+  enable: boolean | null;
+  ssid: string;
+  password?: string | null;
+  security?: string | null;
+  channel?: number | null;
+  totalAssociations?: number | null;
+  usesVirtualParameters?: boolean;
+}
+
+interface WifiFormState {
+  enable: boolean;
+  ssid: string;
+  password: string;
+  security: string;
+  channel: string;
 }
 
 interface WanFormState {
@@ -388,6 +400,107 @@ function EditCredentialModal({
   )
 }
 
+function EditWifiModal({
+  wifi,
+  onClose,
+  onSave,
+  saving
+}: {
+  wifi: WifiNetwork | null;
+  onClose: () => void;
+  onSave: (form: WifiFormState) => void;
+  saving: boolean;
+}) {
+  const [form, setForm] = useState<WifiFormState>({
+    enable: true,
+    ssid: '',
+    password: '',
+    security: '',
+    channel: ''
+  })
+
+  useEffect(() => {
+    if (!wifi) return
+    setForm({
+      enable: wifi.enable !== false,
+      ssid: wifi.ssid || '',
+      password: '',
+      security: wifi.security || '',
+      channel: wifi.channel === null || wifi.channel === undefined ? '' : String(wifi.channel)
+    })
+  }, [wifi])
+
+  if (!wifi) return null
+
+  return (
+    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="wifi-dialog-title">
+      <div className="modern-card flex max-h-[92vh] w-full max-w-lg flex-col">
+        <div className="flex items-start justify-between border-b border-border p-5">
+          <div>
+            <h3 id="wifi-dialog-title" className="section-heading">Edit WiFi SSID {wifi.index}</h3>
+            <p className="section-description mt-1">
+              {wifi.usesVirtualParameters ? 'Using genieacs-installer virtual parameters.' : 'Using the device TR-098 WLAN path.'}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="icon-button" aria-label="Close WiFi editor">
+            <Icon name="x" size={19} />
+          </button>
+        </div>
+        <div className="space-y-4 overflow-y-auto p-5">
+          <label className="flex min-h-11 items-center justify-between gap-4 rounded-md border border-border bg-[hsl(var(--surface-subtle))] px-4">
+            <span>
+              <span className="block text-sm font-semibold">Radio enabled</span>
+              <span className="block text-xs text-muted-foreground">Applied only when the CPE exposes the Enable parameter.</span>
+            </span>
+            <input type="checkbox" checked={form.enable} onChange={(event) => setForm((current) => ({ ...current, enable: event.target.checked }))} />
+          </label>
+          <div>
+            <label htmlFor="wifi-ssid" className="field-label">Network name (SSID)</label>
+            <input id="wifi-ssid" className="modern-input w-full" maxLength={32} value={form.ssid}
+              onChange={(event) => setForm((current) => ({ ...current, ssid: event.target.value }))} />
+            <p className="field-hint">{form.ssid.length}/32 characters</p>
+          </div>
+          <div>
+            <label htmlFor="wifi-password" className="field-label">New password</label>
+            <input id="wifi-password" type="password" className="modern-input w-full font-mono" minLength={8} maxLength={63}
+              value={form.password} placeholder="Leave blank to keep the existing password"
+              onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
+            <p className="field-hint">WPA/WPA2 passphrases require 8–63 characters.</p>
+          </div>
+          <div>
+            <label htmlFor="wifi-security" className="field-label">Beacon/security type</label>
+            <input id="wifi-security" className="modern-input w-full" list="wifi-security-options" value={form.security}
+              onChange={(event) => setForm((current) => ({ ...current, security: event.target.value }))} />
+            <datalist id="wifi-security-options">
+              <option value="None" />
+              <option value="Basic" />
+              <option value="WPA" />
+              <option value="11i" />
+              <option value="WPAand11i" />
+            </datalist>
+            <p className="field-hint">The exact accepted value depends on the CPE firmware.</p>
+          </div>
+          <div>
+            <label htmlFor="wifi-channel" className="field-label">Channel</label>
+            <input id="wifi-channel" type="number" min={0} max={196} className="modern-input w-full"
+              value={form.channel} placeholder="0 for automatic when supported"
+              onChange={(event) => setForm((current) => ({ ...current, channel: event.target.value }))} />
+          </div>
+          <div className="rounded-md border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.08)] p-4 text-sm">
+            Updating the SSID, password, or security mode can disconnect every client currently using this network.
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-border p-5">
+          <button type="button" onClick={onClose} className="modern-button-secondary" disabled={saving}>Cancel</button>
+          <button type="button" onClick={() => onSave(form)} className="modern-button" disabled={saving || !form.ssid.trim()}>
+            {saving ? 'Queuing task…' : 'Apply WiFi changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 export default function DeviceDetailPage() {
   const navigate = useNavigate()
@@ -397,12 +510,15 @@ export default function DeviceDetailPage() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [rebooting, setRebooting] = useState(false)
+  const { user } = useAuth()
   const toast = useToast()
   const loadingCtl = useLoading()
   const [isWanModalOpen, setIsWanModalOpen] = useState(false)
   const [editingWan, setEditingWan] = useState<WanConnection | null>(null)
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
   const [credentialType, setCredentialType] = useState<'super' | 'user' | null>(null);
+  const [editingWifi, setEditingWifi] = useState<WifiNetwork | null>(null)
+  const [savingWifi, setSavingWifi] = useState(false)
 
 
   const handleOpenEditModal = (wan: WanConnection) => {
@@ -475,6 +591,40 @@ export default function DeviceDetailPage() {
       toast.error(error.message || 'Failed to update credentials');
     } finally {
       loadingCtl.hide();
+    }
+  }
+
+  const handleSaveWifi = async (formData: WifiFormState) => {
+    if (!editingWifi) return
+    if (formData.password && (formData.password.length < 8 || formData.password.length > 63)) {
+      toast.error('WiFi password must contain 8 to 63 characters')
+      return
+    }
+    setSavingWifi(true)
+    loadingCtl.show(`Queuing WiFi SSID ${editingWifi.index} update…`)
+    try {
+      const res = await devicesAPI.updateWifiConfig(deviceId, editingWifi.index, formData)
+      if (!res.success) {
+        toast.error(res.message || 'Failed to update WiFi configuration')
+        return
+      }
+      setDevice((current) => current ? {
+        ...current,
+        wifi: current.wifi.map((network) => network.index === editingWifi.index ? {
+          ...network,
+          enable: formData.enable,
+          ssid: formData.ssid,
+          security: formData.security || network.security,
+          channel: formData.channel === '' ? network.channel : Number(formData.channel)
+        } : network)
+      } : current)
+      toast.success(res.message || 'WiFi update task queued')
+      setEditingWifi(null)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update WiFi configuration')
+    } finally {
+      setSavingWifi(false)
+      loadingCtl.hide()
     }
   }
 
@@ -1014,36 +1164,52 @@ export default function DeviceDetailPage() {
 
         {/* Tab WiFi */}
         {activeTab === 'wifi' && (
-          <div className="modern-card p-6">
-            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">WiFi Configuration</h2>
+          <div className="modern-card p-5 sm:p-6">
+            <div className="mb-5">
+              <h2 className="section-heading">WiFi configuration</h2>
+              <p className="section-description mt-1">Review every reported WLAN instance and queue typed GenieACS configuration tasks.</p>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {device.wifi && device.wifi.length > 0 ? (
                 device.wifi.map((ssid) => (
-                  <div key={ssid.index} className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-medium text-gray-900 dark:text-gray-100">
-                        SSID {ssid.index} ({ssid.enable ? 'Enabled' : 'Disabled'})
-                      </h3>
-                      <span className="text-xs text-gray-500">Channel: {ssid.channel || 'N/A'}</span>
+                  <div key={ssid.index} className="rounded-md border border-border bg-[hsl(var(--surface-subtle))] p-4">
+                    <div className="mb-4 flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-semibold text-foreground">SSID {ssid.index}</h3>
+                        <div className="mt-1 flex flex-wrap gap-2">
+                          <span className={ssid.enable === false ? 'modern-badge-error' : ssid.enable === true ? 'modern-badge-success' : 'modern-badge'}>
+                            {ssid.enable === false ? 'Disabled' : ssid.enable === true ? 'Enabled' : 'Unknown state'}
+                          </span>
+                          {ssid.usesVirtualParameters && <span className="modern-badge-info">Installer VP</span>}
+                        </div>
+                      </div>
+                      <span className="font-mono text-xs text-muted-foreground">CH {ssid.channel ?? '—'}</span>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Network Name:</span>
-                        <span>{ssid.ssid}</span>
+                    <dl className="space-y-3 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Network name</dt>
+                        <dd className="max-w-[65%] break-all text-right font-mono font-semibold">{ssid.ssid || 'Not reported'}</dd>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Password:</span>
-                        <span className="font-mono text-sm">{ssid.password || '(hidden)'}</span>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Password</dt>
+                        <dd className="font-mono">{ssid.password ? '••••••••' : 'Not reported'}</dd>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Security:</span>
-                        <span>{ssid.security || 'N/A'}</span>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Security</dt>
+                        <dd className="text-right">{ssid.security || 'Not reported'}</dd>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Total Devices:</span>
-                        <span>{ssid.totalAssociations || 0}</span>
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted-foreground">Associated clients</dt>
+                        <dd className="font-mono font-semibold">{ssid.totalAssociations ?? 0}</dd>
                       </div>
-                    </div>
+                    </dl>
+                    {user?.role === 'admin' ? (
+                      <button type="button" onClick={() => setEditingWifi(ssid)} className="modern-button-secondary mt-5 w-full">
+                        <Icon name="edit" size={17} /> Edit SSID {ssid.index}
+                      </button>
+                    ) : (
+                      <p className="mt-4 text-xs text-muted-foreground">Administrator access is required to change WiFi configuration.</p>
+                    )}
                   </div>
                 ))
               ) : (
@@ -1113,6 +1279,12 @@ export default function DeviceDetailPage() {
             ''
           }
           onSave={handleSaveCredentials}
+        />
+        <EditWifiModal
+          wifi={editingWifi}
+          onClose={() => setEditingWifi(null)}
+          onSave={handleSaveWifi}
+          saving={savingWifi}
         />
       </div>
     </div>

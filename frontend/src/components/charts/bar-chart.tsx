@@ -7,9 +7,10 @@ interface BarChartData {
   value: number
 }
 
-export const BarChart = ({ data }: { data: BarChartData[] }) => {
+export const BarChart = ({ data, valueLabel = 'Devices' }: { data: BarChartData[]; valueLabel?: string }) => {
   const { isDarkMode } = useTheme() || { isDarkMode: false }
   const textColor = isDarkMode ? '#aebbb4' : '#5e6c65'
+  const tooltipText = isDarkMode ? '#f4f3ed' : '#17211c'
 
   return (
     <ResponsiveContainer width="100%" height={250}>
@@ -28,12 +29,15 @@ export const BarChart = ({ data }: { data: BarChartData[] }) => {
           tick={{ fontSize: 12 }}
         />
         <Tooltip
-          formatter={(value) => [value, 'Devices']}
+          formatter={(value) => [value, valueLabel]}
           contentStyle={{
             backgroundColor: isDarkMode ? 'rgb(31 41 55)' : '#fff',
             borderColor: isDarkMode ? '#34413b' : '#cbd2cc',
             borderRadius: '0.375rem',
+            color: tooltipText,
           }}
+          labelStyle={{ color: tooltipText }}
+          itemStyle={{ color: tooltipText }}
         />
         <Bar dataKey="value" fill={isDarkMode ? '#72b69b' : '#25644f'} radius={[0, 3, 3, 0]} />
       </RechartsBarChart>

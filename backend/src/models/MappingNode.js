@@ -19,9 +19,9 @@ class MappingNode {
   }
 
   static async update(nodeId, nodeData) {
-    const { name, latitude, longitude, capacity, splitter, pppoe, notes } = nodeData;
+    const { type, name, latitude, longitude, capacity, splitter, pppoe, notes } = nodeData;
     const count = await getDb()('mapping_nodes').where({ node_id: nodeId }).update({
-      name, latitude, longitude, capacity, splitter, pppoe, notes,
+      type, name, latitude, longitude, capacity, splitter, pppoe, notes,
       updated_at: getDb().fn.now()
     });
     return count > 0;

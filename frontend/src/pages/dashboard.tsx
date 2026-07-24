@@ -1,220 +1,141 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { devicesAPI, vendorsAPI } from '@/lib/api'
-import type { Device, Vendor } from '@/types'
-import { PieChart } from '@/components/charts/pie-chart'
-import { BarChart } from '@/components/charts/bar-chart'
+import { devicesAPI } from '@/lib/api'
 import { Icon } from '@/components/ui/icon'
 import { useAuth } from '@/contexts/auth-context'
+import { useToast } from '@/components/ui/toast'
 
-interface ProcessedDevice extends Device {
-  isOnline: boolean
-  brand: string
-  productClassOnly: string
-  rxCategory: 'Excellent' | 'Good' | 'Poor' | 'Danger' | 'Unknown'
+const PieChart = lazy(() => import('@/components/charts/pie-chart').then((module) => ({ default: module.PieChart })))
+const BarChart = lazy(() => import('@/components/charts/bar-chart').then((module) => ({ default: module.BarChart })))
+const TrendChart = lazy(() => import('@/components/charts/trend-chart').then((module) => ({ default: module.TrendChart })))
+
+interface Fault {
+  id: string
+  deviceId: string | null
+  channel: string
+  code: string
+  message: string
+  timestamp: string | null
+  retries: number
 }
 
-interface PieChartData {
-  name: string
-  value: number
-  color: string
+interface DashboardData {
+  stats: { total: number; online: number; offline: number; new24h: number }
+  rxDistribution: Record<string, number>
+  informFreshness: Record<string, number>
+  temperatureDistribution: Record<string, number>
+  clientDistribution: Record<string, number>
+  productClasses: { name: string; value: number }[]
+  manufacturers: { name: string; value: number }[]
+  registrations: { name: string; value: number }[]
+  faults: Fault[]
+  faultsError: string | null
+}
+
+const EMPTY: DashboardData = {
+  stats: { total: 0, online: 0, offline: 0, new24h: 0 },
+  rxDistribution: {},
+  informFreshness: {},
+  temperatureDistribution: {},
+  clientDistribution: {},
+  productClasses: [],
+  manufacturers: [],
+  registrations: [],
+  faults: [],
+  faultsError: null,
+}
+
+const PALETTES = {
+  rx: { Excellent: '#22c55e', Good: '#3b82f6', Poor: '#eab308', Danger: '#ef4444', Unknown: '#64748b' },
+  freshness: { 'Under 10m': '#22c55e', '10–60m': '#3b82f6', '1–24h': '#eab308', 'Over 24h': '#ef4444' },
+  temperature: { Normal: '#22c55e', Warm: '#eab308', Hot: '#ef4444', Unknown: '#64748b' },
+  clients: { '0': '#64748b', '1–5': '#3b82f6', '6–15': '#8b5cf6', '16+': '#f97316', Unknown: '#94a3b8' },
+}
+
+function pieData(distribution: Record<string, number>, palette: Record<string, string>) {
+  return Object.entries(distribution)
+    .map(([name, value]) => ({ name, value: Number(value) || 0, color: palette[name] || '#64748b' }))
+    .filter((entry) => entry.value > 0)
+}
+
+function formatFaultTime(timestamp: string | null) {
+  if (!timestamp) return 'Unknown time'
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return timestamp
+  return date.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })
+}
+
+function ChartFallback() {
+  return <div className="h-[250px] animate-pulse rounded-md bg-muted" role="status" aria-label="Loading chart" />
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState([
-    { name: 'Total Devices', value: 0, change: 0, icon: 'server' },
-    { name: 'Online', value: 0, change: 0, icon: 'check' },
-    { name: 'Offline', value: 0, change: 0, icon: 'x' },
-    { name: 'New Devices (24h)', value: 0, change: 0, icon: 'bell' },
-  ])
-  const [loading, setLoading] = useState(true)
-  const [topProductClasses, setTopProductClasses] = useState<{name: string, count: number}[]>([])
-  const [rxPieData, setRxPieData] = useState<PieChartData[]>([])
+  const [data, setData] = useState<DashboardData>(EMPTY)
+  const [initialLoading, setInitialLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
-  const [refreshNonce, setRefreshNonce] = useState(0)
+  const [clearingFault, setClearingFault] = useState<string | null>(null)
   const { user } = useAuth()
+  const toast = useToast()
+  const isAdmin = user?.role === 'admin'
 
-  const findBrand = useCallback((manufacturer: string, productClass: string, vendors: Vendor[]) => {
-    manufacturer = manufacturer?.toLowerCase() || ''
-    productClass = productClass?.toLowerCase() || ''
-
-    const sortedVendors = [...vendors].sort((a, b) => (b.priority || 0) - (a.priority || 0))
-
-    for (const vendor of sortedVendors) {
-      const manPatterns = vendor.manufacturer_patterns || []
-      const prodPatterns = vendor.product_patterns || []
-
-      const manMatch = manPatterns.some((p: string) => manufacturer.includes(p.toLowerCase()))
-      const prodMatch = prodPatterns.some((p: string) => productClass.includes(p.toLowerCase()))
-
-      if (manMatch || prodMatch) {
-        return { name: vendor.name }
-      }
-    }
-
-    return { name: manufacturer || 'Unknown' }
-  }, [])
-
-  const processDeviceData = useCallback((devices: Device[], vendors: Vendor[]) => {
-    const stats = {
-      total: devices.length,
-      online: 0,
-      offline: 0,
-      new24h: 0,
-    }
-
-    const now = new Date()
-
-    const getRxCategory = (rxPowerNum: number | null | undefined): ProcessedDevice['rxCategory'] => {
-      if (rxPowerNum === null || rxPowerNum === undefined || isNaN(rxPowerNum)) return 'Unknown';
-
-      if (rxPowerNum >= -21.99) return 'Excellent';
-      if (rxPowerNum >= -24.99) return 'Good';
-      if (rxPowerNum >= -26.99) return 'Poor';
-      return 'Danger';
-    }
-
-    const processed: ProcessedDevice[] = devices.map((item: Device) => {
-      const lastInform = item._lastInform ? new Date(item._lastInform) : null
-      const lastInformMs = lastInform?.getTime()
-      const ageMs = lastInformMs === undefined ? Number.NaN : now.getTime() - lastInformMs
-      const isOnline = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60 * 1000
-
-      if (isOnline) stats.online++
-      else stats.offline++
-
-      const registered = item._registered ? new Date(item._registered) : null
-      const registeredAge = registered ? now.getTime() - registered.getTime() : Number.NaN
-      if (Number.isFinite(registeredAge) && registeredAge >= 0 && registeredAge < 24 * 60 * 60 * 1000) {
-        stats.new24h++
-      }
-
-      const manufacturer = item.manufacturer || ''
-      const productClass = item.productclass || 'Unknown'
-      const brand = findBrand(manufacturer, productClass, vendors)
-
-      const rxPower = item.rxpower === null || item.rxpower === undefined
-        ? null
-        : Number(item.rxpower)
-
-      return {
-        ...item,
-        isOnline,
-        brand: brand.name,
-        productClassOnly: productClass,
-        rxCategory: getRxCategory(rxPower)
-      }
-    })
-
-    const productClassDistribution = processed.reduce((acc, device) => {
-      if (device.productClassOnly && device.productClassOnly !== 'Unknown') {
-        const key = device.productClassOnly;
-
-        if (!acc[key]) {
-          acc[key] = { name: key, count: 0 };
-        }
-        acc[key].count++;
-      }
-      return acc;
-    }, {} as { [key: string]: { name: string, count: number } });
-
-    const topProductClasses = Object.values(productClassDistribution)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-
-    const rxDistribution = { Excellent: 0, Good: 0, Poor: 0, Danger: 0, Unknown: 0 };
-    processed.forEach(device => {
-      rxDistribution[device.rxCategory]++;
-    });
-
-    return { processed, stats, topProductClasses, rxDistribution }
-  }, [findBrand])
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
+  const loadDashboard = useCallback(async (force = false) => {
     setLoadError('')
-
-    const fetchData = async () => {
-      try {
-        const [devicesRes, vendorsRes] = await Promise.all([
-          devicesAPI.getDevices(),
-          vendorsAPI.getAll()
-        ]);
-        if (cancelled) return
-        if (devicesRes.success && vendorsRes.success) {
-          const devices = devicesRes.data as Device[]
-          const vendors = vendorsRes.data as Vendor[]
-          const { stats, topProductClasses, rxDistribution } = processDeviceData(devices, vendors)
-          setStats([
-            { name: 'Total Devices', value: stats.total, change: 0, icon: 'server' },
-            { name: 'Online', value: stats.online, change: 0, icon: 'check' },
-            { name: 'Offline', value: stats.offline, change: 0, icon: 'x' },
-            { name: 'New Devices (24h)', value: stats.new24h, change: 0, icon: 'bell' },
-          ])
-          setTopProductClasses(topProductClasses)
-
-          const pieData: PieChartData[] = [
-            { name: 'Excellent', value: rxDistribution.Excellent, color: '#22c55e' },
-            { name: 'Good', value: rxDistribution.Good, color: '#3b82f6' },
-            { name: 'Poor', value: rxDistribution.Poor, color: '#eab308' },
-            { name: 'Danger', value: rxDistribution.Danger, color: '#ef4444' },
-            { name: 'Unknown', value: rxDistribution.Unknown, color: '#6b7280' },
-          ].filter(d => d.value > 0);
-
-          setRxPieData(pieData);
-          setLastUpdated(new Date())
-        } else {
-          const message = 'GenieACS did not return the device list. Verify the ACS URL and network access, then retry.'
-          setLoadError(message)
-        }
-      } catch {
-        if (!cancelled) {
-          const message = 'Panel could not reach GenieACS. Check the ACS connection, then retry.'
-          setLoadError(message)
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
+    if (initialLoading) setInitialLoading(true)
+    else setRefreshing(true)
+    try {
+      const response = await devicesAPI.getDashboard(force)
+      if (!response.success || !response.data) {
+        throw new Error(response.message || 'Dashboard data is unavailable')
       }
+      setData(response.data as DashboardData)
+      setLastUpdated(new Date())
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Panel could not reach GenieACS')
+    } finally {
+      setInitialLoading(false)
+      setRefreshing(false)
     }
+  }, [initialLoading])
 
-    fetchData()
+  useEffect(() => { void loadDashboard(false) }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-    return () => { cancelled = true }
-  }, [processDeviceData, refreshNonce])
+  const rxData = useMemo(() => pieData(data.rxDistribution, PALETTES.rx), [data.rxDistribution])
+  const freshnessData = useMemo(() => pieData(data.informFreshness, PALETTES.freshness), [data.informFreshness])
+  const temperatureData = useMemo(() => pieData(data.temperatureDistribution, PALETTES.temperature), [data.temperatureDistribution])
+  const clientData = useMemo(() => pieData(data.clientDistribution, PALETTES.clients), [data.clientDistribution])
+  const productData = useMemo(() => [...data.productClasses].reverse(), [data.productClasses])
+  const manufacturerData = useMemo(() => [...data.manufacturers].reverse(), [data.manufacturers])
 
-  const barChartData = useMemo(() => {
-    return topProductClasses.map(item => ({
-      name: item.name,
-      value: item.count
-    })).reverse();
-  }, [topProductClasses])
+  const availability = data.stats.total ? Math.round((data.stats.online / data.stats.total) * 100) : 0
+  const signalRisk = (data.rxDistribution.Poor || 0) + (data.rxDistribution.Danger || 0)
 
-  const totalDevices = stats[0]?.value || 0
-  const onlineDevices = stats[1]?.value || 0
-  const offlineDevices = stats[2]?.value || 0
-  const newDevices = stats[3]?.value || 0
-  const availability = totalDevices > 0 ? Math.round((onlineDevices / totalDevices) * 100) : 0
-  const signalRisk = rxPieData
-    .filter((item) => item.name === 'Poor' || item.name === 'Danger')
-    .reduce((total, item) => total + item.value, 0)
+  const clearFault = async (fault: Fault) => {
+    if (!window.confirm(`Clear fault ${fault.code} for ${fault.deviceId || 'unknown device'}?`)) return
+    try {
+      setClearingFault(fault.id)
+      const response = await devicesAPI.clearFault(fault.id)
+      if (!response.success) throw new Error(response.message || 'Fault could not be cleared')
+      setData((current) => ({ ...current, faults: current.faults.filter((entry) => entry.id !== fault.id) }))
+      toast.success('Fault cleared from GenieACS')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Fault could not be cleared')
+    } finally {
+      setClearingFault(null)
+    }
+  }
 
-  if (loading) {
+  if (initialLoading) {
     return (
-      <div className="page-shell">
-        <div className="page-frame">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Loading fleet status">
-            {[0, 1, 2, 3].map((item) => (
-              <div key={item} className="modern-card h-28 animate-pulse bg-muted" />
-            ))}
-          </div>
+      <div className="page-shell"><div className="page-frame">
+        <header className="page-header"><div><p className="page-kicker">Fleet operations</p><h1 className="page-title">Network condition</h1><p className="page-description">Loading compact operational summary from GenieACS…</p></div></header>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" role="status">
+          {[0, 1, 2, 3].map((item) => <div key={item} className="modern-card h-28 animate-pulse bg-muted" />)}
         </div>
-      </div>
+      </div></div>
     )
   }
 
@@ -225,120 +146,99 @@ export default function DashboardPage() {
           <div>
             <p className="page-kicker">Fleet operations</p>
             <h1 className="page-title">Network condition</h1>
-            <p className="page-description">
-              Status ONT yang dilaporkan GenieACS untuk membantu {user?.username || 'operator'} menentukan perangkat yang perlu diperiksa.
-            </p>
+            <p className="page-description">Ringkasan fleet, optical health, client load, dan fault untuk {user?.username || 'operator'}.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs text-muted-foreground">
-              {lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}` : 'Waiting for data'}
-            </span>
-            <button type="button" onClick={() => setRefreshNonce((value) => value + 1)} className="modern-button-secondary">
-              <Icon name="refresh" size={17} />
-              Refresh fleet
+            <span className="text-xs text-muted-foreground">{lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}` : 'No update yet'}</span>
+            <button type="button" className="modern-button-secondary" disabled={refreshing} onClick={() => void loadDashboard(true)}>
+              <Icon name="refresh" size={17} className={refreshing ? 'animate-spin' : ''} />{refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           </div>
         </header>
 
-        {loadError ? (
-          <section className="modern-card empty-state" role="alert">
-            <div className="empty-state-icon text-[hsl(var(--status-danger))]">
-              <Icon name="warning" size={22} />
-            </div>
-            <h2 className="empty-state-title">Fleet data is unavailable</h2>
-            <p className="empty-state-copy">{loadError}</p>
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              <button type="button" onClick={() => setRefreshNonce((value) => value + 1)} className="modern-button">Retry connection</button>
-              <Link to="/settings" className="modern-button-secondary">Open ACS configuration</Link>
-            </div>
-          </section>
-        ) : totalDevices === 0 ? (
-          <section className="modern-card empty-state">
-            <div className="empty-state-icon"><Icon name="server" size={22} /></div>
-            <h2 className="empty-state-title">No devices have reported yet</h2>
-            <p className="empty-state-copy">Pastikan GenieACS URL benar dan ONT telah mengirim Inform. Setelah perangkat masuk, kondisi fleet akan muncul di sini.</p>
-            <Link to="/settings" className="modern-button mt-5">Check ACS connection</Link>
-          </section>
-        ) : (
-          <>
-            <section className="mb-6 grid gap-4 lg:grid-cols-[1.35fr_0.65fr]" aria-labelledby="availability-heading">
-              <div className="modern-card overflow-hidden">
-                <div className="grid min-h-56 sm:grid-cols-[1fr_1.3fr]">
-                  <div className="flex flex-col justify-between bg-[#173f35] p-6 text-[#f4f3ed] sm:p-7">
-                    <div>
-                      <p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[#b7c7be]">Online availability</p>
-                      <div className="mt-3 font-mono text-5xl font-semibold tracking-[-0.05em]">{availability}%</div>
-                    </div>
-                    <p className="mt-8 text-sm leading-6 text-[#c8d4ce]">
-                      {onlineDevices} dari {totalDevices} perangkat melapor dalam 10 menit terakhir.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2">
-                    <div className="border-b border-r border-border p-5">
-                      <p className="metric-label">Online now</p>
-                      <p className="metric-value text-[hsl(var(--status-success))]">{onlineDevices}</p>
-                    </div>
-                    <div className="border-b border-border p-5">
-                      <p className="metric-label">Needs contact</p>
-                      <p className="metric-value text-[hsl(var(--status-danger))]">{offlineDevices}</p>
-                    </div>
-                    <div className="border-r border-border p-5">
-                      <p className="metric-label">Signal risk</p>
-                      <p className="metric-value text-[hsl(var(--status-warning))]">{signalRisk}</p>
-                    </div>
-                    <div className="p-5">
-                      <p className="metric-label">New in 24h</p>
-                      <p className="metric-value">{newDevices}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modern-card p-5 sm:p-6">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h2 id="availability-heading" className="section-heading">Operator queue</h2>
-                    <p className="section-description">Mulai dari gangguan yang berpotensi berdampak ke pelanggan.</p>
-                  </div>
-                  <Icon name="bell" size={21} className="text-muted-foreground" />
-                </div>
-                <div className="mt-6 divide-y divide-border">
-                  <Link to="/devices" className="flex min-h-16 items-center justify-between gap-4 py-3 hover:text-primary">
-                    <span>
-                      <span className="block text-sm font-semibold">Offline devices</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">Review last Inform and summon</span>
-                    </span>
-                    <span className="data-value text-[hsl(var(--status-danger))]">{offlineDevices}</span>
-                  </Link>
-                  <Link to="/devices" className="flex min-h-16 items-center justify-between gap-4 py-3 hover:text-primary">
-                    <span>
-                      <span className="block text-sm font-semibold">Weak optical signal</span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">Poor or danger RX level</span>
-                    </span>
-                    <span className="data-value text-[hsl(var(--status-warning))]">{signalRisk}</span>
-                  </Link>
-                </div>
-              </div>
-            </section>
-
-            <section className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-              <div className="modern-card p-5 sm:p-6">
-                <h2 className="section-heading">Optical signal distribution</h2>
-                <p className="section-description mb-3">Jumlah perangkat pada setiap ambang RX power.</p>
-                {rxPieData.length > 0 ? <PieChart data={rxPieData} /> : (
-                  <div className="empty-state"><p className="empty-state-copy">Perangkat belum melaporkan nilai RX power.</p></div>
-                )}
-              </div>
-              <div className="modern-card p-5 sm:p-6">
-                <h2 className="section-heading">Largest device groups</h2>
-                <p className="section-description mb-3">Product class dengan jumlah ONT terbanyak.</p>
-                {barChartData.length > 0 ? <BarChart data={barChartData} /> : (
-                  <div className="empty-state"><p className="empty-state-copy">Product class belum tersedia dari GenieACS.</p></div>
-                )}
-              </div>
-            </section>
-          </>
+        {loadError && (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-md border border-[hsl(var(--status-danger))]/40 bg-[hsl(var(--status-danger))]/10 p-4" role="alert">
+            <div className="flex items-center gap-3"><Icon name="warning" className="text-[hsl(var(--status-danger))]" /><span className="text-sm font-semibold">{loadError}</span></div>
+            <button className="modern-button-secondary" onClick={() => void loadDashboard(true)}>Retry</button>
+          </div>
         )}
+
+        <section className="mb-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            ['Total devices', data.stats.total, 'server', 'text-foreground'],
+            ['Online now', data.stats.online, 'check', 'text-[hsl(var(--status-success))]'],
+            ['Needs contact', data.stats.offline, 'warning', 'text-[hsl(var(--status-danger))]'],
+            ['New in 24h', data.stats.new24h, 'bell', 'text-primary'],
+          ].map(([label, value, icon, color]) => (
+            <div key={String(label)} className="modern-card p-5">
+              <div className="flex items-start justify-between"><p className="metric-label">{label}</p><Icon name={String(icon)} size={19} className="text-muted-foreground" /></div>
+              <p className={`metric-value mt-4 ${color}`}>{value}</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="mb-5 grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
+          <div className="modern-card overflow-hidden">
+            <div className="grid min-h-56 sm:grid-cols-[1fr_1.3fr]">
+              <div className="flex flex-col justify-between bg-[#173f35] p-6 text-[#f4f3ed] sm:p-7">
+                <div><p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-[#b7c7be]">Online availability</p><p className="mt-3 font-mono text-5xl font-semibold tracking-[-0.05em]">{availability}%</p></div>
+                <p className="mt-8 text-sm leading-6 text-[#c8d4ce]">{data.stats.online} dari {data.stats.total} perangkat melapor dalam 10 menit terakhir.</p>
+              </div>
+              <div className="grid grid-cols-2">
+                <div className="border-b border-r border-border p-5"><p className="metric-label">Optical risk</p><p className="metric-value text-[hsl(var(--status-warning))]">{signalRisk}</p></div>
+                <div className="border-b border-border p-5"><p className="metric-label">Active faults</p><p className="metric-value text-[hsl(var(--status-danger))]">{data.faults.length}</p></div>
+                <div className="border-r border-border p-5"><p className="metric-label">Hot devices</p><p className="metric-value">{data.temperatureDistribution.Hot || 0}</p></div>
+                <div className="p-5"><p className="metric-label">16+ clients</p><p className="metric-value">{data.clientDistribution['16+'] || 0}</p></div>
+              </div>
+            </div>
+          </div>
+          <div className="modern-card p-5">
+            <div className="flex items-start justify-between"><div><h2 className="section-heading">Operator queue</h2><p className="section-description">Prioritas gangguan pelanggan.</p></div><Icon name="bell" /></div>
+            <div className="mt-5 divide-y divide-border">
+              <Link to="/devices" className="flex min-h-16 items-center justify-between py-3 hover:text-primary"><span><strong className="block text-sm">Offline devices</strong><small className="text-muted-foreground">Review last Inform</small></span><span className="data-value text-[hsl(var(--status-danger))]">{data.stats.offline}</span></Link>
+              <div className="flex min-h-16 items-center justify-between py-3"><span><strong className="block text-sm">GenieACS faults</strong><small className="text-muted-foreground">Provisioning failures</small></span><span className="data-value text-[hsl(var(--status-danger))]">{data.faults.length}</span></div>
+              <Link to="/devices" className="flex min-h-16 items-center justify-between py-3 hover:text-primary"><span><strong className="block text-sm">Weak optical signal</strong><small className="text-muted-foreground">Poor or danger RX</small></span><span className="data-value text-[hsl(var(--status-warning))]">{signalRisk}</span></Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="mb-5 grid gap-4 xl:grid-cols-2">
+          <div className="modern-card p-5"><h2 className="section-heading">Optical signal distribution</h2><p className="section-description mb-3">RX power health across the fleet.</p>{rxData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={rxData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No RX power data.</p>}</div>
+          <div className="modern-card p-5"><h2 className="section-heading">Inform freshness</h2><p className="section-description mb-3">How recently devices contacted GenieACS.</p>{freshnessData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={freshnessData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No Inform data.</p>}</div>
+          <div className="modern-card p-5"><h2 className="section-heading">Temperature health</h2><p className="section-description mb-3">Reported ONT temperature buckets.</p>{temperatureData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={temperatureData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No temperature data.</p>}</div>
+          <div className="modern-card p-5"><h2 className="section-heading">Connected client load</h2><p className="section-description mb-3">Active subscriber devices per ONT.</p>{clientData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={clientData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No client count data.</p>}</div>
+        </section>
+
+        <section className="mb-5 grid gap-4 xl:grid-cols-3">
+          <div className="modern-card p-5 xl:col-span-2"><h2 className="section-heading">7-day registrations</h2><p className="section-description mb-3">New CPE registrations reported per day.</p><Suspense fallback={<ChartFallback />}><TrendChart data={data.registrations} valueLabel="Registrations" /></Suspense></div>
+          <div className="modern-card p-5"><h2 className="section-heading">Manufacturers</h2><p className="section-description mb-3">Largest vendor groups.</p>{manufacturerData.length ? <Suspense fallback={<ChartFallback />}><BarChart data={manufacturerData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No manufacturer data.</p>}</div>
+          <div className="modern-card p-5 xl:col-span-3"><h2 className="section-heading">Product classes</h2><p className="section-description mb-3">Largest device model families.</p>{productData.length ? <Suspense fallback={<ChartFallback />}><BarChart data={productData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No product class data.</p>}</div>
+        </section>
+
+        <section className="modern-card overflow-hidden">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
+            <div><h2 className="section-heading">GenieACS fault list</h2><p className="section-description">Active provisioning and connection faults from the NBI.</p></div>
+            <span className={data.faults.length ? 'modern-badge-error' : 'modern-badge-success'}>{data.faults.length} active</span>
+          </div>
+          {data.faultsError && <div className="border-b border-border bg-[hsl(var(--status-warning))]/10 px-5 py-3 text-sm">{data.faultsError}</div>}
+          <div className="overflow-x-auto">
+            <table className="modern-table">
+              <thead><tr><th>Time</th><th>Device</th><th>Channel / code</th><th>Message</th>{isAdmin && <th>Action</th>}</tr></thead>
+              <tbody>
+                {data.faults.slice(0, 25).map((fault) => (
+                  <tr key={fault.id}>
+                    <td className="whitespace-nowrap text-xs">{formatFaultTime(fault.timestamp)}</td>
+                    <td className="max-w-60 break-all font-mono text-xs">{fault.deviceId || '—'}</td>
+                    <td><span className="modern-badge-error">{fault.code}</span><small className="mt-1 block text-muted-foreground">{fault.channel}{fault.retries ? ` · retry ${fault.retries}` : ''}</small></td>
+                    <td className="min-w-72 max-w-xl text-sm">{fault.message}</td>
+                    {isAdmin && <td><button type="button" className="modern-button-secondary" disabled={clearingFault === fault.id} onClick={() => void clearFault(fault)}>{clearingFault === fault.id ? 'Clearing…' : 'Clear fault'}</button></td>}
+                  </tr>
+                ))}
+                {!data.faults.length && <tr><td colSpan={isAdmin ? 5 : 4} className="py-12 text-center text-muted-foreground">No active GenieACS faults.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </div>
     </div>
   )

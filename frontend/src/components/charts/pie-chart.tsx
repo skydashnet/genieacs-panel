@@ -8,8 +8,9 @@ interface PieChartData {
   color: string
 }
 
-export const PieChart = ({ data }: { data: PieChartData[] }) => {
+export const PieChart = ({ data, valueLabel = 'Devices' }: { data: PieChartData[]; valueLabel?: string }) => {
   const { isDarkMode } = useTheme() || { isDarkMode: false }
+  const tooltipText = isDarkMode ? '#f4f3ed' : '#17211c'
 
   return (
     <ResponsiveContainer width="100%" height={250}>
@@ -30,16 +31,19 @@ export const PieChart = ({ data }: { data: PieChartData[] }) => {
           ))}
         </Pie>
         <Tooltip
-          formatter={(value) => [value, 'Devices']}
+          formatter={(value) => [value, valueLabel]}
           contentStyle={{
             backgroundColor: isDarkMode ? 'rgb(31 41 55)' : '#fff',
             borderColor: isDarkMode ? '#34413b' : '#cbd2cc',
             borderRadius: '0.375rem',
+            color: tooltipText,
           }}
+          labelStyle={{ color: tooltipText }}
+          itemStyle={{ color: tooltipText }}
         />
         <Legend
           iconType="circle"
-          wrapperStyle={{ fontSize: '14px' }}
+          wrapperStyle={{ fontSize: '14px', color: tooltipText }}
         />
       </RechartsPieChart>
     </ResponsiveContainer>

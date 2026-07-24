@@ -4,6 +4,112 @@ import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
+const NODE_TYPES = new Set(['htb', 'olt', 'odc', 'odp', 'ont', 'server']);
+const FIBER_TYPES = new Set(['backbone', 'feeder', 'distribution', 'drop', 'patch']);
+
+function validateNodePayload(payload) {
+  const nodeId = String(payload.node_id || '').trim();
+  const type = String(payload.type || '').trim().toLowerCase();
+  const name = String(payload.name || '').trim();
+  const latitude = Number(payload.latitude);
+  const longitude = Number(payload.longitude);
+  const capacity = payload.capacity === '' || payload.capacity === null || payload.capacity === undefined
+    ? null
+    : Number(payload.capacity);
+
+  if (!nodeId || nodeId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(nodeId)) {
+    return { error: 'Node ID is required and may only contain letters, numbers, dot, underscore, colon, or dash.' };
+  }
+  if (!NODE_TYPES.has(type)) {
+    return { error: 'Invalid type. Must be: HTB, OLT, ODC, ODP, ONT, or server.' };
+  }
+  if (!name || name.length > 255) {
+    return { error: 'Node name is required and must not exceed 255 characters.' };
+  }
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return { error: 'Latitude must be between -90 and 90.' };
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return { error: 'Longitude must be between -180 and 180.' };
+  }
+  if (capacity !== null && (!Number.isInteger(capacity) || capacity < 0 || capacity > 1_000_000)) {
+    return { error: 'Capacity must be a non-negative integer.' };
+  }
+
+  return {
+    value: {
+      node_id: nodeId,
+      type,
+      name,
+      latitude,
+      longitude,
+      capacity,
+      splitter: String(payload.splitter || '').trim().slice(0, 64) || null,
+      pppoe: String(payload.pppoe || '').trim().slice(0, 255) || null,
+      notes: String(payload.notes || '').trim().slice(0, 5000) || null
+    }
+  };
+}
+
+function validateWaypoints(waypoints) {
+  if (waypoints === null || waypoints === undefined || waypoints === '') return { value: null };
+  if (!Array.isArray(waypoints) || waypoints.length > 100) {
+    return { error: 'Waypoints must be an array with at most 100 coordinates.' };
+  }
+  const normalized = [];
+  for (const point of waypoints) {
+    if (!Array.isArray(point) || point.length !== 2) {
+      return { error: 'Every waypoint must be a [latitude, longitude] pair.' };
+    }
+    const latitude = Number(point[0]);
+    const longitude = Number(point[1]);
+    if (
+      !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      !Number.isFinite(longitude) || longitude < -180 || longitude > 180
+    ) {
+      return { error: 'Waypoint coordinates are outside valid latitude/longitude ranges.' };
+    }
+    normalized.push([latitude, longitude]);
+  }
+  return { value: normalized };
+}
+
+function validateEdgePayload(payload) {
+  const edgeId = String(payload.edge_id || '').trim();
+  const source = String(payload.source || '').trim();
+  const target = String(payload.target || '').trim();
+  const fiberType = String(payload.fiber_type || 'distribution').trim().toLowerCase();
+  const distance = payload.distance === '' || payload.distance === null || payload.distance === undefined
+    ? null
+    : Number(payload.distance);
+  const waypoints = validateWaypoints(payload.waypoints);
+
+  if (!edgeId || edgeId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(edgeId)) {
+    return { error: 'Cable ID is required and may only contain letters, numbers, dot, underscore, colon, or dash.' };
+  }
+  if (!source || !target) return { error: 'Source and target nodes are required.' };
+  if (source === target) return { error: 'Source and target nodes must be different.' };
+  if (!FIBER_TYPES.has(fiberType)) {
+    return { error: 'Invalid cable type. Must be: backbone, feeder, distribution, drop, or patch.' };
+  }
+  if (distance !== null && (!Number.isFinite(distance) || distance < 0 || distance > 1_000_000)) {
+    return { error: 'Distance must be a non-negative number.' };
+  }
+  if (waypoints.error) return waypoints;
+
+  return {
+    value: {
+      edge_id: edgeId,
+      source,
+      target,
+      fiber_type: fiberType,
+      distance,
+      waypoints: waypoints.value,
+      notes: String(payload.notes || '').trim().slice(0, 5000) || null
+    }
+  };
+}
+
 class MappingController {
   static async getAllNodes(req, res) {
     try {
@@ -50,31 +156,11 @@ class MappingController {
 
   static async createNode(req, res) {
     try {
-      const { node_id, type, name, latitude, longitude, capacity, splitter, pppoe, notes } = req.body;
-      
-      if (!node_id || !type || !name || latitude === undefined || longitude === undefined) {
-        return res.status(400).json(
-          createErrorResponse('Required fields: node_id, type, name, latitude, longitude')
-        );
+      const validated = validateNodePayload(req.body || {});
+      if (validated.error) {
+        return res.status(400).json(createErrorResponse(validated.error));
       }
-
-      if (!['server', 'odc', 'odp', 'ont'].includes(type)) {
-        return res.status(400).json(
-          createErrorResponse('Invalid type. Must be: server, odc, odp, or ont')
-        );
-      }
-
-      const nodeId = await MappingNode.create({
-        node_id,
-        type,
-        name,
-        latitude,
-        longitude,
-        capacity,
-        splitter,
-        pppoe,
-        notes
-      });
+      const nodeId = await MappingNode.create(validated.value);
       
       return res.status(201).json(
         createResponse('Node created successfully', { id: nodeId })
@@ -101,7 +187,6 @@ class MappingController {
   static async updateNode(req, res) {
     try {
       const { nodeId } = req.params;
-      const { name, latitude, longitude, capacity, splitter, pppoe, notes } = req.body;
       
       if (!nodeId) {
         return res.status(400).json(
@@ -109,15 +194,11 @@ class MappingController {
         );
       }
 
-      const updated = await MappingNode.update(nodeId, {
-        name,
-        latitude,
-        longitude,
-        capacity,
-        splitter,
-        pppoe,
-        notes
-      });
+      const validated = validateNodePayload({ ...(req.body || {}), node_id: nodeId });
+      if (validated.error) {
+        return res.status(400).json(createErrorResponse(validated.error));
+      }
+      const updated = await MappingNode.update(nodeId, validated.value);
       
       if (!updated) {
         return res.status(404).json(
@@ -210,29 +291,11 @@ class MappingController {
 
   static async createEdge(req, res) {
     try {
-      const { edge_id, source, target, fiber_type, distance, waypoints, notes } = req.body;
-      
-      if (!edge_id || !source || !target) {
-        return res.status(400).json(
-          createErrorResponse('Required fields: edge_id, source, target')
-        );
+      const validated = validateEdgePayload(req.body || {});
+      if (validated.error) {
+        return res.status(400).json(createErrorResponse(validated.error));
       }
-
-      if (fiber_type && !['feeder', 'distribution', 'drop'].includes(fiber_type)) {
-        return res.status(400).json(
-          createErrorResponse('Invalid fiber_type. Must be: feeder, distribution, or drop')
-        );
-      }
-
-      const edgeId = await MappingEdge.create({
-        edge_id,
-        source,
-        target,
-        fiber_type,
-        distance,
-        waypoints,
-        notes
-      });
+      const edgeId = await MappingEdge.create(validated.value);
       
       return res.status(201).json(
         createResponse('Edge created successfully', { id: edgeId })
@@ -269,7 +332,6 @@ class MappingController {
   static async updateEdge(req, res) {
     try {
       const { edgeId } = req.params;
-      const { fiber_type, distance, waypoints, notes } = req.body;
       
       if (!edgeId) {
         return res.status(400).json(
@@ -277,18 +339,11 @@ class MappingController {
         );
       }
 
-      if (fiber_type && !['feeder', 'distribution', 'drop'].includes(fiber_type)) {
-        return res.status(400).json(
-          createErrorResponse('Invalid fiber_type. Must be: feeder, distribution, or drop')
-        );
+      const validated = validateEdgePayload({ ...(req.body || {}), edge_id: edgeId });
+      if (validated.error) {
+        return res.status(400).json(createErrorResponse(validated.error));
       }
-
-      const updated = await MappingEdge.update(edgeId, {
-        fiber_type,
-        distance,
-        waypoints,
-        notes
-      });
+      const updated = await MappingEdge.update(edgeId, validated.value);
       
       if (!updated) {
         return res.status(404).json(
@@ -346,13 +401,46 @@ class MappingController {
         );
       }
 
-      await MappingEdge.syncData(nodes, edges);
+      if (nodes.length > 10_000 || edges.length > 20_000) {
+        return res.status(400).json(createErrorResponse('Mapping import is too large.'));
+      }
+      const validatedNodes = [];
+      const nodeIds = new Set();
+      for (const node of nodes) {
+        const validated = validateNodePayload(node || {});
+        if (validated.error) {
+          return res.status(400).json(createErrorResponse(`Invalid node: ${validated.error}`));
+        }
+        if (nodeIds.has(validated.value.node_id)) {
+          return res.status(400).json(createErrorResponse(`Duplicate node ID: ${validated.value.node_id}`));
+        }
+        nodeIds.add(validated.value.node_id);
+        validatedNodes.push(validated.value);
+      }
+      const validatedEdges = [];
+      const edgeIds = new Set();
+      for (const edge of edges) {
+        const validated = validateEdgePayload(edge || {});
+        if (validated.error) {
+          return res.status(400).json(createErrorResponse(`Invalid cable: ${validated.error}`));
+        }
+        if (edgeIds.has(validated.value.edge_id)) {
+          return res.status(400).json(createErrorResponse(`Duplicate cable ID: ${validated.value.edge_id}`));
+        }
+        if (!nodeIds.has(validated.value.source) || !nodeIds.has(validated.value.target)) {
+          return res.status(400).json(createErrorResponse(`Cable ${validated.value.edge_id} references an unknown node.`));
+        }
+        edgeIds.add(validated.value.edge_id);
+        validatedEdges.push(validated.value);
+      }
+
+      await MappingEdge.syncData(validatedNodes, validatedEdges);
       
       return res.json(
         createResponse('Mapping data synchronized successfully', {
           summary: {
-            nodes: nodes.length,
-            edges: edges.length
+            nodes: validatedNodes.length,
+            edges: validatedEdges.length
           }
         })
       );
