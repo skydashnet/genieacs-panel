@@ -3,6 +3,14 @@
 SkyGenPanel follows [Semantic Versioning](https://semver.org/). Release versions
 are calculated from conventional commits since the previous `v*` Git tag.
 
+## [1.9.2] - 2026-07-24
+
+### Improved
+
+- Render cached charts without Recharts (`321ab4b`)
+
+[Full comparison](https://github.com/skydashnet/genieacs-panel/compare/v1.9.1...v1.9.2)
+
 ## [1.9.1] - 2026-07-24
 
 ### Fixed

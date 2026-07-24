@@ -1,16 +1,16 @@
 {
-  "version": "1.9.1",
-  "build": 36,
-  "sourceCommit": "9eef4fda4843",
+  "version": "1.9.2",
+  "build": 38,
+  "sourceCommit": "321ab4b2c95a",
   "releasedAt": "2026-07-24",
-  "basedOnTag": "v1.9.0",
-  "compareUrl": "https://github.com/skydashnet/genieacs-panel/compare/v1.9.0...v1.9.1",
+  "basedOnTag": "v1.9.1",
+  "compareUrl": "https://github.com/skydashnet/genieacs-panel/compare/v1.9.1...v1.9.2",
   "changes": [
     {
-      "shortHash": "9eef4fd",
+      "shortHash": "321ab4b",
       "date": "2026-07-24",
-      "title": "Keep desktop sidebar anchored while scrolling",
-      "category": "Fixed"
+      "title": "Render cached charts without Recharts",
+      "category": "Improved"
     }
   ]
 }
