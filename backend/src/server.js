@@ -39,6 +39,9 @@ app.use(helmet({
       // Next.js static exports embed hydration/redirect state in inline scripts.
       // Keep script attributes blocked while allowing only those script blocks.
       scriptSrc: ["'self'", "'unsafe-inline'"],
+      // The built-in server defaults to HTTP; upgrading relative assets would
+      // make browsers request HTTPS from a port that has no TLS listener.
+      upgradeInsecureRequests: null,
       imgSrc: [
         "'self'",
         'data:',

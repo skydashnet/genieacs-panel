@@ -232,6 +232,7 @@ test('production error handling, CSP, and static fallback are safe', async () =>
   assert.match(csp, /basemaps\.cartocdn\.com/);
   assert.match(csp, /script-src 'self' 'unsafe-inline'/);
   assert.match(csp, /script-src-attr 'none'/);
+  assert.doesNotMatch(csp, /upgrade-insecure-requests/);
   assert.match(await page.text(), /<script>self\.__next_f/);
 
   const missingAsset = await fetch(`${baseUrl}/missing-script.js`);
