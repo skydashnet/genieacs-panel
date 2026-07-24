@@ -121,6 +121,8 @@ if (fs.existsSync(FRONTEND_DIR)) {
     setHeaders(res, filePath) {
       if (filePath.includes(`${path.sep}_next${path.sep}static${path.sep}`)) {
         res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      } else if (filePath.endsWith('.html') || filePath.endsWith('.txt')) {
+        res.setHeader('Cache-Control', 'no-cache');
       }
     }
   }));

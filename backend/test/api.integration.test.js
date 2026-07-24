@@ -227,6 +227,7 @@ test('production error handling, CSP, and static fallback are safe', async () =>
 
   const page = await fetch(`${baseUrl}/network-map/`);
   assert.equal(page.status, 200);
+  assert.match(page.headers.get('cache-control') || '', /no-cache/);
   const csp = page.headers.get('content-security-policy') || '';
   assert.match(csp, /tile\.openstreetmap\.org/);
   assert.match(csp, /basemaps\.cartocdn\.com/);
