@@ -1,15 +1,27 @@
 {
-  "version": "1.10.2",
-  "build": 44,
-  "sourceCommit": "d94060898826",
+  "version": "1.11.0",
+  "build": 46,
+  "sourceCommit": "9406d0eb68ff",
   "releasedAt": "2026-07-24",
-  "basedOnTag": "v1.10.1",
-  "compareUrl": "https://github.com/skydashnet/genieacs-panel/compare/v1.10.1...v1.10.2",
+  "basedOnTag": "v1.10.2",
+  "compareUrl": "https://github.com/skydashnet/genieacs-panel/compare/v1.10.2...v1.11.0",
   "changes": [
     {
-      "shortHash": "d940608",
+      "shortHash": "9406d0e",
       "date": "2026-07-24",
-      "title": "Bind overview cache independently of request context",
+      "title": "Customer portal can now change WiFi names and passwords",
+      "category": "New"
+    },
+    {
+      "shortHash": "9406d0e",
+      "date": "2026-07-24",
+      "title": "Saved WiFi passwords use encrypted, on-demand recovery",
+      "category": "Security"
+    },
+    {
+      "shortHash": "9406d0e",
+      "date": "2026-07-24",
+      "title": "GenieACS WiFi enabled values now display consistently",
       "category": "Fixed"
     }
   ]

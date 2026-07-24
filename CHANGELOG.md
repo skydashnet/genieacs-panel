@@ -3,6 +3,24 @@
 SkyGenPanel follows [Semantic Versioning](https://semver.org/). Release versions
 are calculated from conventional commits since the previous `v*` Git tag.
 
+## [1.11.0] - 2026-07-24
+
+### New
+
+- Added customer self-service controls for changing the SSID and WiFi password reported by each ONT.
+- Added encrypted recovery of the last password changed through the portal, with explicit eye controls for on-demand reveal.
+
+### Fixed
+
+- Normalized GenieACS boolean variants so enabled WiFi radios no longer appear disabled in the operator panel or customer portal.
+
+### Security
+
+- Bound every portal WiFi mutation and password reveal to the authenticated customer account, with dedicated rate limits and no client-supplied device target.
+- Protected saved WiFi passwords with AES-256-GCM and kept decrypted values out of overview responses and process caches.
+
+[Full comparison](https://github.com/skydashnet/genieacs-panel/compare/v1.10.2...v1.11.0)
+
 ## [1.10.2] - 2026-07-24
 
 ### Fixed
