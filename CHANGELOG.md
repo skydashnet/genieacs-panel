@@ -3,6 +3,23 @@
 SkyGenPanel follows [Semantic Versioning](https://semver.org/). Release versions
 are calculated from conventional commits since the previous `v*` Git tag.
 
+## [1.10.0] - 2026-07-24
+
+### New
+
+- Added an isolated customer portal on port 5891 with safe ONT and WiFi status.
+- Added immutable, database-backed Customer IDs bound to SoftwareVersion and PPPoE identity.
+
+### Fixed
+
+- Loaded the map engine and topology concurrently, bundled Leaflet CSS locally, and centered existing assets at zoom 15.
+
+### Security
+
+- Hardened session revocation, route isolation, origin checks, rate limits, CSP, and deployment secrets.
+
+[Full comparison](https://github.com/skydashnet/genieacs-panel/compare/v1.9.2...v1.10.0)
+
 ## [1.9.2] - 2026-07-24
 
 ### Improved
