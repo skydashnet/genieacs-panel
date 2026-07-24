@@ -21,6 +21,8 @@ interface MapNode {
   status: 'online' | 'offline' | 'warning'
 }
 
+type Basemap = 'osm' | 'google'
+
 function escapeHtml(value: unknown) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -30,7 +32,13 @@ function escapeHtml(value: unknown) {
     .replaceAll("'", '&#039;')
 }
 
-function getTileUrlAndAttrib(dark: boolean) {
+function getTileUrlAndAttrib(basemap: Basemap, dark: boolean) {
+  if (basemap === 'google') {
+    return {
+      url: 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}&hl=id&gl=id',
+      attribution: 'Map data &copy; Google'
+    }
+  }
   if (dark) {
     return {
       url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
@@ -38,7 +46,7 @@ function getTileUrlAndAttrib(dark: boolean) {
     }
   }
   return {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '&copy; OpenStreetMap contributors'
   }
 }
@@ -79,6 +87,7 @@ export default function NetworkMap() {
   const [defaultZoom, setDefaultZoom] = useState<number>(12)
   const [minZoom, setMinZoom] = useState<number>(5)
   const [maxZoom, setMaxZoom] = useState<number>(18)
+  const [basemap, setBasemap] = useState<Basemap>('osm')
   const { isDarkMode } = useTheme()
   const { show: showLoading, hide: hideLoading } = useLoading()
   const toast = useToast()
@@ -143,6 +152,12 @@ export default function NetworkMap() {
     loadData()
   }, [loadData])
   useEffect(() => {
+    const savedBasemap = localStorage.getItem('networkMapBasemap')
+    if (savedBasemap === 'osm' || savedBasemap === 'google') {
+      setBasemap(savedBasemap)
+    }
+  }, [])
+  useEffect(() => {
     const link = document.createElement('link')
     link.rel = 'stylesheet'
     link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
@@ -172,10 +187,10 @@ export default function NetworkMap() {
       map.removeLayer(tileLayerRef.current)
       tileLayerRef.current = null
     }
-    const { url, attribution } = getTileUrlAndAttrib(isDarkMode)
+    const { url, attribution } = getTileUrlAndAttrib(basemap, isDarkMode)
     tileLayerRef.current = L.tileLayer(url, { attribution })
     tileLayerRef.current.addTo(map)
-  }, [isDarkMode])
+  }, [basemap, isDarkMode])
 
   const updateMarkers = useCallback(() => {
     const L: any = leafletRef.current
@@ -273,6 +288,11 @@ export default function NetworkMap() {
 
   const handleRefresh = () => {
     loadData(false)
+  }
+
+  const handleBasemapChange = (nextBasemap: Basemap) => {
+    setBasemap(nextBasemap)
+    localStorage.setItem('networkMapBasemap', nextBasemap)
   }
 
   const getNodeIconName = (type: string) => {
@@ -405,7 +425,33 @@ export default function NetworkMap() {
           <>
             {mapView === 'map' ? (
               <div className="modern-card p-6">
-                <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Network Topology</h2>
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Network Topology</h2>
+                  <div
+                    role="group"
+                    aria-label="Basemap"
+                    className="inline-flex w-fit rounded-lg border border-gray-200 bg-gray-100 p-1 dark:border-gray-700 dark:bg-gray-900"
+                  >
+                    {([
+                      ['osm', 'OpenStreetMap'],
+                      ['google', 'Google Maps']
+                    ] as const).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        aria-pressed={basemap === value}
+                        onClick={() => handleBasemapChange(value)}
+                        className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                          basemap === value
+                            ? 'bg-white text-blue-700 shadow-sm dark:bg-gray-700 dark:text-blue-300'
+                            : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="h-[500px] rounded-md overflow-hidden">
                   <div ref={mapContainerRef} className="w-full h-full" />
                 </div>

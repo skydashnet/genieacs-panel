@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useAuth } from '@/contexts/auth-context'
 import { Icon } from '@/components/ui/icon'
+import { BrandMark } from '@/components/brand-mark'
 
 export default function Setup() {
   const [formData, setFormData] = useState({
@@ -52,9 +53,7 @@ export default function Setup() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div>
-          <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-md bg-blue-100 dark:bg-blue-900/30">
-            <Icon name="lock" size={24} className="text-blue-600 dark:text-blue-400" />
-          </div>
+          <BrandMark className="mx-auto h-14 w-14 drop-shadow-lg" title="SkyGenPanel" />
           <h2 className="mt-6 text-center text-3xl font-bold text-gray-900 dark:text-gray-100">
             Welcome to GenieACS Panel
           </h2>

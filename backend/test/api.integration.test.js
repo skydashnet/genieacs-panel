@@ -231,9 +231,11 @@ test('production error handling, CSP, and static fallback are safe', async () =>
   const csp = page.headers.get('content-security-policy') || '';
   assert.match(csp, /tile\.openstreetmap\.org/);
   assert.match(csp, /basemaps\.cartocdn\.com/);
+  assert.match(csp, /mt1\.google\.com/);
   assert.match(csp, /script-src 'self' 'unsafe-inline'/);
   assert.match(csp, /script-src-attr 'none'/);
   assert.doesNotMatch(csp, /upgrade-insecure-requests/);
+  assert.equal(page.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
   assert.match(await page.text(), /<script>self\.__next_f/);
 
   const missingAsset = await fetch(`${baseUrl}/missing-script.js`);

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation'
 import { useTheme } from '@/contexts/theme-context'
 import { useAuth } from '@/contexts/auth-context'
 import { Icon } from '@/components/ui/icon'
+import { BrandMark } from '@/components/brand-mark'
 
 export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -143,15 +144,20 @@ function SidebarContent({
   return (
     <>
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-        {!isCollapsed && (
-          <Link href="/" className="flex items-center space-x-2">
-            <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
-              <span className="text-white font-semibold text-xs">GP</span>
-            </div>
-            <span className="text-base font-semibold text-gray-800 dark:text-gray-200">{appName}</span>
-          </Link>
-        )}
+      <div className={`flex items-center border-b border-gray-200 dark:border-gray-700 ${isCollapsed ? 'justify-center px-2 py-3' : 'px-4 py-3'}`}>
+        <Link
+          href="/"
+          aria-label={`${appName} home`}
+          title={isCollapsed ? appName : undefined}
+          className="flex min-w-0 items-center gap-2.5"
+        >
+          <BrandMark className="h-9 w-9 shrink-0 drop-shadow-sm" />
+          {!isCollapsed && (
+            <span className="truncate text-base font-semibold tracking-tight text-gray-900 dark:text-gray-100">
+              {appName}
+            </span>
+          )}
+        </Link>
       </div>
 
       {/* Navigation */}

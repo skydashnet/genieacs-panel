@@ -6,8 +6,13 @@ import { ToastProvider } from '@/components/ui/toast'
 import { LoadingProvider, RouteChangeLoader } from '@/components/ui/loading'
 
 export const metadata = {
-  title: 'GenieACS Panel - Network Management',
-  description: 'Modern network device management panel for GenieACS',
+  title: 'SkyGenPanel - GenieACS Network Management',
+  description: 'Network device management panel for GenieACS',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 }
 
 export default function RootLayout({

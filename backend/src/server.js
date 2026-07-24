@@ -34,6 +34,9 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5890')
   .filter(Boolean);
 
 app.use(helmet({
+  referrerPolicy: {
+    policy: 'strict-origin-when-cross-origin'
+  },
   contentSecurityPolicy: {
     directives: {
       // Next.js static exports embed hydration/redirect state in inline scripts.
@@ -46,8 +49,9 @@ app.use(helmet({
         "'self'",
         'data:',
         'blob:',
-        'https://*.tile.openstreetmap.org',
-        'https://*.basemaps.cartocdn.com'
+        'https://tile.openstreetmap.org',
+        'https://*.basemaps.cartocdn.com',
+        'https://mt1.google.com'
       ]
     }
   }
