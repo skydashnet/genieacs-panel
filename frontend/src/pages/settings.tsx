@@ -76,12 +76,12 @@ export default function Settings() {
     setDbTesting(true)
     try {
       const res = await databaseAPI.test(dbForm)
-      setNotification({ success: res.success, message: res.message || (res.success ? 'Connection successful' : 'Connection failed') })
+      const message = res.message || (res.success ? 'Connection successful' : 'Connection failed')
+      toast[res.success ? 'success' : 'error'](message)
     } catch (e: any) {
-      setNotification({ success: false, message: e?.message || 'Test failed' })
+      toast.error(e?.message || 'Test failed')
     } finally {
       setDbTesting(false)
-      setTimeout(() => setNotification(null), 4000)
     }
   }
 
@@ -91,13 +91,13 @@ export default function Settings() {
     setDbSwitching(true)
     try {
       const res = await databaseAPI.switch(dbForm)
-      setNotification({ success: res.success, message: res.message || (res.success ? 'Database switched' : 'Switch failed') })
+      const message = res.message || (res.success ? 'Database switched' : 'Switch failed')
+      toast[res.success ? 'success' : 'error'](message)
       if (res.success && res.data) setActiveDb(res.data as any)
     } catch (e: any) {
-      setNotification({ success: false, message: e?.message || 'Switch failed' })
+      toast.error(e?.message || 'Switch failed')
     } finally {
       setDbSwitching(false)
-      setTimeout(() => setNotification(null), 6000)
     }
   }
 
@@ -126,7 +126,6 @@ export default function Settings() {
     }
   }
 
-  const [notification, setNotification] = useState<{success: boolean, message: string} | null>(null)
   const toast = useToast()
   const loadingCtl = useLoading()
 
@@ -178,11 +177,7 @@ export default function Settings() {
           break
         }
       }
-      setNotification({
-        success: ok,
-        message: ok ? 'Settings saved successfully!' : 'Failed to save some settings'
-      })
-      toast[ok ? 'success' : 'error'](ok ? 'Settings saved' : 'Some settings failed to save')
+      toast[ok ? 'success' : 'error'](ok ? 'Settings saved successfully' : 'Some settings failed to save')
       if (ok) {
         try {
           localStorage.setItem('appName', settings.appName)
@@ -192,7 +187,6 @@ export default function Settings() {
     } finally {
       setLoading(false)
       loadingCtl.hide()
-      setTimeout(() => setNotification(null), 3000)
     }
   }
 
@@ -290,13 +284,11 @@ export default function Settings() {
     }
     if (res.success) {
       const msg = editingVendor ? 'Vendor updated' : 'Vendor created'
-      setNotification({ success: true, message: msg })
       toast.success(msg)
       await fetchVendors()
       resetVendorForm()
     } else {
       const msg = res.message || 'Operation failed'
-      setNotification({ success: false, message: msg })
       toast.error(msg)
     }
   }
@@ -307,11 +299,9 @@ export default function Settings() {
     const res = await vendorsAPI.delete(id)
     if (res.success) {
       setVendorList(prev => prev.filter(v => v.id !== id))
-      setNotification({ success: true, message: 'Vendor deleted' })
       toast.success('Vendor deleted')
     } else {
       const msg = res.message || 'Failed to delete vendor'
-      setNotification({ success: false, message: msg })
       toast.error(msg)
     }
   }
@@ -361,13 +351,11 @@ export default function Settings() {
     }
     if (res.success) {
       const msg = editingConfig ? 'WiFi security config updated' : 'WiFi security config created'
-      setNotification({ success: true, message: msg })
       toast.success(msg)
       await fetchWifiConfigs()
       resetConfigForm()
     } else {
       const msg = res.message || 'Operation failed'
-      setNotification({ success: false, message: msg })
       toast.error(msg)
     }
   }
@@ -378,11 +366,9 @@ export default function Settings() {
     const res = await vendorsAPI.deleteWifiSecurityConfig(id)
     if (res.success) {
       setWifiConfigs(prev => prev.filter(c => c.id !== id))
-      setNotification({ success: true, message: 'WiFi security config deleted' })
       toast.success('WiFi security config deleted')
     } else {
       const msg = res.message || 'Failed to delete config'
-      setNotification({ success: false, message: msg })
       toast.error(msg)
     }
   }
@@ -1152,20 +1138,6 @@ export default function Settings() {
             <p className="text-xs text-gray-400 mt-4">
               After switching, restart the service (skygenpanel restart) for the change to take effect.
             </p>
-          </div>
-        )}
-
-        {/* Notification */}
-        {notification && (
-          <div className={`fixed top-4 right-4 z-50 p-4 rounded-md shadow-lg transition-all duration-300 ${
-            notification.success
-              ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800'
-              : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
-          }`}>
-            <div className="flex items-center">
-              <Icon name={notification.success ? 'check' : 'x'} size={18} className="mr-2" />
-              <span className="font-medium">{notification.message}</span>
-            </div>
           </div>
         )}
 

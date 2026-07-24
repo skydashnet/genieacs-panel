@@ -118,6 +118,17 @@ test('deployment exposes the isolated customer portal and generates independent 
   assert.match(dockerfile, /EXPOSE 5890 5891/);
 });
 
+test('global toast system owns settings notifications and suppresses duplicate spam', () => {
+  const settings = fs.readFileSync(path.join(repoDir, 'frontend', 'src', 'pages', 'settings.tsx'), 'utf8');
+  const toast = fs.readFileSync(path.join(repoDir, 'frontend', 'src', 'components', 'ui', 'toast.tsx'), 'utf8');
+  assert.doesNotMatch(settings, /setNotification|\{notification &&/);
+  assert.match(toast, /MAX_VISIBLE_TOASTS = 4/);
+  assert.match(toast, /const duplicate = toastsRef\.current\.find/);
+  assert.match(toast, /toast\.message === opts\.message/);
+  assert.match(toast, /pointer-events-none fixed/);
+  assert.match(toast, /aria-atomic="true"/);
+});
+
 test('release metadata stays synchronized with every package manifest and lockfile', () => {
   const release = JSON.parse(fs.readFileSync(
     path.join(repoDir, 'frontend', 'src', 'generated', 'release.json'),

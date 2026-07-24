@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { Icon } from './icon'
 
 type ToastType = 'success' | 'error' | 'info' | 'warning'
+const MAX_VISIBLE_TOASTS = 4
 
 export interface ToastOptions {
   id?: string
@@ -55,10 +56,13 @@ const typeStyles: Record<ToastType, { base: string; icon: string }> = {
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
+  const toastsRef = useRef<ToastItem[]>([])
   const timersRef = useRef<Record<string, any>>({})
 
   const dismiss = useCallback((id: string) => {
-    setToasts(prev => prev.filter(t => t.id !== id))
+    const next = toastsRef.current.filter(t => t.id !== id)
+    toastsRef.current = next
+    setToasts(next)
     if (timersRef.current[id]) {
       clearTimeout(timersRef.current[id])
       delete timersRef.current[id]
@@ -66,17 +70,50 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const show = useCallback((opts: ToastOptions) => {
+    const type = opts.type ?? 'info'
+    const title = opts.title ?? ''
+    const durationMs = opts.durationMs ?? 3500
+    const duplicate = toastsRef.current.find((toast) => (
+      toast.type === type &&
+      toast.title === title &&
+      toast.message === opts.message
+    ))
+    if (duplicate) {
+      if (timersRef.current[duplicate.id]) clearTimeout(timersRef.current[duplicate.id])
+      if (durationMs > 0) {
+        timersRef.current[duplicate.id] = setTimeout(() => dismiss(duplicate.id), durationMs)
+      } else {
+        delete timersRef.current[duplicate.id]
+      }
+      return duplicate.id
+    }
+
     const id = opts.id || genId()
     const item: ToastItem = {
       id,
-      title: opts.title ?? '',
+      title,
       message: opts.message,
-      type: opts.type ?? 'info',
-      durationMs: opts.durationMs ?? 3500
+      type,
+      durationMs
     }
-    setToasts(prev => [...prev, item])
+    const existingById = toastsRef.current.findIndex((toast) => toast.id === id)
+    let next = existingById >= 0
+      ? toastsRef.current.map((toast, index) => index === existingById ? item : toast)
+      : [...toastsRef.current, item]
+
+    if (next.length > MAX_VISIBLE_TOASTS) {
+      const evicted = next.slice(0, next.length - MAX_VISIBLE_TOASTS)
+      evicted.forEach((toast) => {
+        if (timersRef.current[toast.id]) clearTimeout(timersRef.current[toast.id])
+        delete timersRef.current[toast.id]
+      })
+      next = next.slice(-MAX_VISIBLE_TOASTS)
+    }
+    toastsRef.current = next
+    setToasts(next)
 
     if (item.durationMs > 0) {
+      if (timersRef.current[id]) clearTimeout(timersRef.current[id])
       timersRef.current[id] = setTimeout(() => dismiss(id), item.durationMs)
     }
 
@@ -102,6 +139,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const clearAll = useCallback(() => {
     Object.values(timersRef.current).forEach(t => clearTimeout(t))
     timersRef.current = {}
+    toastsRef.current = []
     setToasts([])
   }, [])
 
@@ -109,6 +147,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     return () => {
       Object.values(timersRef.current).forEach(t => clearTimeout(t))
       timersRef.current = {}
+      toastsRef.current = []
     }
   }, [])
 
@@ -120,13 +159,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {/* Toast Container */ }
-      <div className="fixed left-4 right-4 top-20 z-[2200] flex flex-col gap-2 sm:left-auto sm:right-5 sm:top-5 sm:w-[24rem]">
+      <div className="pointer-events-none fixed left-4 right-4 top-20 z-[2200] flex flex-col gap-2 sm:left-auto sm:right-5 sm:top-5 sm:w-[24rem]">
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`flex min-h-14 items-start gap-3 rounded-md border px-4 py-3 shadow-lg animate-in fade-in slide-in-from-right-4 ${typeStyles[t.type].base}`}
+            className={`pointer-events-auto flex min-h-14 items-start gap-3 rounded-md border px-4 py-3 shadow-lg animate-in fade-in slide-in-from-right-4 ${typeStyles[t.type].base}`}
             role={t.type === 'error' ? 'alert' : 'status'}
             aria-live={t.type === 'error' ? 'assertive' : 'polite'}
+            aria-atomic="true"
           >
             <Icon name={typeStyles[t.type].icon} size={19} className="mt-0.5 shrink-0" />
             <div className="flex-1">
