@@ -60,6 +60,33 @@ test('installer rejects path ownership escapes and a root service user', () => {
   }
 });
 
+test('installer detects a regular user before attempting system changes', () => {
+  if (typeof process.getuid !== 'function' || process.getuid() === 0) return;
+
+  const result = spawnSync('bash', [path.join(repoDir, 'deploy', 'install.sh')], {
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      SKYGP_DIR: '/opt/skygenpanel-test',
+      SKYGP_DATA: '/var/lib/skygenpanel-test'
+    }
+  });
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}\n${result.stderr}`, /Root privileges are required/);
+  assert.match(`${result.stdout}\n${result.stderr}`, /\| sudo bash/);
+});
+
+test('installer bootstraps supported package managers and verifies official Node archives', () => {
+  const installer = fs.readFileSync(path.join(repoDir, 'deploy', 'install.sh'), 'utf8');
+  for (const packageManager of ['apt-get', 'dnf', 'yum', 'pacman', 'zypper']) {
+    assert.match(installer, new RegExp(`command -v ${packageManager}`));
+  }
+  assert.match(installer, /latest-v\$\{NODE_RELEASE_LINE\}\.x/);
+  assert.match(installer, /sha256sum --check --strict/);
+  assert.match(installer, /node_runtime_ready/);
+  assert.doesNotMatch(installer, /Node\.js not found\. Install Node\.js/);
+});
+
 test('database automation scripts load .env and reset passwords without sourcing it as shell', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skygenpanel-scripts-'));
   const dataDir = path.join(tempDir, 'data');

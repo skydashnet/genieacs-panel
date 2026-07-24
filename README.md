@@ -12,10 +12,16 @@ Panel manajemen perangkat jaringan di atas GenieACS. Berjalan sebagai satu layan
 
 ## Instalasi
 
-Server Linux dengan `systemd` (root, Node.js 20+, git):
+Server Linux dengan `systemd`. Installer mendukung Debian/Ubuntu, Fedora/RHEL/Rocky/Alma,
+Arch Linux, dan openSUSE. Git, tool build, serta Node.js 22 akan dipasang otomatis bila
+belum tersedia. Node.js 20 atau lebih baru yang sudah ada akan digunakan.
 
 ```bash
+# Dari user biasa:
 curl -fsSL https://raw.githubusercontent.com/skydashnet/genieacs-panel/main/deploy/install.sh | sudo bash
+
+# Jika sudah login sebagai root, tanpa sudo:
+curl -fsSL https://raw.githubusercontent.com/skydashnet/genieacs-panel/main/deploy/install.sh | bash
 ```
 
 Buka `http://localhost:5890` untuk setup admin. Panel default terikat ke `127.0.0.1`; jalankan `skygenpanel expose` bila perlu diakses dari jaringan.
