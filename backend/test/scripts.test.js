@@ -123,6 +123,17 @@ test('release metadata stays synchronized with every package manifest and lockfi
   assert.ok(Number.isInteger(release.build) && release.build > 0);
 });
 
+test('desktop sidebar remains viewport-sticky without a clipping scroll ancestor', () => {
+  const appSource = fs.readFileSync(path.join(repoDir, 'frontend', 'src', 'app.tsx'), 'utf8');
+  const sidebarSource = fs.readFileSync(path.join(repoDir, 'frontend', 'src', 'components', 'sidebar.tsx'), 'utf8');
+
+  assert.match(appSource, /className="flex min-h-screen"/);
+  assert.doesNotMatch(appSource, /className="flex min-h-screen overflow-[^"]+"/);
+  assert.match(sidebarSource, /sticky top-0[^`]*h-screen[^`]*overflow-visible/);
+  assert.doesNotMatch(sidebarSource, /sticky top-0[^`]*overflow-hidden/);
+  assert.match(sidebarSource, /absolute -right-3/);
+});
+
 test('database automation scripts load .env and reset passwords without sourcing it as shell', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skygenpanel-scripts-'));
   const dataDir = path.join(tempDir, 'data');

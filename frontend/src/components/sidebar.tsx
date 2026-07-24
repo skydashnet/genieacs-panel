@@ -65,7 +65,7 @@ export default function Sidebar() {
       )}
 
       <aside
-        className={`sticky top-0 hidden h-screen max-h-screen shrink-0 self-start flex-col overflow-hidden bg-[#18211d] text-[#f4f3ed] transition-[width] duration-200 md:flex ${
+        className={`sticky top-0 z-[1000] hidden h-screen max-h-screen shrink-0 self-start flex-col overflow-visible bg-[#18211d] text-[#f4f3ed] transition-[width] duration-200 md:flex ${
           isCollapsed ? 'w-[4.75rem]' : 'w-[16.5rem]'
         }`}
       >
