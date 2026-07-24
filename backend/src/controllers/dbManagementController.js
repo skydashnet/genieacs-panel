@@ -25,7 +25,7 @@ const DbManagementController = {
       const active = await dbManagement.switchDatabase(config, { migrateData: Boolean(migrateData) });
       res.json({
         success: true,
-        message: 'Database switched successfully. Restart the service to apply.',
+        message: 'Database switched successfully and is now active.',
         data: active
       });
     } catch (error) {

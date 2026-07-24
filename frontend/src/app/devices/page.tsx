@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { devicesAPI, vendorsAPI } from '@/lib/api'
 import { useLoading } from '@/components/ui/loading'
 import { useToast } from '@/components/ui/toast'
 import { Icon } from '@/components/ui/icon'
+import { formatDate } from '@/lib/utils'
 import type { Device, Vendor } from '@/types'
 
 interface ProcessedDevice extends Device {
@@ -61,11 +62,11 @@ export default function DevicesPage() {
     };
   }
   
-  const findBrand = (manufacturer: string, productClass: string, vendors: Vendor[]) => {
+  const findBrand = useCallback((manufacturer: string, productClass: string, vendors: Vendor[]) => {
     manufacturer = manufacturer?.toLowerCase() || ''
     productClass = productClass?.toLowerCase() || ''
     
-    const sortedVendors = vendors.sort((a, b) => (b.priority || 0) - (a.priority || 0))
+    const sortedVendors = [...vendors].sort((a, b) => (b.priority || 0) - (a.priority || 0))
     
     for (const vendor of sortedVendors) {
       const manPatterns = vendor.manufacturer_patterns || []
@@ -80,13 +81,15 @@ export default function DevicesPage() {
     }
     
     return manufacturer || 'Unknown'
-  }
+  }, [])
   
-  const processDeviceData = (devices: Device[], vendors: Vendor[]) => {
+  const processDeviceData = useCallback((devices: Device[], vendors: Vendor[]) => {
     const now = new Date()
     return devices.map((item: Device) => {
       const lastInform = item._lastInform ? new Date(item._lastInform) : null
-      const isOnline = lastInform ? (now.getTime() - lastInform.getTime()) < 10 * 60 * 1000 : false
+      const lastInformMs = lastInform?.getTime()
+      const ageMs = lastInformMs === undefined ? Number.NaN : now.getTime() - lastInformMs
+      const isOnline = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60 * 1000
       
       const manufacturer = item.manufacturer || ''
       const productClass = item.productclass || 'Unknown'
@@ -98,7 +101,7 @@ export default function DevicesPage() {
         brand: brand,
       }
     })
-  }
+  }, [findBrand])
 
   const handleSummon = async (e: React.MouseEvent, deviceId: string) => {
     e.preventDefault();
@@ -109,19 +112,6 @@ export default function DevicesPage() {
       const res = await devicesAPI.summonDevice(deviceId);
       if (res.success) {
         toast.success(res.message || 'Summon command sent!');
-        setDevices(prevDevices => 
-          prevDevices.map(device => {
-            if (device._id === deviceId) {
-              return {
-                ...device,
-                isOnline: true,
-                _lastInform: new Date().toISOString()
-              };
-            }
-            return device;
-          })
-        );
-        
       } else {
         toast.error(res.message || 'Failed to send summon');
       }
@@ -155,7 +145,7 @@ export default function DevicesPage() {
         } else {
           toast.error(devicesRes.message || vendorsRes.message || 'Failed to load data')
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           toast.error('Network error loading devices')
         }
@@ -169,7 +159,7 @@ export default function DevicesPage() {
     fetchData()
     
     return () => { cancelled = true }
-  }, [toast])
+  }, [processDeviceData, toast])
 
   const filteredDevices = useMemo(() => {
     return devices.filter(device => {
@@ -179,10 +169,10 @@ export default function DevicesPage() {
                           (filterStatus === 'offline' && !device.isOnline)
 
       const searchMatch = !search ||
-                          device._id.toLowerCase().includes(search) ||
-                          device.SerialNumber.toLowerCase().includes(search) ||
+                          (device._id || '').toLowerCase().includes(search) ||
+                          (device.SerialNumber || '').toLowerCase().includes(search) ||
                           device.brand.toLowerCase().includes(search) ||
-                          device.productclass.toLowerCase().includes(search) ||
+                          (device.productclass || '').toLowerCase().includes(search) ||
                           device.pppoe?.toLowerCase().includes(search)
                           
       return statusMatch && searchMatch
@@ -278,10 +268,10 @@ export default function DevicesPage() {
                         <td>{device.productclass}</td>
                         <td>{device.pppoe || 'N/A'}</td>
                         <td className={`font-semibold ${signalInfo.color}`}>
-                          {device.rxpower ? `${device.rxpower} dBm` : 'N/A'}
+                          {device.rxpower !== null && device.rxpower !== undefined ? `${device.rxpower} dBm` : 'N/A'}
                         </td>
                         <td className="text-xs text-gray-500 dark:text-gray-400">
-                          {device._lastInform ? new Date(device._lastInform).toLocaleString('id-ID') : 'N/A'}
+                          {formatDate(device._lastInform)}
                         </td>
                         <td>
                           <div className="flex items-center gap-2">

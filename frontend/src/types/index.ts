@@ -16,8 +16,8 @@ export interface LoginResponse {
 // Device Types
 export interface Device {
   _id: string
-  SerialNumber: string
-  productclass: string
+  SerialNumber: string | null
+  productclass: string | null
   pppoe?: string
   wanbridge?: string
   rxpower?: number | null
@@ -32,8 +32,8 @@ export interface Device {
   ssid7?: string | null
   ssid8?: string | null
   _lastInform?: string
-  manufacturer?: string
-  _registered?: string
+  manufacturer?: string | null
+  _registered?: string | null
 }
 
 export interface DeviceDetail {

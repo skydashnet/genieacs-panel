@@ -15,6 +15,21 @@ die()  { printf '\033[1;31m[skygp]\033[0m %s\n' "$*" >&2; exit 1; }
 
 need_root() { [ "$(id -u)" -eq 0 ] || die "This command needs root (use sudo)."; }
 
+validate_install_dir() {
+  local resolved
+  [[ "$INSTALL_DIR" = /* ]] || die "Install directory must be an absolute path: $INSTALL_DIR"
+  resolved="$(realpath -m -- "$INSTALL_DIR")" || die "Unable to resolve install directory: $INSTALL_DIR"
+  [ "$resolved" = "$INSTALL_DIR" ] || die "Install directory must be normalized and contain no symbolic-link components: $INSTALL_DIR"
+  case "$INSTALL_DIR" in
+    /|/bin|/boot|/dev|/etc|/home|/lib|/lib64|/opt|/proc|/root|/run|/sbin|/srv|/sys|/tmp|/usr|/var|/var/lib)
+      die "Refusing unsafe install directory: $INSTALL_DIR"
+      ;;
+  esac
+  [[ "$INSTALL_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || die "Install directory contains unsupported characters: $INSTALL_DIR"
+  [ ! -L "$INSTALL_DIR" ] || die "Install directory must not be a symbolic link."
+  [ ! -L "$ENV_FILE" ] || die "Refusing symbolic-link env file: $ENV_FILE"
+}
+
 app_port() {
   local p
   p="$(grep -E '^APP_PORT=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2)"
@@ -34,15 +49,17 @@ set_env() {
 
 cmd_update() {
   need_root
+  validate_install_dir
   [ -d "$INSTALL_DIR/.git" ] || die "Not a git checkout: $INSTALL_DIR"
   log "Fetching latest ($REPO_BRANCH)"
   git -C "$INSTALL_DIR" fetch --depth 1 origin "$REPO_BRANCH"
   git -C "$INSTALL_DIR" reset --hard "origin/$REPO_BRANCH"
   log "Updating backend dependencies"
-  ( cd "$INSTALL_DIR/backend" && { npm ci --omit=dev 2>/dev/null || npm install --omit=dev; } )
+  ( cd "$INSTALL_DIR/backend" && npm ci --omit=dev )
   log "Rebuilding frontend"
-  ( cd "$INSTALL_DIR/frontend" && { npm ci 2>/dev/null || npm install; } && npm run build )
-  chown -R "$(stat -c '%U' "$ENV_FILE")":"$(stat -c '%G' "$ENV_FILE")" "$INSTALL_DIR" 2>/dev/null || true
+  ( cd "$INSTALL_DIR/frontend" && npm ci --include=dev && npm run build )
+  chown -R root:root "$INSTALL_DIR"
+  chmod 600 "$ENV_FILE"
   log "Restarting service"
   systemctl restart "$SERVICE_NAME"
   log "Update complete."
@@ -50,9 +67,9 @@ cmd_update() {
 
 cmd_expose() {
   need_root
+  validate_install_dir
   set_env APP_HOST "0.0.0.0"
   local port; port="$(app_port)"
-  set_env CORS_ORIGINS "http://localhost:${port}"
   log "Panel will bind to 0.0.0.0:${port} (reachable from the network)."
   warn "Anyone on your network can now reach the panel. Ensure a strong admin password and a firewall."
   systemctl restart "$SERVICE_NAME"
@@ -61,6 +78,7 @@ cmd_expose() {
 
 cmd_unexpose() {
   need_root
+  validate_install_dir
   set_env APP_HOST "127.0.0.1"
   log "Panel restricted to localhost (127.0.0.1)."
   systemctl restart "$SERVICE_NAME"
@@ -71,13 +89,23 @@ cmd_restart() { need_root; systemctl restart "$SERVICE_NAME"; log "Restarted."; 
 cmd_start()   { need_root; systemctl start "$SERVICE_NAME"; log "Started."; }
 cmd_stop()    { need_root; systemctl stop "$SERVICE_NAME"; log "Stopped."; }
 cmd_status()  { systemctl status "$SERVICE_NAME" --no-pager; }
-cmd_logs()    { journalctl -u "$SERVICE_NAME" -n "${1:-100}" -f; }
+cmd_logs() {
+  local lines="${1:-100}"
+  [[ "$lines" =~ ^[0-9]+$ ]] || die "Log line count must be a positive integer."
+  journalctl -u "$SERVICE_NAME" -n "$lines" -f
+}
 
 cmd_reset_password() {
   need_root
+  validate_install_dir
   local user="${1:-}" pass="${2:-}"
-  [ -n "$user" ] && [ -n "$pass" ] || die "Usage: skygenpanel reset-password <username> <newPassword>"
-  ( cd "$INSTALL_DIR/backend" && set -a && . "$ENV_FILE" && set +a && node scripts/reset-password.js "$user" "$pass" )
+  [ -n "$user" ] || die "Usage: skygenpanel reset-password <username> [newPassword]"
+  if [ -z "$pass" ]; then
+    read -r -s -p "New password: " pass
+    printf '\n'
+  fi
+  [ -n "$pass" ] || die "Password cannot be empty."
+  ( cd "$INSTALL_DIR/backend" && RESET_PASSWORD="$pass" node scripts/reset-password.js "$user" )
 }
 
 usage() {
@@ -93,7 +121,7 @@ Commands:
   restart | start | stop      Control the systemd service
   status                      Show service status
   logs [N]                    Follow the last N log lines (default 100)
-  reset-password <u> <p>      Reset a panel user's password
+  reset-password <u> [p]      Reset password (prompts securely when omitted)
   help                        Show this help
 EOF
 }

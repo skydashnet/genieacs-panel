@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTheme } from '@/contexts/theme-context'
 import { mappingAPI, mapSettingsAPI } from '@/lib/api'
 import { useLoading } from '@/components/ui/loading'
 import { Icon } from '@/components/ui/icon'
+import { useToast } from '@/components/ui/toast'
 
 interface MapNode {
   id: number
@@ -20,6 +21,54 @@ interface MapNode {
   status: 'online' | 'offline' | 'warning'
 }
 
+function escapeHtml(value: unknown) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;')
+}
+
+function getTileUrlAndAttrib(dark: boolean) {
+  if (dark) {
+    return {
+      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }
+  }
+  return {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors'
+  }
+}
+
+function getNodeSvg(type: string) {
+  const paths: Record<string, string> = {
+    server: '<rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><line x1="7" y1="7" x2="7" y2="7"/><line x1="7" y1="17" x2="7" y2="17"/>',
+    building: '<path d="M6 22V4a1 1 0 011-1h10a1 1 0 011 1v18"/><line x1="10" y1="7" x2="10" y2="7"/><line x1="14" y1="7" x2="14" y2="7"/><line x1="10" y1="22" x2="10" y2="18"/><line x1="14" y1="22" x2="14" y2="18"/>',
+    box: '<path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4"/><line x1="12" y1="11" x2="12" y2="21"/>',
+    home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10"/>',
+    pin: '<path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>'
+  }
+  return paths[type] || paths.pin
+}
+
+function getStatusHex(status: string) {
+  if (status === 'online') return '#22c55e'
+  if (status === 'offline') return '#ef4444'
+  if (status === 'warning') return '#f59e0b'
+  return '#6b7280'
+}
+
+function getTypeLabel(type: string) {
+  if (type === 'server') return 'Server'
+  if (type === 'odc') return 'ODC'
+  if (type === 'odp') return 'ODP'
+  if (type === 'ont') return 'ONT'
+  return 'Unknown'
+}
+
 export default function NetworkMap() {
   const [nodes, setNodes] = useState<MapNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,8 +77,11 @@ export default function NetworkMap() {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [mapCenter, setMapCenter] = useState<[number, number]>([-6.2088, 106.8456])
   const [defaultZoom, setDefaultZoom] = useState<number>(12)
+  const [minZoom, setMinZoom] = useState<number>(5)
+  const [maxZoom, setMaxZoom] = useState<number>(18)
   const { isDarkMode } = useTheme()
-  const loadingCtl = useLoading()
+  const { show: showLoading, hide: hideLoading } = useLoading()
+  const toast = useToast()
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
@@ -37,13 +89,16 @@ export default function NetworkMap() {
   const tileLayerRef = useRef<any>(null)
   const leafletRef = useRef<any>(null)
 
-  const loadData = async (withSettings = true) => {
+  const loadData = useCallback(async (withSettings = true) => {
     try {
       setLoading(true)
-      loadingCtl.show('Loading network map...')
+      showLoading('Loading network map...')
       const requests: Promise<any>[] = [mappingAPI.getNodes()]
       if (withSettings) requests.push(mapSettingsAPI.get())
       const [nodesRes, settingsRes] = await Promise.all(requests)
+      if (!nodesRes.success) {
+        throw new Error(nodesRes.message || 'Failed to load map nodes')
+      }
 
       const nodesData = Array.isArray(nodesRes.data) ? nodesRes.data : []
       setNodes(
@@ -57,8 +112,9 @@ export default function NetworkMap() {
           capacity: n.capacity || undefined,
           splitter: n.splitter || undefined,
           pppoe: n.pppoe || undefined,
+          notes: n.notes || undefined,
           status: (n.status as any) || 'online'
-        }))
+        })).filter(n => Number.isFinite(n.latitude) && Number.isFinite(n.longitude))
       )
 
       const ms = settingsRes?.data as any
@@ -66,21 +122,26 @@ export default function NetworkMap() {
         const lat = Number(ms.center_lat ?? -6.2088)
         const lng = Number(ms.center_lng ?? 106.8456)
         const zoom = Number(ms.default_zoom ?? 12)
+        const nextMinZoom = Number(ms.max_zoom_out ?? 5)
+        const nextMaxZoom = Number(ms.max_zoom_in ?? 18)
         if (!Number.isNaN(lat) && !Number.isNaN(lng)) setMapCenter([lat, lng])
         if (!Number.isNaN(zoom)) setDefaultZoom(zoom)
+        if (!Number.isNaN(nextMinZoom)) setMinZoom(nextMinZoom)
+        if (!Number.isNaN(nextMaxZoom)) setMaxZoom(nextMaxZoom)
       }
       setLastRefresh(new Date())
     } catch (e) {
       console.error('Failed loading map data', e)
+      toast.error(e instanceof Error ? e.message : 'Failed loading map data')
     } finally {
       setLoading(false)
-      loadingCtl.hide()
+      hideLoading()
     }
-  }
+  }, [hideLoading, showLoading, toast])
 
   useEffect(() => {
     loadData()
-  }, [])
+  }, [loadData])
   useEffect(() => {
     const link = document.createElement('link')
     link.rel = 'stylesheet'
@@ -103,20 +164,7 @@ export default function NetworkMap() {
     }
   }, [])
 
-  const getTileUrlAndAttrib = (dark: boolean) => {
-    if (dark) {
-      return {
-        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-      }
-    }
-    return {
-      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      attribution: '&copy; OpenStreetMap contributors'
-    }
-  }
-
-  const updateTileLayer = () => {
+  const updateTileLayer = useCallback(() => {
     const L: any = leafletRef.current
     const map: any = mapRef.current
     if (!L || !map) return
@@ -127,9 +175,9 @@ export default function NetworkMap() {
     const { url, attribution } = getTileUrlAndAttrib(isDarkMode)
     tileLayerRef.current = L.tileLayer(url, { attribution })
     tileLayerRef.current.addTo(map)
-  }
+  }, [isDarkMode])
 
-  const updateMarkers = () => {
+  const updateMarkers = useCallback(() => {
     const L: any = leafletRef.current
     const map: any = mapRef.current
     if (!L || !map) return
@@ -154,7 +202,7 @@ export default function NetworkMap() {
       const marker = L.marker([n.latitude, n.longitude], { icon })
       marker.addTo(group)
       marker.bindTooltip(
-        `<div><strong>${n.name}</strong><br/>${getTypeLabel(n.type)} · ${n.status}</div>`,
+        `<div><strong>${escapeHtml(n.name)}</strong><br/>${escapeHtml(getTypeLabel(n.type))} · ${escapeHtml(n.status)}</div>`,
         { direction: 'top', sticky: true, opacity: isDarkMode ? 0.95 : 0.9 }
       )
       marker.on('click', () => setSelectedNode(n))
@@ -164,11 +212,11 @@ export default function NetworkMap() {
     if (nodes.length > 0) {
       map.fitBounds(bounds.pad(0.2))
     }
-  }
+  }, [isDarkMode, nodes])
 
   // Initialize Leaflet map when switching to Map view
   useEffect(() => {
-    if (mapView !== 'map') return
+    if (mapView !== 'map' || loading) return
     let cancelled = false
     ;(async () => {
       if (!leafletRef.current) {
@@ -185,12 +233,19 @@ export default function NetworkMap() {
         const map = L.map(mapContainerRef.current, {
           center,
           zoom: defaultZoom,
+          minZoom,
+          maxZoom,
         })
         mapRef.current = map
         updateTileLayer()
         markersLayerRef.current = L.layerGroup().addTo(map)
       }
 
+      mapRef.current.setMinZoom(minZoom)
+      mapRef.current.setMaxZoom(maxZoom)
+      if (nodes.length === 0) {
+        mapRef.current.setView(mapCenter, defaultZoom)
+      }
       updateMarkers()
       // ensure proper size after render
       setTimeout(() => {
@@ -200,21 +255,21 @@ export default function NetworkMap() {
     return () => {
       cancelled = true
     }
-  }, [mapView])
+  }, [mapView, loading, mapCenter, defaultZoom, minZoom, maxZoom, nodes.length, updateMarkers, updateTileLayer])
 
   // Update tile layer on theme change
   useEffect(() => {
     if (mapRef.current && mapView === 'map') {
       updateTileLayer()
     }
-  }, [isDarkMode, mapView])
+  }, [mapView, updateTileLayer])
 
   // Update markers when nodes change
   useEffect(() => {
     if (mapRef.current && mapView === 'map') {
       updateMarkers()
     }
-  }, [nodes, mapView])
+  }, [mapView, updateMarkers])
 
   const handleRefresh = () => {
     loadData(false)
@@ -235,30 +290,6 @@ export default function NetworkMap() {
     }
   }
 
-  const getNodeSvg = (type: string) => {
-    const paths: Record<string, string> = {
-      server: '<rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><line x1="7" y1="7" x2="7" y2="7"/><line x1="7" y1="17" x2="7" y2="17"/>',
-      building: '<path d="M6 22V4a1 1 0 011-1h10a1 1 0 011 1v18"/><line x1="10" y1="7" x2="10" y2="7"/><line x1="14" y1="7" x2="14" y2="7"/><line x1="10" y1="22" x2="10" y2="18"/><line x1="14" y1="22" x2="14" y2="18"/>',
-      box: '<path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4"/><line x1="12" y1="11" x2="12" y2="21"/>',
-      home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1V10"/>',
-      pin: '<path d="M12 21s7-6.3 7-11a7 7 0 10-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>'
-    }
-    return paths[type] || paths.pin
-  }
-
-  const getStatusHex = (status: string) => {
-    switch (status) {
-      case 'online':
-        return '#22c55e' // green-500
-      case 'offline':
-        return '#ef4444' // red-500
-      case 'warning':
-        return '#f59e0b' // amber-500
-      default:
-        return '#6b7280' // gray-500
-    }
-  }
-
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'online':
@@ -269,21 +300,6 @@ export default function NetworkMap() {
         return <span className="modern-badge-warning">Warning</span>
       default:
         return <span className="modern-badge">Unknown</span>
-    }
-  }
-
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'server':
-        return 'Server'
-      case 'odc':
-        return 'ODC'
-      case 'odp':
-        return 'ODP'
-      case 'ont':
-        return 'ONT'
-      default:
-        return 'Unknown'
     }
   }
 
@@ -499,15 +515,12 @@ export default function NetworkMap() {
                   </div>
                 )}
               </div>
-              <div className="flex justify-end space-x-2 mt-6">
+              <div className="flex justify-end mt-6">
                 <button
                   onClick={() => setSelectedNode(null)}
                   className="modern-button-secondary"
                 >
                   Close
-                </button>
-                <button className="modern-button">
-                  Edit Node
                 </button>
               </div>
             </div>

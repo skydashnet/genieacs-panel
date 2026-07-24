@@ -12,8 +12,6 @@ export default function Sidebar() {
   const [isMobile, setIsMobile] = useState(false)
   const [isMobileOpen, setIsMobileOpen] = useState(false)
   const pathname = usePathname()
-  const themeContext = useTheme()
-  const { isDarkMode = false, toggleDarkMode = () => {} } = themeContext || {}
 
   useEffect(() => {
     const checkMobile = () => {

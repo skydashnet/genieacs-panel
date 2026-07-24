@@ -28,7 +28,7 @@ class SettingsController {
 
       const value = await Setting.getByKey(key);
       
-      if (!value) {
+      if (value === null) {
         return res.status(404).json(
           createErrorResponse('Setting not found')
         );
@@ -49,7 +49,7 @@ class SettingsController {
     try {
       const { key, value } = req.body;
       
-      if (!key || !value) {
+      if (!key || value === undefined || value === null) {
         return res.status(400).json(
           createErrorResponse('Key and value are required')
         );
@@ -73,7 +73,7 @@ class SettingsController {
       const { key } = req.params;
       const { value } = req.body;
       
-      if (!key || !value) {
+      if (!key || value === undefined || value === null) {
         return res.status(400).json(
           createErrorResponse('Key and value are required')
         );
@@ -137,16 +137,31 @@ class SettingsController {
         );
       }
       
-      let testUrl = url.trim();
-      
-      if (testUrl.endsWith('/')) {
-        testUrl = testUrl.slice(0, -1);
-      }
-      if (!testUrl.endsWith('/devices')) {
-        testUrl = `${testUrl}/devices`;
+      let testUrl;
+      try {
+        testUrl = new URL(String(url).trim());
+      } catch {
+        return res.status(400).json(
+          createErrorResponse('A valid HTTP or HTTPS URL is required')
+        );
       }
 
-      testUrl = `${testUrl}?limit=1`;
+      if (!['http:', 'https:'].includes(testUrl.protocol)) {
+        return res.status(400).json(
+          createErrorResponse('Only HTTP and HTTPS URLs are supported')
+        );
+      }
+
+      if (testUrl.username || testUrl.password) {
+        return res.status(400).json(
+          createErrorResponse('Credentials in the URL are not supported')
+        );
+      }
+
+      testUrl.pathname = '/devices';
+      testUrl.search = '';
+      testUrl.hash = '';
+      testUrl.searchParams.set('limit', '1');
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);

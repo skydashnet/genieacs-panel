@@ -127,7 +127,10 @@ class DeviceController {
       res.json({ success: true, data: result, message: 'WAN config update task queued.' });
     } catch (error) {
       console.error(`Error in updateWanConfig for ${id}:`, error);
-      res.status(500).json({ success: false, message: 'Failed to update WAN config', error: error.message });
+      const validationError = /^(Invalid|VLAN ID|PPP |No editable|Only PPPoE|Vendor not found)/.test(error.message);
+      res.status(validationError ? 400 : 500).json(
+        createErrorResponse('Failed to update WAN config', error.message)
+      );
     }
   }
 
@@ -144,7 +147,10 @@ class DeviceController {
       res.json({ success: true, data: result, message: result.message });
     } catch (error) {
       console.error(`Error in updateCredentials for ${id}:`, error);
-      res.status(500).json({ success: false, message: 'Failed to update credentials', error: error.message });
+      const validationError = /^(Invalid credential|Password must|VirtualParameter path)/.test(error.message);
+      res.status(validationError ? 400 : 500).json(
+        createErrorResponse('Failed to update credentials', error.message)
+      );
     }
   }
 }

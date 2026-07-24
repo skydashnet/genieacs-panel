@@ -70,7 +70,7 @@ export default function Settings() {
 
   const handleDbSwitch = async () => {
     const label = dbForm.client === 'sqlite3' ? 'SQLite (local file)' : `MySQL ${dbForm.database}@${dbForm.host}`
-    if (!confirm(`Switch database to ${label}?\n\n${dbForm.migrateData ? 'Existing data WILL be copied to the new database.' : 'New database will be seeded with defaults (no data copy).'}\n\nThe service must be restarted afterwards.`)) return
+    if (!confirm(`Switch database to ${label}?\n\n${dbForm.migrateData ? 'Existing data WILL be copied to the new database.' : 'The target database will be used without copying existing data.'}\n\nThe change takes effect immediately.`)) return
     setDbSwitching(true)
     try {
       const res = await databaseAPI.switch(dbForm)

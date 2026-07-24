@@ -5,20 +5,25 @@ export interface ApiResponse<T = any> {
   data?: T
   message?: string
   error?: string
+  code?: string
 }
 
 class ApiClient {
   private baseURL: string
   private token: string | null = null
+  private refreshToken: string | null = null
+  private refreshPromise: Promise<boolean> | null = null
 
   constructor(baseURL: string) {
     this.baseURL = baseURL
     this.token = typeof window !== 'undefined' ? localStorage.getItem('token') : null
+    this.refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null
   }
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retryAfterRefresh = true
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseURL}/api${endpoint}`
     
@@ -37,13 +42,29 @@ class ApiClient {
         headers,
       })
 
-      const data = await response.json()
+      const contentType = response.headers.get('content-type') || ''
+      const data = contentType.includes('application/json')
+        ? await response.json()
+        : { message: await response.text() }
+
+      if (
+        response.status === 403 &&
+        data.code === 'invalid_token' &&
+        retryAfterRefresh &&
+        !['/auth/refresh', '/auth/login', '/auth/setup'].includes(endpoint)
+      ) {
+        const refreshed = await this.refreshAccessToken()
+        if (refreshed) {
+          return this.request<T>(endpoint, options, false)
+        }
+      }
 
       if (!response.ok) {
         return {
           success: false,
           message: data.message || 'Request failed',
           error: data.error || 'Unknown error',
+          code: data.code,
         }
       }
 
@@ -55,6 +76,35 @@ class ApiClient {
         error: error instanceof Error ? error.message : 'Unknown error',
       }
     }
+  }
+
+  private async refreshAccessToken(): Promise<boolean> {
+    if (!this.refreshToken) return false
+    if (this.refreshPromise) return this.refreshPromise
+
+    this.refreshPromise = (async () => {
+      try {
+        const response = await fetch(`${this.baseURL}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: this.refreshToken }),
+        })
+        const data = await response.json()
+        if (!response.ok || !data.success || !data.data?.token || !data.data?.refreshToken) {
+          this.clearTokens()
+          return false
+        }
+        this.setTokens(data.data.token, data.data.refreshToken)
+        return true
+      } catch {
+        this.clearTokens()
+        return false
+      } finally {
+        this.refreshPromise = null
+      }
+    })()
+
+    return this.refreshPromise
   }
 
   async get<T>(endpoint: string): Promise<ApiResponse<T>> {
@@ -79,17 +129,37 @@ class ApiClient {
     return this.request<T>(endpoint, { method: 'DELETE' })
   }
 
-  setToken(token: string) {
+  async requestWithBody<T>(
+    method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
+    endpoint: string,
+    data?: unknown
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method,
+      body: data === undefined ? undefined : JSON.stringify(data),
+    })
+  }
+
+  setTokens(token: string, refreshToken?: string) {
     this.token = token
+    if (refreshToken !== undefined) {
+      this.refreshToken = refreshToken
+    }
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', token)
+      if (refreshToken !== undefined) {
+        localStorage.setItem('refreshToken', refreshToken)
+      }
     }
   }
 
-  removeToken() {
+  clearTokens() {
     this.token = null
+    this.refreshToken = null
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token')
+      localStorage.removeItem('refreshToken')
+      window.dispatchEvent(new Event('auth:unauthorized'))
     }
   }
 }
@@ -129,10 +199,10 @@ export const devicesAPI = {
     apiClient.get('/devices'),
   
   getDevice: (deviceId: string) =>
-    apiClient.get(`/devices/${deviceId}`),
+    apiClient.get(`/devices/${encodeURIComponent(deviceId)}`),
   
   deleteDevice: (deviceId: string) =>
-    apiClient.delete(`/devices/${deviceId}`),
+    apiClient.delete(`/devices/${encodeURIComponent(deviceId)}`),
   
   rebootDevice: (deviceId: string) =>
     apiClient.post('/devices/reboot', { deviceId }),
@@ -141,11 +211,11 @@ export const devicesAPI = {
     apiClient.post('/devices/summon', { deviceId, parameters }),
 
   updateWanConfig: (deviceId: string, wanIndex: string, formData: any) => {
-    return apiClient.post(`/devices/${deviceId}/update-wan`, { wanIndex, formData });
+    return apiClient.post(`/devices/${encodeURIComponent(deviceId)}/update-wan`, { wanIndex, formData });
   },
 
   updateCredentials: (deviceId: string, type: 'super' | 'user', password: string) => {
-    return apiClient.post(`/devices/${deviceId}/update-credentials`, { type, password });
+    return apiClient.post(`/devices/${encodeURIComponent(deviceId)}/update-credentials`, { type, password });
   }
 }
 
@@ -256,7 +326,7 @@ export const mappingAPI = {
     apiClient.post('/mapping-data/sync', data),
   
   resetData: (password: string) =>
-    apiClient.post('/mapping-data/reset', { password }),
+    apiClient.requestWithBody('DELETE', '/mapping-data/reset', { password }),
 }
 
 // Map Settings API

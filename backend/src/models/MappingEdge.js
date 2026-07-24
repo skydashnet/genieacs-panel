@@ -57,6 +57,15 @@ class MappingEdge {
     return getDb()('mapping_edges').del();
   }
 
+  static async resetAll() {
+    const db = getDb();
+    await db.transaction(async (trx) => {
+      await trx('mapping_edges').del();
+      await trx('mapping_nodes').del();
+    });
+    return true;
+  }
+
   static async syncData(nodes, edges) {
     const db = getDb();
     await db.transaction(async (trx) => {

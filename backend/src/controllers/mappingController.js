@@ -1,5 +1,6 @@
 import MappingNode from '../models/MappingNode.js';
 import MappingEdge from '../models/MappingEdge.js';
+import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
@@ -81,7 +82,11 @@ class MappingController {
     } catch (error) {
       console.error('Create node error:', error);
       
-      if (error.message.includes('UNIQUE constraint failed')) {
+      if (
+        error.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+        error.code === 'ER_DUP_ENTRY' ||
+        error.message.includes('UNIQUE constraint failed')
+      ) {
         return res.status(409).json(
           createErrorResponse('Node ID already exists')
         );
@@ -235,13 +240,21 @@ class MappingController {
     } catch (error) {
       console.error('Create edge error:', error);
       
-      if (error.message.includes('UNIQUE constraint failed')) {
+      if (
+        error.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+        error.code === 'ER_DUP_ENTRY' ||
+        error.message.includes('UNIQUE constraint failed')
+      ) {
         return res.status(409).json(
           createErrorResponse('Edge ID already exists')
         );
       }
       
-      if (error.message.includes('FOREIGN KEY constraint failed')) {
+      if (
+        error.code === 'SQLITE_CONSTRAINT_FOREIGNKEY' ||
+        error.code === 'ER_NO_REFERENCED_ROW_2' ||
+        error.message.includes('FOREIGN KEY constraint failed')
+      ) {
         return res.status(400).json(
           createErrorResponse('Source or target node does not exist')
         );
@@ -361,25 +374,7 @@ class MappingController {
         );
       }
 
-      const authHeader = req.headers.authorization;
-      if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json(
-          createErrorResponse('Unauthorized')
-        );
-      }
-
-      const token = authHeader.split(' ')[1];
-      const { verifyToken } = await import('../middleware/auth.js');
-      const decoded = verifyToken(token);
-      
-      if (!decoded) {
-        return res.status(401).json(
-          createErrorResponse('Invalid token')
-        );
-      }
-
-      const User = await import('../models/User.js');
-      const user = await User.findById(decoded.userId);
+      const user = await User.findById(req.user.userId);
       
       if (!user || user.role !== 'admin') {
         return res.status(403).json(
@@ -395,8 +390,7 @@ class MappingController {
         );
       }
 
-      await MappingNode.deleteAll();
-      await MappingEdge.deleteAll();
+      await MappingEdge.resetAll();
       
       return res.json(
         createResponse('All mapping data has been deleted successfully')

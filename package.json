@@ -4,11 +4,18 @@
   "private": true,
   "description": "GenieACS management panel — single service (UI + API on one port).",
   "scripts": {
-    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "install:all": "cd backend && npm ci && cd ../frontend && npm ci --include=dev",
     "build": "cd frontend && npm run build",
     "start": "cd backend && node src/server.js",
     "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev"
+    "dev:frontend": "cd frontend && npm run dev",
+    "test": "cd backend && npm test",
+    "lint": "cd frontend && npm run lint",
+    "typecheck": "cd frontend && npm run typecheck",
+    "verify": "npm test && npm run lint && npm run typecheck && npm run build"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "license": "SEE LICENSE IN LICENSE"
 }

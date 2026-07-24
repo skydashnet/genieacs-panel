@@ -6,7 +6,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { testConnection } from './config/database.js';
+import { closePool, testConnection } from './config/database.js';
 import { ensureSchema } from './config/schema.js';
 import { seedDefaults } from './config/seed.js';
 
@@ -33,14 +33,45 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5890')
   .map((o) => o.trim())
   .filter(Boolean);
 
-app.use(helmet());
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      imgSrc: [
+        "'self'",
+        'data:',
+        'blob:',
+        'https://*.tile.openstreetmap.org',
+        'https://*.basemaps.cartocdn.com'
+      ]
     }
-    return callback(new Error('Not allowed by CORS'));
   }
+}));
+
+function isAllowedOrigin(req, origin) {
+  if (!origin) return true;
+  if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return true;
+
+  try {
+    return new URL(origin).host === req.get('host');
+  } catch {
+    return false;
+  }
+}
+
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (!isAllowedOrigin(req, origin)) {
+    return res.status(403).json({
+      success: false,
+      message: 'Origin is not allowed'
+    });
+  }
+  return next();
+});
+
+app.use(cors({
+  origin: true,
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
 app.use(express.json({ limit: '1mb' }));
 
@@ -64,9 +95,11 @@ app.use('/api/mapping-data', mappingRoutes);
 app.use('/api/map-settings', mapSettingsRoutes);
 app.use('/api/database', databaseRoutes);
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
+app.get('/api/health', async (req, res) => {
+  const database = await testConnection();
+  res.status(database ? 200 : 503).json({
+    status: database ? 'ok' : 'degraded',
+    database: database ? 'ok' : 'unavailable',
     timestamp: new Date().toISOString(),
     environment: APP_ENV
   });
@@ -77,9 +110,19 @@ app.use('/api', (req, res) => {
 });
 
 if (fs.existsSync(FRONTEND_DIR)) {
-  app.use(express.static(FRONTEND_DIR));
-  app.use((req, res) => {
-    res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
+  app.use(express.static(FRONTEND_DIR, {
+    maxAge: APP_ENV === 'production' ? '1h' : 0,
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}_next${path.sep}static${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    }
+  }));
+  app.use((req, res, next) => {
+    if (!['GET', 'HEAD'].includes(req.method) || path.extname(req.path)) {
+      return next();
+    }
+    return res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
   });
 } else {
   console.warn(`Frontend build not found at ${FRONTEND_DIR}; serving API only`);
@@ -87,14 +130,24 @@ if (fs.existsSync(FRONTEND_DIR)) {
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid JSON request body'
+    });
+  }
   const status = err.status || 500;
   res.status(status).json({
     success: false,
-    message: err.message || 'Internal server error'
+    message: status >= 500 && APP_ENV === 'production'
+      ? 'Internal server error'
+      : (err.message || 'Internal server error')
   });
 });
 
-const startServer = async () => {
+let server;
+
+export const startServer = async () => {
   try {
     const dbConnected = await testConnection();
 
@@ -106,10 +159,11 @@ const startServer = async () => {
     await ensureSchema();
     await seedDefaults();
 
-    app.listen(PORT, HOST, () => {
+    server = app.listen(PORT, HOST, () => {
       console.log(`Server running on ${HOST}:${PORT} (${APP_ENV})`);
       console.log(`Panel: http://localhost:${PORT}`);
     });
+    return server;
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
@@ -117,5 +171,27 @@ const startServer = async () => {
 };
 
 startServer();
+
+async function shutdown(signal) {
+  console.log(`Received ${signal}; shutting down`);
+  if (server) {
+    await new Promise((resolve) => server.close(resolve));
+  }
+  await closePool();
+  process.exit(0);
+}
+
+process.once('SIGTERM', () => {
+  shutdown('SIGTERM').catch((error) => {
+    console.error('Graceful shutdown failed:', error);
+    process.exit(1);
+  });
+});
+process.once('SIGINT', () => {
+  shutdown('SIGINT').catch((error) => {
+    console.error('Graceful shutdown failed:', error);
+    process.exit(1);
+  });
+});
 
 export default app;

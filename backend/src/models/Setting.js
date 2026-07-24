@@ -28,11 +28,11 @@ class Setting {
   }
 
   static async upsert(key, value) {
-    const exists = await this.getByKey(key);
-    if (exists !== null) {
-      return await this.update(key, value);
-    }
-    return await this.create(key, value);
+    await getDb()('settings')
+      .insert({ key, value, updated_at: new Date() })
+      .onConflict('key')
+      .merge({ value, updated_at: new Date() });
+    return true;
   }
 
   static async delete(key) {

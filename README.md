@@ -12,7 +12,7 @@ Panel manajemen perangkat jaringan di atas GenieACS. Berjalan sebagai satu layan
 
 ## Instalasi
 
-Server Linux (root, Node.js 18+, git):
+Server Linux dengan `systemd` (root, Node.js 20+, git):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/skydashnet/genieacs-panel/main/deploy/install.sh | sudo bash
@@ -28,7 +28,7 @@ Buka `http://localhost:5890` untuk setup admin. Panel default terikat ke `127.0.
 | `expose` / `unexpose` | Buka ke jaringan (`0.0.0.0`) / batasi ke localhost |
 | `restart` / `start` / `stop` / `status` | Kontrol layanan |
 | `logs [N]` | Ikuti `N` baris log terakhir (default 100) |
-| `reset-password <user> <pass>` | Reset password user |
+| `reset-password <user> [pass]` | Reset password user; tanpa argumen password akan diminta secara tersembunyi |
 
 ## Pengembangan
 
@@ -55,21 +55,25 @@ Lewat **Settings → Database** (admin): lihat konfigurasi aktif, uji koneksi My
 ## Arsitektur
 
 - Backend: Node.js + Express 5, Knex dual-dialect (SQLite via better-sqlite3, MySQL via mysql2), JWT. Menyajikan API sekaligus frontend statis dengan SPA fallback.
-- Frontend: Next.js 14 (App Router, static export), TypeScript, Tailwind CSS.
+- Frontend: Next.js 15 (App Router, static export), TypeScript, Tailwind CSS.
 
 ## Keamanan
 
 - JWT dengan refresh token, role-based access control, password hashing bcrypt.
 - Default terikat ke `127.0.0.1`; akses jaringan opt-in via `skygenpanel expose`.
-- systemd unit di-harden (`NoNewPrivileges`, `ProtectSystem=full`, `ReadWritePaths` terbatas).
+- systemd unit di-harden (`NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths` terbatas).
 
 ## Docker
 
 ```bash
 docker build -t genieacs-panel .
 docker run -p 5890:5890 -v skygp-data:/var/lib/skygenpanel \
-  -e DATA_DIR=/var/lib/skygenpanel genieacs-panel
+  -e DATA_DIR=/var/lib/skygenpanel \
+  -e JWT_SECRET="$(openssl rand -hex 48)" \
+  genieacs-panel
 ```
+
+Simpan nilai `JWT_SECRET` dan gunakan nilai yang sama setiap container dibuat ulang agar sesi pengguna tidak terputus.
 
 ## Lisensi
 

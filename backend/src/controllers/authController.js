@@ -69,13 +69,6 @@ class AuthController {
 
   static async setupAdmin(req, res) {
     try {
-      const count = await User.count();
-      if (count > 0) {
-        return res.status(409).json(
-          createErrorResponse('Setup already completed')
-        );
-      }
-
       const { username, password } = req.body;
 
       if (!username || !password) {
@@ -84,33 +77,42 @@ class AuthController {
         );
       }
 
-      if (String(username).length < 3) {
+      const normalizedUsername = String(username).trim();
+      if (normalizedUsername.length < 3 || normalizedUsername.length > 64) {
         return res.status(400).json(
-          createErrorResponse('Username must be at least 3 characters')
+          createErrorResponse('Username must be between 3 and 64 characters')
         );
       }
 
-      if (String(password).length < 8) {
+      if (String(password).length < 8 || String(password).length > 128) {
         return res.status(400).json(
-          createErrorResponse('Password must be at least 8 characters')
+          createErrorResponse('Password must be between 8 and 128 characters')
         );
       }
 
       const hashedPassword = await bcrypt.hash(password, 12);
-      const userId = await User.create({ username, password: hashedPassword, role: 'admin' });
-      const user = { id: userId, username, role: 'admin' };
+      const userId = await User.createInitialAdmin({
+        username: normalizedUsername,
+        password: hashedPassword
+      });
+      const user = { id: userId, username: normalizedUsername, role: 'admin' };
 
       const { accessToken, refreshToken } = generateTokens(user);
 
       return res.status(201).json(
         createResponse('Admin account created successfully', {
-          user: { id: userId, username, role: 'admin' },
+          user: { id: userId, username: normalizedUsername, role: 'admin' },
           token: accessToken,
           refreshToken
         })
       );
     } catch (error) {
       console.error('Setup admin error:', error);
+      if (error.code === 'SETUP_COMPLETED') {
+        return res.status(409).json(
+          createErrorResponse('Setup already completed')
+        );
+      }
       return res.status(500).json(
         createErrorResponse('Failed to create admin account', error.message)
       );
@@ -209,6 +211,12 @@ class AuthController {
           createErrorResponse('Current password and new password are required')
         );
       }
+
+      if (String(newPassword).length < 8 || String(newPassword).length > 128) {
+        return res.status(400).json(
+          createErrorResponse('New password must be between 8 and 128 characters')
+        );
+      }
       
       const user = await User.findById(userId);
       
@@ -250,6 +258,13 @@ class AuthController {
           createErrorResponse('Current username and new username are required')
         );
       }
+
+      const normalizedUsername = String(newUsername).trim();
+      if (normalizedUsername.length < 3 || normalizedUsername.length > 64) {
+        return res.status(400).json(
+          createErrorResponse('New username must be between 3 and 64 characters')
+        );
+      }
       
       const user = await User.findById(userId);
       
@@ -265,7 +280,7 @@ class AuthController {
         );
       }
       
-      const existingUser = await User.findByUsername(newUsername);
+      const existingUser = await User.findByUsername(normalizedUsername);
       
       if (existingUser) {
         return res.status(409).json(
@@ -273,7 +288,7 @@ class AuthController {
         );
       }
       
-      await User.updateUsername(userId, newUsername);
+      await User.updateUsername(userId, normalizedUsername);
       
       return res.json(
         createResponse('Username updated successfully')

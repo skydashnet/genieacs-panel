@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { devicesAPI, vendorsAPI } from '@/lib/api'
-import { useLoading } from '@/components/ui/loading'
 import { useToast } from '@/components/ui/toast'
 import type { Device, Vendor } from '@/types'
 import { PieChart } from '@/components/charts/pie-chart'
@@ -24,7 +23,6 @@ interface PieChartData {
 }
 
 export default function DashboardPage() {
-  const [devices, setDevices] = useState<ProcessedDevice[]>([])
   const [stats, setStats] = useState([
     { name: 'Total Devices', value: 0, change: 0, icon: 'server' },
     { name: 'Online', value: 0, change: 0, icon: 'check' },
@@ -35,7 +33,6 @@ export default function DashboardPage() {
   const [topProductClasses, setTopProductClasses] = useState<{name: string, count: number}[]>([])
   const [rxPieData, setRxPieData] = useState<PieChartData[]>([])
   const [showWelcomeModal, setShowWelcomeModal] = useState(false)  
-  const loadingCtl = useLoading()
   const toast = useToast()
   const { user } = useAuth()
 
@@ -47,11 +44,11 @@ export default function DashboardPage() {
     }
   }, []);
 
-  const findBrand = (manufacturer: string, productClass: string, vendors: Vendor[]) => {
+  const findBrand = useCallback((manufacturer: string, productClass: string, vendors: Vendor[]) => {
     manufacturer = manufacturer?.toLowerCase() || ''
     productClass = productClass?.toLowerCase() || ''
     
-    const sortedVendors = vendors.sort((a, b) => (b.priority || 0) - (a.priority || 0))
+    const sortedVendors = [...vendors].sort((a, b) => (b.priority || 0) - (a.priority || 0))
     
     for (const vendor of sortedVendors) {
       const manPatterns = vendor.manufacturer_patterns || []
@@ -66,9 +63,9 @@ export default function DashboardPage() {
     }
     
     return { name: manufacturer || 'Unknown' }
-  }
+  }, [])
 
-  const processDeviceData = (devices: Device[], vendors: Vendor[]) => {
+  const processDeviceData = useCallback((devices: Device[], vendors: Vendor[]) => {
     const stats = {
       total: devices.length,
       online: 0,
@@ -89,13 +86,16 @@ export default function DashboardPage() {
 
     const processed: ProcessedDevice[] = devices.map((item: Device) => {
       const lastInform = item._lastInform ? new Date(item._lastInform) : null
-      const isOnline = lastInform ? (now.getTime() - lastInform.getTime()) < 10 * 60 * 1000 : false
+      const lastInformMs = lastInform?.getTime()
+      const ageMs = lastInformMs === undefined ? Number.NaN : now.getTime() - lastInformMs
+      const isOnline = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60 * 1000
       
       if (isOnline) stats.online++
       else stats.offline++
 
       const registered = item._registered ? new Date(item._registered) : null
-      if (registered && (now.getTime() - registered.getTime()) < 24 * 60 * 60 * 1000) {
+      const registeredAge = registered ? now.getTime() - registered.getTime() : Number.NaN
+      if (Number.isFinite(registeredAge) && registeredAge >= 0 && registeredAge < 24 * 60 * 60 * 1000) {
         stats.new24h++
       }
       
@@ -103,7 +103,9 @@ export default function DashboardPage() {
       const productClass = item.productclass || 'Unknown'
       const brand = findBrand(manufacturer, productClass, vendors)
       
-      const rxPower = item.rxpower
+      const rxPower = item.rxpower === null || item.rxpower === undefined
+        ? null
+        : Number(item.rxpower)
       
       return {
         ...item,
@@ -136,7 +138,7 @@ export default function DashboardPage() {
     });
 
     return { processed, stats, topProductClasses, rxDistribution }
-  }
+  }, [findBrand])
   
   useEffect(() => {
     let cancelled = false
@@ -152,8 +154,7 @@ export default function DashboardPage() {
         if (devicesRes.success && vendorsRes.success) {
           const devices = devicesRes.data as Device[]
           const vendors = vendorsRes.data as Vendor[]
-          const { processed, stats, topProductClasses, rxDistribution } = processDeviceData(devices, vendors)
-          setDevices(processed)
+          const { stats, topProductClasses, rxDistribution } = processDeviceData(devices, vendors)
           setStats([
             { name: 'Total Devices', value: stats.total, change: 0, icon: 'server' },
             { name: 'Online', value: stats.online, change: 0, icon: 'check' },
@@ -175,7 +176,7 @@ export default function DashboardPage() {
         } else {
           toast.error(devicesRes.message || vendorsRes.message || 'Failed to load data')
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           toast.error('Network error loading dashboard')
         }
@@ -189,7 +190,7 @@ export default function DashboardPage() {
     fetchData()
     
     return () => { cancelled = true }
-  }, [toast])
+  }, [processDeviceData, toast])
 
   const barChartData = useMemo(() => {
     return topProductClasses.map(item => ({

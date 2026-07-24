@@ -154,11 +154,18 @@ class VendorController {
 
   static async createWifiSecurityMapping(req, res) {
     try {
-      const { vendor_id, raw_security_value, normalized_security, description } = req.body;
+      const vendor_id = Number(req.params.vendorId);
+      const { raw_security_value, normalized_security, description } = req.body;
       
-      if (!vendor_id || !raw_security_value || !normalized_security) {
+      if (!Number.isInteger(vendor_id) || vendor_id < 1 || !raw_security_value || !normalized_security) {
         return res.status(400).json(
           createErrorResponse('vendor_id, raw_security_value, and normalized_security are required')
+        );
+      }
+
+      if (!(await Vendor.findById(vendor_id))) {
+        return res.status(404).json(
+          createErrorResponse('Vendor not found')
         );
       }
 

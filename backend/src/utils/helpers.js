@@ -14,7 +14,7 @@ export function createErrorResponse(message, error = null) {
     success: false,
     message
   };
-  if (error) {
+  if (error && process.env.APP_ENV !== 'production') {
     response.error = error;
   }
   return response;

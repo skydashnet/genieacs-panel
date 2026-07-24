@@ -4,7 +4,7 @@ function parseRow(row) {
   if (!row) return null;
   return {
     ...row,
-    enabled: row.enabled ? 1 : 0,
+    enabled: Number(row.enabled) ? 1 : 0,
     manufacturer_patterns: JSON.parse(row.manufacturer_patterns || '[]'),
     product_patterns: JSON.parse(row.product_patterns || '[]')
   };
@@ -46,6 +46,12 @@ function serialize(vendorData) {
 
 class Vendor {
   static async getAll() {
+    const rows = await getDb()('vendors')
+      .orderBy([{ column: 'priority', order: 'desc' }, { column: 'name', order: 'asc' }]);
+    return rows.map(parseRow);
+  }
+
+  static async getEnabled() {
     const rows = await getDb()('vendors')
       .where({ enabled: true })
       .orderBy([{ column: 'priority', order: 'desc' }, { column: 'name', order: 'asc' }]);

@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect } from 'react'
-import { authAPI } from '@/lib/api'
+import { apiClient, authAPI } from '@/lib/api'
 import { useRouter, usePathname } from 'next/navigation'
 import type { User } from '@/types'
 
@@ -49,13 +49,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             setUser(res.data as User)
             setIsAuthenticated(true)
           } else {
-            localStorage.removeItem('token')
+            apiClient.clearTokens()
             setUser(null)
             setIsAuthenticated(false)
           }
         } catch (error) {
           console.error("Auth check failed:", error)
-          localStorage.removeItem('token')
+          apiClient.clearTokens()
           setUser(null)
           setIsAuthenticated(false)
         }
@@ -67,6 +67,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
     checkAuthStatus()
   }, [])
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null)
+      setIsAuthenticated(false)
+      if (!needsSetup) {
+        router.push('/login')
+      }
+    }
+    window.addEventListener('auth:unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized)
+  }, [needsSetup, router])
 
   useEffect(() => {
     if (loading) return
@@ -97,9 +109,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const res = await authAPI.login(username, password)
       if (res.success && res.data) {
-        const { token, user } = res.data as { token: string; user: User };
-        
-        localStorage.setItem('token', token)
+        const { token, refreshToken, user } = res.data as {
+          token: string
+          refreshToken: string
+          user: User
+        }
+        apiClient.setTokens(token, refreshToken)
         
         setUser(user)
         setIsAuthenticated(true)
@@ -107,6 +122,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         router.push('/dashboard')
         return true
       } else {
+        apiClient.clearTokens()
         setIsAuthenticated(false)
         setUser(null)
         return false
@@ -123,8 +139,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const res = await authAPI.setupAdmin(username, password)
       if (res.success && res.data) {
-        const { token, user } = res.data as { token: string; user: User }
-        localStorage.setItem('token', token)
+        const { token, refreshToken, user } = res.data as {
+          token: string
+          refreshToken: string
+          user: User
+        }
+        apiClient.setTokens(token, refreshToken)
         setUser(user)
         setIsAuthenticated(true)
         setNeedsSetup(false)
@@ -139,7 +159,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }
 
   const logout = () => {
-    localStorage.removeItem('token')
+    void authAPI.logout()
+    apiClient.clearTokens()
     setUser(null)
     setIsAuthenticated(false)
     router.push('/login')

@@ -25,6 +25,42 @@ class User {
     return id;
   }
 
+  static async createInitialAdmin(userData) {
+    const { username, password } = userData;
+    const db = getDb();
+
+    return db.transaction(async (trx) => {
+      const existing = await trx('users').count({ n: '*' }).first();
+      if (Number(existing?.n || 0) > 0) {
+        const error = new Error('Setup already completed');
+        error.code = 'SETUP_COMPLETED';
+        throw error;
+      }
+
+      try {
+        await trx('app_state').insert({ key: 'setup_completed', value: '1' });
+      } catch (error) {
+        if (
+          error.code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
+          error.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+          error.code === 'ER_DUP_ENTRY'
+        ) {
+          const setupError = new Error('Setup already completed');
+          setupError.code = 'SETUP_COMPLETED';
+          throw setupError;
+        }
+        throw error;
+      }
+
+      const [id] = await trx('users').insert({
+        username,
+        password,
+        role: 'admin'
+      });
+      return id;
+    });
+  }
+
   static async updatePassword(id, hashedPassword) {
     await getDb()('users')
       .where({ id })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useToast } from '@/components/ui/toast'
 import { useLoading } from '@/components/ui/loading'
@@ -26,6 +26,9 @@ interface WanConnection {
   connectionType?: string;
   natEnabled?: boolean;
   bindings?: WanBindingData | null;
+  editable?: boolean;
+  vlanConfigurable?: boolean;
+  bindingsConfigurable?: boolean;
 }
 
 interface ProcessedDeviceDetail {
@@ -100,10 +103,13 @@ function EditWanModal({
   useEffect(() => {
     if (wanData) {
       const isVlanSet = wanData.vlanId !== null && wanData.vlanId !== undefined;
-      setIsVlanConfigurable(isVlanSet);
+      setIsVlanConfigurable(Boolean(wanData.vlanConfigurable));
       
-      const newBindings = { ...wanForm.bindings };
-      Object.keys(newBindings).forEach(key => { newBindings[key as keyof typeof newBindings] = false; });
+      const newBindings: WanFormState['bindings'] = {
+        LAN1: false, LAN2: false, LAN3: false, LAN4: false,
+        SSID1: false, SSID2: false, SSID3: false, SSID4: false,
+        SSID5: false, SSID6: false, SSID7: false, SSID8: false,
+      };
       wanData.bindings?.lan.forEach(lan => {
         if (lan in newBindings) newBindings[lan as keyof typeof newBindings] = true;
       });
@@ -190,6 +196,8 @@ function EditWanModal({
             </div>
             <input
               type="number"
+              min={1}
+              max={4094}
               value={wanForm.vlanId}
               onChange={(e) => setWanForm(f => ({ ...f, vlanId: e.target.value }))}
               disabled={!wanForm.vlanEnabled}
@@ -224,6 +232,11 @@ function EditWanModal({
           {/* 5. Interface Binding */}
           <div>
             <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Interface Binding</label>
+            {!wanData.bindingsConfigurable && (
+              <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                Binding parameters are not configured for this vendor.
+              </p>
+            )}
             <div className="space-y-4">
               {/* LAN */}
               <div>
@@ -236,6 +249,7 @@ function EditWanModal({
                         name={`LAN${i}`}
                         checked={wanForm.bindings[`LAN${i}`]}
                         onChange={handleCheckboxChange}
+                        disabled={!wanData.bindingsConfigurable}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="text-sm">LAN{i}</span>
@@ -254,6 +268,7 @@ function EditWanModal({
                         name={`SSID${i}`}
                         checked={wanForm.bindings[`SSID${i}`]}
                         onChange={handleCheckboxChange}
+                        disabled={!wanData.bindingsConfigurable}
                         className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                       <span className="text-sm">SSID{i}</span>
@@ -400,6 +415,13 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
 
   const handleSaveWan = async (formData: WanFormState) => {
     if (!editingWan) return;
+    if (formData.vlanEnabled) {
+      const vlanId = Number(formData.vlanId)
+      if (!Number.isInteger(vlanId) || vlanId < 1 || vlanId > 4094) {
+        toast.error('VLAN ID must be between 1 and 4094')
+        return
+      }
+    }
     
     loadingCtl.show('Saving WAN changes...');
     try {
@@ -454,12 +476,16 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
     }
   }
 
-  const fetchDeviceDetails = async (isRefresh = false) => {
+  const fetchDeviceDetails = useCallback(async (isRefresh = false) => {
     if (!isRefresh) {
       setLoading(true);
     }
     
     try {
+      if (!deviceId) {
+        setDevice(null)
+        return
+      }
       const res = await devicesAPI.getDevice(deviceId)
       if (res.success && res.data) {
         setDevice(res.data as ProcessedDeviceDetail)
@@ -473,11 +499,11 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [deviceId, toast])
 
   useEffect(() => {
     fetchDeviceDetails(false);
-  }, [deviceId, toast]);
+  }, [fetchDeviceDetails]);
 
   const handleReboot = async () => {
     setRebooting(true)
@@ -489,7 +515,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
       } else {
         toast.error(res.message || 'Failed to send reboot command')
       }
-    } catch (error) {
+    } catch {
       toast.error('Error sending reboot command')
     } finally {
       setRebooting(false)
@@ -506,7 +532,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
       } else {
         toast.error(res.message || 'Failed to send summon')
       }
-    } catch (error) {
+    } catch {
       toast.error('Error sending summon command')
     } finally {
       loadingCtl.hide()
@@ -558,6 +584,9 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
     if (status.includes(':') || status.includes('Z')) {
        try {
          const lastSeen = new Date(status)
+         if (Number.isNaN(lastSeen.getTime())) {
+           return <span className="modern-badge">Invalid Date</span>
+         }
          const now = new Date()
          const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60))
          
@@ -568,7 +597,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
          } else {
            return <span className="modern-badge-error">Offline</span>
          }
-       } catch (e) {
+       } catch {
           return <span className="modern-badge">Invalid Date</span>
        }
     }
@@ -699,7 +728,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
               <span className={signalInfo.badgeClass}>{signalInfo.label}</span>
             </div>
             <div className={`text-2xl font-bold ${signalInfo.color}`}>
-              {vp.rxpower?.value ? `${vp.rxpower.value} dBm` : 'N/A'}
+              {vp.rxpower?.value !== null && vp.rxpower?.value !== undefined ? `${vp.rxpower.value} dBm` : 'N/A'}
             </div>
           </div>
           <div className="modern-card p-6">
@@ -708,7 +737,7 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
               <Icon name="thermometer" size={20} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {vp.temperature?.value || 'N/A'}
+              {vp.temperature?.value ?? 'N/A'}
             </div>
           </div>
           <div className="modern-card p-6">
@@ -824,12 +853,12 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
                  <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">RX Power:</span>
                     <span className={`font-medium ${signalInfo.color}`}>
-                      {vp.rxpower?.value ? `${vp.rxpower.value} dBm` : 'N/A'}
+                      {vp.rxpower?.value !== null && vp.rxpower?.value !== undefined ? `${vp.rxpower.value} dBm` : 'N/A'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Temperature:</span>
-                    <span className="font-medium">{vp.temperature?.value || 'N/A'}</span>
+                    <span className="font-medium">{vp.temperature?.value ?? 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Connection Status:</span>
@@ -954,15 +983,21 @@ export default function DeviceDetailClient({ deviceId }: { deviceId: string }) {
                       ) : null}
                     </div>
                     <div className="px-5 pb-5 pt-2">
-                      <button
-                        onClick={() => handleOpenEditModal(wan)}
-                        className="w-full modern-button-secondary flex items-center justify-center space-x-2"
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
-                        </svg>
-                        <span>Edit WAN Connection</span>
-                      </button>
+                      {wan.editable ? (
+                        <button
+                          onClick={() => handleOpenEditModal(wan)}
+                          className="w-full modern-button-secondary flex items-center justify-center space-x-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                          </svg>
+                          <span>Edit WAN Connection</span>
+                        </button>
+                      ) : (
+                        <p className="text-center text-xs text-gray-500 dark:text-gray-400">
+                          Only PPPoE connections can be edited.
+                        </p>
+                      )}
                     </div>
                   </div>
                 ))

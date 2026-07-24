@@ -3,7 +3,7 @@ import { getDb, closePool } from '../src/config/database.js';
 
 async function main() {
   const username = process.argv[2];
-  const password = process.argv[3];
+  const password = process.env.RESET_PASSWORD || process.argv[3];
 
   if (!username || !password) {
     console.error('Usage: npm run reset-password -- <username> <newPassword>');

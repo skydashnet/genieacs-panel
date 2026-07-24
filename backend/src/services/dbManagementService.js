@@ -7,6 +7,7 @@ import { seedDefaults } from '../config/seed.js';
 const COPY_TABLES = [
   'users',
   'settings',
+  'app_state',
   'vendors',
   'wifi_security_config',
   'wifi_security_mappings',
@@ -63,22 +64,53 @@ export function getActiveConfig() {
   return safe;
 }
 
-async function copyData(source, target) {
+export async function copyData(source, target) {
+  const snapshots = new Map();
   for (const table of COPY_TABLES) {
-    const hasTable = await target.schema.hasTable(table);
-    if (!hasTable) continue;
-
-    const rows = await source(table).select('*');
-    if (rows.length === 0) continue;
-
-    await target(table).del();
-    await target.batchInsert(table, rows, 100);
+    if (await source.schema.hasTable(table)) {
+      snapshots.set(table, await source(table).select('*'));
+    }
   }
+
+  await target.transaction(async (trx) => {
+    for (const table of [...COPY_TABLES].reverse()) {
+      if (await trx.schema.hasTable(table)) {
+        await trx(table).del();
+      }
+    }
+
+    for (const table of COPY_TABLES) {
+      const rows = snapshots.get(table) || [];
+      if (rows.length > 0 && await trx.schema.hasTable(table)) {
+        await trx.batchInsert(table, rows, 100);
+      }
+    }
+  });
+}
+
+function isSameConfig(left, right) {
+  const a = normalizeConfig(left);
+  const b = normalizeConfig(right);
+  if (a.client !== b.client) return false;
+  if (a.client === 'sqlite3') return true;
+  return (
+    a.host === b.host &&
+    Number(a.port) === Number(b.port) &&
+    a.user === b.user &&
+    a.password === b.password &&
+    a.database === b.database
+  );
 }
 
 export async function switchDatabase(rawConfig, { migrateData = false } = {}) {
   const config = normalizeConfig(rawConfig);
   validateExternal(config);
+
+  const currentConfig = readDbConfig();
+  if (isSameConfig(currentConfig, config)) {
+    writeDbConfig(config);
+    return getActiveConfig();
+  }
 
   await testConfig(config);
 

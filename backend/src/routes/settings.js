@@ -14,6 +14,6 @@ router.put('/:key', authenticateToken, requireRole(['admin']), SettingsControlle
 
 router.delete('/:key', authenticateToken, requireRole(['admin']), SettingsController.deleteSetting);
 
-router.post('/test-genieacs', authenticateToken, SettingsController.testGenieAcsConnection);
+router.post('/test-genieacs', authenticateToken, requireRole(['admin']), SettingsController.testGenieAcsConnection);
 
 export default router;

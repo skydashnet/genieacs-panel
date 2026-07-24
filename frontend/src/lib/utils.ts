@@ -102,7 +102,7 @@ export function copyToClipboard(text: string): Promise<boolean> {
     textArea.focus()
     textArea.select()
     return new Promise((resolve) => {
-      document.execCommand('copy') ? resolve(true) : resolve(false)
+      resolve(document.execCommand('copy'))
       textArea.remove()
     })
   }
@@ -128,7 +128,7 @@ export function formatDate(isoString: string | undefined | null): string {
     formatted = formatted.replace(/\//g, '-').replace(/\./g, ':').replace(',', '');
     
     return formatted;
-  } catch (error) {
+  } catch {
     return 'Invalid Date';
   }
 }

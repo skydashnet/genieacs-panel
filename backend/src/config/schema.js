@@ -20,6 +20,14 @@ export async function ensureSchema(db = getDb()) {
     });
   }
 
+  if (!(await db.schema.hasTable('app_state'))) {
+    await db.schema.createTable('app_state', (t) => {
+      t.string('key', 128).primary();
+      t.text('value');
+      t.timestamp('updated_at').defaultTo(db.fn.now());
+    });
+  }
+
   if (!(await db.schema.hasTable('vendors'))) {
     await db.schema.createTable('vendors', (t) => {
       t.increments('id').primary();

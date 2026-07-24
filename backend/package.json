@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "dev": "node src/server.js",
     "db:init": "node scripts/init-db.js",
-    "reset-password": "node scripts/reset-password.js"
+    "reset-password": "node scripts/reset-password.js",
+    "test": "node --test --test-concurrency=1"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
@@ -23,6 +24,6 @@
     "mysql2": "^3.6.5"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   }
 }

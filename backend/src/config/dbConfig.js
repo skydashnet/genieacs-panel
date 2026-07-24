@@ -1,4 +1,5 @@
 import fs from 'fs';
+import path from 'path';
 import { DB_CONFIG_PATH, SQLITE_PATH, ensureDataDir } from './paths.js';
 
 const DEFAULT_CONFIG = { client: 'sqlite3' };
@@ -18,7 +19,22 @@ export function readDbConfig() {
 
 export function writeDbConfig(config) {
   ensureDataDir();
-  fs.writeFileSync(DB_CONFIG_PATH, JSON.stringify(config, null, 2), 'utf8');
+  const tempPath = path.join(
+    path.dirname(DB_CONFIG_PATH),
+    `.db-config.${process.pid}.${Date.now()}.tmp`
+  );
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(config, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600
+    });
+    fs.renameSync(tempPath, DB_CONFIG_PATH);
+    fs.chmodSync(DB_CONFIG_PATH, 0o600);
+  } finally {
+    if (fs.existsSync(tempPath)) {
+      fs.unlinkSync(tempPath);
+    }
+  }
 }
 
 export function buildKnexConfig(config = readDbConfig()) {

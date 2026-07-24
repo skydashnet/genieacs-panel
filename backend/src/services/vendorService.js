@@ -2,7 +2,7 @@ import Vendor from '../models/Vendor.js';
 
 class VendorService {
   static async detectVendor(manufacturer, productClass, deviceData = null) {
-    const vendors = await Vendor.getAll();
+    const vendors = await Vendor.getEnabled();
 
     if (deviceData) {
       const matchingVendors = [];

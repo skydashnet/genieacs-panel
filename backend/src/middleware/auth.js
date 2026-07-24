@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import jwt from 'jsonwebtoken';
 
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
@@ -61,6 +62,13 @@ function authenticateToken(req, res, next) {
       code: 'invalid_token'
     });
   }
+
+  if (decoded.tokenType) {
+    return res.status(403).json({
+      message: 'Invalid token type',
+      code: 'invalid_token'
+    });
+  }
   
   req.user = decoded;
   next();
@@ -76,7 +84,7 @@ async function authenticateTokenOptional(req, res, next) {
   }
   
   const decoded = verifyToken(token);
-  req.user = decoded;
+  req.user = decoded && !decoded.tokenType ? decoded : null;
   next();
 }
 
