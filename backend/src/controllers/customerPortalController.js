@@ -55,7 +55,7 @@ class CustomerPortalController {
   static async overview(req, res) {
     try {
       const cacheKey = String(req.customer.id);
-      const cached = this.overviewCache.get(cacheKey);
+      const cached = CustomerPortalController.overviewCache.get(cacheKey);
       if (cached && cached.expiresAt > Date.now()) {
         return res.json(createResponse('Informasi ONT tersedia', {
           customerId: req.customer.customer_id,
@@ -64,7 +64,7 @@ class CustomerPortalController {
       }
 
       const data = await DeviceService.getCustomerPortalOverview(req.customer.device_id);
-      this.overviewCache.set(cacheKey, {
+      CustomerPortalController.overviewCache.set(cacheKey, {
         data,
         expiresAt: Date.now() + 30_000
       });
