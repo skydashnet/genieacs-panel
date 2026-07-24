@@ -1,15 +1,14 @@
 'use client'
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { devicesAPI } from '@/lib/api'
 import { Icon } from '@/components/ui/icon'
 import { useAuth } from '@/contexts/auth-context'
 import { useToast } from '@/components/ui/toast'
-
-const PieChart = lazy(() => import('@/components/charts/pie-chart').then((module) => ({ default: module.PieChart })))
-const BarChart = lazy(() => import('@/components/charts/bar-chart').then((module) => ({ default: module.BarChart })))
-const TrendChart = lazy(() => import('@/components/charts/trend-chart').then((module) => ({ default: module.TrendChart })))
+import { PieChart } from '@/components/charts/pie-chart'
+import { BarChart } from '@/components/charts/bar-chart'
+import { TrendChart } from '@/components/charts/trend-chart'
 
 interface Fault {
   id: string
@@ -22,6 +21,7 @@ interface Fault {
 }
 
 interface DashboardData {
+  generatedAt?: string
   stats: { total: number; online: number; offline: number; new24h: number }
   rxDistribution: Record<string, number>
   informFreshness: Record<string, number>
@@ -54,6 +54,27 @@ const PALETTES = {
   clients: { '0': '#64748b', '1–5': '#3b82f6', '6–15': '#8b5cf6', '16+': '#f97316', Unknown: '#94a3b8' },
 }
 
+const DASHBOARD_SESSION_KEY = 'skygenpanel.dashboard.snapshot.v1'
+
+function readDashboardSession(): DashboardData | null {
+  try {
+    const raw = sessionStorage.getItem(DASHBOARD_SESSION_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.stats && parsed?.rxDistribution ? parsed as DashboardData : null
+  } catch {
+    return null
+  }
+}
+
+function writeDashboardSession(data: DashboardData) {
+  try {
+    sessionStorage.setItem(DASHBOARD_SESSION_KEY, JSON.stringify(data))
+  } catch {
+    // Storage can be disabled by browser privacy settings.
+  }
+}
+
 function pieData(distribution: Record<string, number>, palette: Record<string, string>) {
   return Object.entries(distribution)
     .map(([name, value]) => ({ name, value: Number(value) || 0, color: palette[name] || '#64748b' }))
@@ -67,41 +88,75 @@ function formatFaultTime(timestamp: string | null) {
   return date.toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'short' })
 }
 
-function ChartFallback() {
-  return <div className="h-[250px] animate-pulse rounded-md bg-muted" role="status" aria-label="Loading chart" />
-}
-
 export default function DashboardPage() {
-  const [data, setData] = useState<DashboardData>(EMPTY)
-  const [initialLoading, setInitialLoading] = useState(true)
+  const [cachedDashboard] = useState<DashboardData | null>(() => readDashboardSession())
+  const [data, setData] = useState<DashboardData>(cachedDashboard || EMPTY)
+  const [initialLoading, setInitialLoading] = useState(!cachedDashboard)
   const [refreshing, setRefreshing] = useState(false)
+  const [faultsLoading, setFaultsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [clearingFault, setClearingFault] = useState<string | null>(null)
+  const faultsLoadedRef = useRef(false)
   const { user } = useAuth()
   const toast = useToast()
   const isAdmin = user?.role === 'admin'
 
   const loadDashboard = useCallback(async (force = false) => {
     setLoadError('')
-    if (initialLoading) setInitialLoading(true)
-    else setRefreshing(true)
+    setRefreshing(true)
     try {
       const response = await devicesAPI.getDashboard(force)
       if (!response.success || !response.data) {
         throw new Error(response.message || 'Dashboard data is unavailable')
       }
-      setData(response.data as DashboardData)
-      setLastUpdated(new Date())
+      const incoming = response.data as DashboardData
+      setData((current) => {
+        const next = faultsLoadedRef.current
+          ? { ...incoming, faults: current.faults, faultsError: current.faultsError }
+          : incoming
+        writeDashboardSession(next)
+        return next
+      })
+      const generatedAt = incoming.generatedAt ? new Date(incoming.generatedAt) : new Date()
+      setLastUpdated(Number.isNaN(generatedAt.getTime()) ? new Date() : generatedAt)
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Panel could not reach GenieACS')
     } finally {
       setInitialLoading(false)
       setRefreshing(false)
     }
-  }, [initialLoading])
+  }, [])
 
-  useEffect(() => { void loadDashboard(false) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const loadFaults = useCallback(async () => {
+    setFaultsLoading(true)
+    try {
+      const response = await devicesAPI.getFaults(50)
+      if (!response.success || !Array.isArray(response.data)) {
+        throw new Error(response.message || 'Fault list is unavailable')
+      }
+      faultsLoadedRef.current = true
+      setData((current) => {
+        const next = { ...current, faults: response.data as Fault[], faultsError: null }
+        writeDashboardSession(next)
+        return next
+      })
+    } catch {
+      faultsLoadedRef.current = true
+      setData((current) => ({ ...current, faultsError: 'Fault list could not be loaded from GenieACS.' }))
+    } finally {
+      setFaultsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (cachedDashboard?.generatedAt) {
+      const cachedDate = new Date(cachedDashboard.generatedAt)
+      if (!Number.isNaN(cachedDate.getTime())) setLastUpdated(cachedDate)
+    }
+    void loadDashboard(false)
+    void loadFaults()
+  }, [cachedDashboard, loadDashboard, loadFaults])
 
   const rxData = useMemo(() => pieData(data.rxDistribution, PALETTES.rx), [data.rxDistribution])
   const freshnessData = useMemo(() => pieData(data.informFreshness, PALETTES.freshness), [data.informFreshness])
@@ -203,22 +258,22 @@ export default function DashboardPage() {
         </section>
 
         <section className="mb-5 grid gap-4 xl:grid-cols-2">
-          <div className="modern-card p-5"><h2 className="section-heading">Optical signal distribution</h2><p className="section-description mb-3">RX power health across the fleet.</p>{rxData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={rxData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No RX power data.</p>}</div>
-          <div className="modern-card p-5"><h2 className="section-heading">Inform freshness</h2><p className="section-description mb-3">How recently devices contacted GenieACS.</p>{freshnessData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={freshnessData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No Inform data.</p>}</div>
-          <div className="modern-card p-5"><h2 className="section-heading">Temperature health</h2><p className="section-description mb-3">Reported ONT temperature buckets.</p>{temperatureData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={temperatureData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No temperature data.</p>}</div>
-          <div className="modern-card p-5"><h2 className="section-heading">Connected client load</h2><p className="section-description mb-3">Active subscriber devices per ONT.</p>{clientData.length ? <Suspense fallback={<ChartFallback />}><PieChart data={clientData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No client count data.</p>}</div>
+          <div className="modern-card p-5"><h2 className="section-heading">Optical signal distribution</h2><p className="section-description mb-3">RX power health across the fleet.</p>{rxData.length ? <PieChart data={rxData} /> : <p className="empty-state-copy py-16 text-center">No RX power data.</p>}</div>
+          <div className="modern-card p-5"><h2 className="section-heading">Inform freshness</h2><p className="section-description mb-3">How recently devices contacted GenieACS.</p>{freshnessData.length ? <PieChart data={freshnessData} /> : <p className="empty-state-copy py-16 text-center">No Inform data.</p>}</div>
+          <div className="modern-card p-5"><h2 className="section-heading">Temperature health</h2><p className="section-description mb-3">Reported ONT temperature buckets.</p>{temperatureData.length ? <PieChart data={temperatureData} /> : <p className="empty-state-copy py-16 text-center">No temperature data.</p>}</div>
+          <div className="modern-card p-5"><h2 className="section-heading">Connected client load</h2><p className="section-description mb-3">Active subscriber devices per ONT.</p>{clientData.length ? <PieChart data={clientData} /> : <p className="empty-state-copy py-16 text-center">No client count data.</p>}</div>
         </section>
 
         <section className="mb-5 grid gap-4 xl:grid-cols-3">
-          <div className="modern-card p-5 xl:col-span-2"><h2 className="section-heading">7-day registrations</h2><p className="section-description mb-3">New CPE registrations reported per day.</p><Suspense fallback={<ChartFallback />}><TrendChart data={data.registrations} valueLabel="Registrations" /></Suspense></div>
-          <div className="modern-card p-5"><h2 className="section-heading">Manufacturers</h2><p className="section-description mb-3">Largest vendor groups.</p>{manufacturerData.length ? <Suspense fallback={<ChartFallback />}><BarChart data={manufacturerData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No manufacturer data.</p>}</div>
-          <div className="modern-card p-5 xl:col-span-3"><h2 className="section-heading">Product classes</h2><p className="section-description mb-3">Largest device model families.</p>{productData.length ? <Suspense fallback={<ChartFallback />}><BarChart data={productData} /></Suspense> : <p className="empty-state-copy py-16 text-center">No product class data.</p>}</div>
+          <div className="modern-card p-5 xl:col-span-2"><h2 className="section-heading">7-day registrations</h2><p className="section-description mb-3">New CPE registrations reported per day.</p><TrendChart data={data.registrations} valueLabel="Registrations" /></div>
+          <div className="modern-card p-5"><h2 className="section-heading">Manufacturers</h2><p className="section-description mb-3">Largest vendor groups.</p>{manufacturerData.length ? <BarChart data={manufacturerData} /> : <p className="empty-state-copy py-16 text-center">No manufacturer data.</p>}</div>
+          <div className="modern-card p-5 xl:col-span-3"><h2 className="section-heading">Product classes</h2><p className="section-description mb-3">Largest device model families.</p>{productData.length ? <BarChart data={productData} /> : <p className="empty-state-copy py-16 text-center">No product class data.</p>}</div>
         </section>
 
         <section className="modern-card overflow-hidden">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
             <div><h2 className="section-heading">GenieACS fault list</h2><p className="section-description">Active provisioning and connection faults from the NBI.</p></div>
-            <span className={data.faults.length ? 'modern-badge-error' : 'modern-badge-success'}>{data.faults.length} active</span>
+            <span className={data.faults.length ? 'modern-badge-error' : 'modern-badge-success'}>{faultsLoading ? 'Refreshing…' : `${data.faults.length} active`}</span>
           </div>
           {data.faultsError && <div className="border-b border-border bg-[hsl(var(--status-warning))]/10 px-5 py-3 text-sm">{data.faultsError}</div>}
           <div className="overflow-x-auto">

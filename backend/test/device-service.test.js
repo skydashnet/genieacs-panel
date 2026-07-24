@@ -240,4 +240,48 @@ test('dashboard summary aggregates operations charts and normalizes faults', () 
   assert.equal(summary.registrations.reduce((sum, point) => sum + point.value, 0), 2);
   assert.equal(summary.faults[0].deviceId, 'online');
   assert.equal(summary.faults[0].code, 'cwmp.9002');
+  assert.ok(summary.generatedAt);
+});
+
+test('expired dashboard snapshots return immediately while refreshing in background', async () => {
+  const originalCache = DeviceService.dashboardCache;
+  const originalRefresh = DeviceService.refreshDashboardData;
+  const stale = {
+    generatedAt: '2026-07-24T00:00:00.000Z',
+    stats: { total: 5, online: 5, offline: 0, new24h: 0 },
+    rxDistribution: {},
+    informFreshness: {},
+    temperatureDistribution: {},
+    clientDistribution: {},
+    productClasses: [],
+    manufacturers: [],
+    registrations: [],
+    faults: [],
+    faultsError: null
+  };
+  let refreshCalls = 0;
+  let releaseRefresh;
+
+  DeviceService.dashboardCache = {
+    data: stale,
+    expiresAt: 0,
+    promise: null,
+    hydrated: true
+  };
+  DeviceService.refreshDashboardData = () => {
+    refreshCalls += 1;
+    return new Promise((resolve) => { releaseRefresh = () => resolve(stale); });
+  };
+
+  try {
+    const result = await DeviceService.getDashboardData(false);
+    assert.equal(result, stale);
+    assert.equal(refreshCalls, 1);
+    assert.ok(DeviceService.dashboardCache.promise);
+    releaseRefresh();
+    await DeviceService.dashboardCache.promise;
+  } finally {
+    DeviceService.dashboardCache = originalCache;
+    DeviceService.refreshDashboardData = originalRefresh;
+  }
 });

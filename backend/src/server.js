@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import { closePool, testConnection } from './config/database.js';
 import { ensureSchema } from './config/schema.js';
 import { seedDefaults } from './config/seed.js';
+import DeviceService from './services/deviceService.js';
 
 import authRoutes from './routes/auth.js';
 import deviceRoutes from './routes/devices.js';
@@ -182,6 +183,9 @@ export const startServer = async () => {
 
     server = app.listen(PORT, HOST, () => {
       console.log(`Server running on ${HOST}:${PORT} (${APP_ENV})`);
+      void DeviceService.getDashboardData(false).catch((error) => {
+        console.warn(`Dashboard prewarm skipped: ${error.message}`);
+      });
       console.log(`Panel: http://localhost:${PORT}`);
     });
     return server;

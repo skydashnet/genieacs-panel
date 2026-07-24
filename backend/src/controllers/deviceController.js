@@ -17,6 +17,7 @@ class DeviceController {
   static async getFaults(req, res) {
     try {
       const faults = await DeviceService.getFaults(req.query.limit);
+      void DeviceService.mergeDashboardFaults(faults);
       return res.json(createResponse('Faults retrieved successfully', faults));
     } catch (error) {
       console.error('Get faults error:', error);

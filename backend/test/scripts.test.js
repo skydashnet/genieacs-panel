@@ -134,6 +134,15 @@ test('desktop sidebar remains viewport-sticky without a clipping scroll ancestor
   assert.match(sidebarSource, /absolute -right-3/);
 });
 
+test('dashboard charts stay dependency-light and do not load Recharts', () => {
+  const frontendManifest = JSON.parse(fs.readFileSync(path.join(repoDir, 'frontend', 'package.json'), 'utf8'));
+  assert.equal(frontendManifest.dependencies.recharts, undefined);
+  for (const chart of ['pie-chart.tsx', 'bar-chart.tsx', 'trend-chart.tsx']) {
+    const source = fs.readFileSync(path.join(repoDir, 'frontend', 'src', 'components', 'charts', chart), 'utf8');
+    assert.doesNotMatch(source, /from ['"]recharts['"]/);
+  }
+});
+
 test('database automation scripts load .env and reset passwords without sourcing it as shell', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skygenpanel-scripts-'));
   const dataDir = path.join(tempDir, 'data');

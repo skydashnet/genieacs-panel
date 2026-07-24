@@ -2,14 +2,18 @@ import Setting from '../models/Setting.js';
 import VendorService from './vendorService.js';
 import Vendor from '../models/Vendor.js';
 import WifiSecurityConfig from '../models/WifiSecurityConfig.js';
+import AppState from '../models/AppState.js';
 import { DEFAULT_SETTINGS } from '../config/seed.js';
 
 class DeviceService {
   static dashboardCache = {
     data: null,
     expiresAt: 0,
-    promise: null
+    promise: null,
+    hydrated: false
   };
+
+  static dashboardCacheTtlMs = 60_000;
 
   static getParameterNode(obj, parameterPath) {
     if (!obj || !parameterPath) return null;
@@ -1103,6 +1107,7 @@ class DeviceService {
       .slice(0, limit);
 
     return {
+      generatedAt: new Date(now).toISOString(),
       stats,
       rxDistribution,
       informFreshness,
@@ -1116,26 +1121,77 @@ class DeviceService {
     };
   }
 
+  static async hydrateDashboardCache() {
+    const cache = this.dashboardCache;
+    if (cache.hydrated) return;
+    cache.hydrated = true;
+    try {
+      const stored = await AppState.get('dashboard_snapshot');
+      if (!stored) return;
+      const snapshot = JSON.parse(stored);
+      if (!snapshot?.data?.stats || !snapshot?.data?.generatedAt) return;
+      cache.data = snapshot.data;
+      cache.expiresAt = Number(snapshot.expiresAt) || 0;
+    } catch (error) {
+      console.warn('Ignoring invalid dashboard snapshot:', error.message);
+    }
+  }
+
+  static async persistDashboardCache() {
+    const cache = this.dashboardCache;
+    if (!cache.data) return;
+    try {
+      await AppState.upsert('dashboard_snapshot', JSON.stringify({
+        data: cache.data,
+        expiresAt: cache.expiresAt
+      }));
+    } catch (error) {
+      console.warn('Unable to persist dashboard snapshot:', error.message);
+    }
+  }
+
+  static async refreshDashboardData() {
+    const cache = this.dashboardCache;
+    const devices = await this.getDashboardDevices();
+    const previousFaults = Array.isArray(cache.data?.faults) ? cache.data.faults : [];
+    const data = this.buildDashboardSummary(devices, previousFaults, cache.data?.faultsError || null);
+    cache.data = data;
+    cache.expiresAt = Date.now() + this.dashboardCacheTtlMs;
+    await this.persistDashboardCache();
+    return data;
+  }
+
+  static async mergeDashboardFaults(faults, faultsError = null) {
+    const cache = this.dashboardCache;
+    await this.hydrateDashboardCache();
+    if (!cache.data) return;
+    cache.data = { ...cache.data, faults, faultsError };
+    await this.persistDashboardCache();
+  }
+
   static async getDashboardData(force = false) {
     const cache = this.dashboardCache;
-    if (!force && cache.data && cache.expiresAt > Date.now()) return cache.data;
-    if (!force && cache.promise) return cache.promise;
+    await this.hydrateDashboardCache();
 
-    const work = (async () => {
-      const [devicesResult, faultsResult] = await Promise.allSettled([
-        this.getDashboardDevices(),
-        this.getFaults(50, 1_500)
-      ]);
-      if (devicesResult.status === 'rejected') throw devicesResult.reason;
-      const faults = faultsResult.status === 'fulfilled' ? faultsResult.value : [];
-      const faultsError = faultsResult.status === 'rejected'
-        ? 'Fault list could not be loaded from GenieACS.'
-        : null;
-      const data = this.buildDashboardSummary(devicesResult.value, faults, faultsError);
-      cache.data = data;
-      cache.expiresAt = Date.now() + 15_000;
-      return data;
-    })();
+    const startRefresh = () => {
+      if (cache.promise) return cache.promise;
+      const work = this.refreshDashboardData();
+      cache.promise = work;
+      work.catch((error) => {
+        console.error('Dashboard background refresh failed:', error.message);
+      }).finally(() => {
+        if (cache.promise === work) cache.promise = null;
+      });
+      return work;
+    };
+
+    if (!force && cache.data) {
+      if (cache.expiresAt <= Date.now()) startRefresh();
+      return cache.data;
+    }
+    if (cache.promise) return cache.promise;
+
+    const work = startRefresh();
     cache.promise = work;
     try {
       return await work;
