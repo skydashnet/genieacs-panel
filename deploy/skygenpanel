@@ -37,6 +37,23 @@ app_port() {
   echo "${p:-5890}"
 }
 
+portal_port() {
+  local p
+  p="$(grep -E '^PORTAL_PORT=' "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2)"
+  echo "${p:-5891}"
+}
+
+ensure_env_defaults() {
+  [ -f "$ENV_FILE" ] || die "Env file not found: $ENV_FILE"
+  if ! grep -qE '^PORTAL_PORT=' "$ENV_FILE"; then
+    printf 'PORTAL_PORT=5891\n' >> "$ENV_FILE"
+  fi
+  if ! grep -qE '^PORTAL_JWT_SECRET=' "$ENV_FILE"; then
+    printf 'PORTAL_JWT_SECRET=%s\n' \
+      "$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')" >> "$ENV_FILE"
+  fi
+}
+
 set_env() {
   # set_env KEY VALUE — upsert a key in the env file
   local key="$1" value="$2"
@@ -73,6 +90,7 @@ cmd_update() {
   ( cd "$INSTALL_DIR/backend" && npm ci --omit=dev )
   log "Rebuilding frontend"
   ( cd "$INSTALL_DIR/frontend" && npm ci --include=dev && npm run build )
+  ensure_env_defaults
   chown -R root:root "$INSTALL_DIR"
   chmod 600 "$ENV_FILE"
   log "Restarting service"
@@ -84,8 +102,9 @@ cmd_expose() {
   need_root
   validate_install_dir
   set_env APP_HOST "0.0.0.0"
-  local port; port="$(app_port)"
+  local port portal; port="$(app_port)"; portal="$(portal_port)"
   log "Panel will bind to 0.0.0.0:${port} (reachable from the network)."
+  log "Customer portal will bind to 0.0.0.0:${portal}."
   warn "Anyone on your network can now reach the panel. Ensure a strong admin password and a firewall."
   systemctl restart "$SERVICE_NAME"
   log "Done."

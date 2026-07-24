@@ -8,7 +8,7 @@ class User {
   static async findById(id) {
     return (
       (await getDb()('users')
-        .select('id', 'username', 'role', 'password', 'created_at', 'updated_at')
+        .select('id', 'username', 'role', 'password', 'token_version', 'created_at', 'updated_at')
         .where({ id })
         .first()) || null
     );
@@ -64,13 +64,26 @@ class User {
   static async updatePassword(id, hashedPassword) {
     await getDb()('users')
       .where({ id })
-      .update({ password: hashedPassword, updated_at: new Date() });
+      .update({
+        password: hashedPassword,
+        token_version: getDb().raw('token_version + 1'),
+        updated_at: new Date()
+      });
   }
 
   static async updateUsername(id, newUsername) {
     await getDb()('users')
       .where({ id })
       .update({ username: newUsername, updated_at: new Date() });
+  }
+
+  static async revokeSessions(id) {
+    await getDb()('users')
+      .where({ id })
+      .update({
+        token_version: getDb().raw('token_version + 1'),
+        updated_at: new Date()
+      });
   }
 }
 

@@ -209,6 +209,7 @@ class DeviceService {
         '_deviceId._ProductClass',
         '_deviceId._SerialNumber',
         '_deviceId._Manufacturer',
+        'InternetGatewayDevice.DeviceInfo.SoftwareVersion',
         virtualParams.vpPppoeUsername,
         virtualParams.vpWanBridge,
         virtualParams.vpRxPower,
@@ -272,6 +273,10 @@ class DeviceService {
     const serialNumber = item._deviceId?._SerialNumber || null;
     const typeont = item._deviceId?._ProductClass || null;
     const manufacturer = item._deviceId?._Manufacturer || null;
+    const softwareId = this.getParameterValue(
+      item,
+      'InternetGatewayDevice.DeviceInfo.SoftwareVersion'
+    );
 
     const wlan = item.InternetGatewayDevice?.LANDevice?.['1']?.WLANConfiguration || {};
     const ssid1 = wlan['1']?.SSID?._value ?? null;
@@ -288,6 +293,7 @@ class DeviceService {
       SerialNumber: serialNumber,
       productclass: typeont,
       manufacturer,
+      softwareId,
       pppoe: pppsecret,
       wanbridge: wanbridge,
       rxpower: rxpower,
@@ -654,6 +660,113 @@ class DeviceService {
         vendorName: vendorObj?.name || 'Unknown',
         parameterPrefix: vendorObj?.parameter_prefix || null
       }
+    };
+  }
+
+  static async getCustomerIdentityDevices() {
+    const virtualParams = await this.getVirtualParameters();
+    const projection = [
+      '_id',
+      'InternetGatewayDevice.DeviceInfo.SoftwareVersion',
+      virtualParams.vpPppoeUsername
+    ].filter(Boolean);
+    const data = await this.fetchFromGenieAcs(
+      `?projection=${encodeURIComponent(projection.join(','))}`
+    );
+    if (!Array.isArray(data)) {
+      throw new Error('Invalid GenieACS customer identity response');
+    }
+    return data.map((item) => ({
+      _id: item._id || null,
+      softwareId: this.getParameterValue(
+        item,
+        'InternetGatewayDevice.DeviceInfo.SoftwareVersion'
+      ),
+      pppoe: this.getParameterValue(item, virtualParams.vpPppoeUsername)
+    }));
+  }
+
+  static async getCustomerPortalOverview(deviceId) {
+    if (!deviceId) throw new Error('Device ID is required');
+
+    const virtualParams = await this.getVirtualParameters();
+    const projection = [
+      '_id',
+      '_deviceId._ProductClass',
+      '_deviceId._SerialNumber',
+      '_deviceId._Manufacturer',
+      'InternetGatewayDevice.DeviceInfo.HardwareVersion',
+      'InternetGatewayDevice.DeviceInfo.SoftwareVersion',
+      'InternetGatewayDevice.DeviceInfo.UpTime',
+      virtualParams.vpRxPower,
+      virtualParams.vpTemperature,
+      virtualParams.vpActiveDevices,
+      '_lastInform',
+      '_lastBoot',
+      '_registered'
+    ];
+    for (let index = 1; index <= 8; index += 1) {
+      projection.push(
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${index}.Enable`,
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${index}.SSID`,
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${index}.TotalAssociations`
+      );
+    }
+
+    const data = await this.fetchFromGenieAcs('', {
+      query: JSON.stringify({ _id: deviceId }),
+      projection: projection.filter(Boolean).join(',')
+    });
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('Device not found');
+    }
+
+    const item = data[0];
+    const getValue = (parameterPath) => this.getParameterValue(item, parameterPath);
+    const wifi = [];
+    for (let index = 1; index <= 8; index += 1) {
+      const ssid = getValue(
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${index}.SSID`
+      );
+      if (ssid === null || ssid === '') continue;
+      const enabled = getValue(
+        `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${index}.Enable`
+      );
+      wifi.push({
+        index,
+        ssid,
+        enabled: enabled === null ? null : this.isEnabledValue(enabled),
+        connectedDevices: getValue(
+          `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${index}.TotalAssociations`
+        )
+      });
+    }
+
+    const lastInform = item._lastInform || null;
+    const lastInformMs = lastInform ? new Date(lastInform).getTime() : Number.NaN;
+    const ageMs = Date.now() - lastInformMs;
+    return {
+      status: Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60 * 1000
+        ? 'online'
+        : 'offline',
+      lastInform,
+      lastBoot: item._lastBoot || null,
+      registered: item._registered || null,
+      ont: {
+        manufacturer: item._deviceId?._Manufacturer || null,
+        model: item._deviceId?._ProductClass || null,
+        serialNumber: item._deviceId?._SerialNumber || null,
+        hardwareVersion: getValue('InternetGatewayDevice.DeviceInfo.HardwareVersion'),
+        softwareVersion: getValue('InternetGatewayDevice.DeviceInfo.SoftwareVersion'),
+        uptimeSeconds: getValue('InternetGatewayDevice.DeviceInfo.UpTime')
+      },
+      optical: {
+        rxPower: getValue(virtualParams.vpRxPower),
+        temperature: getValue(virtualParams.vpTemperature)
+      },
+      connectedDevices: getValue(virtualParams.vpActiveDevices),
+      wifi,
+      generatedAt: new Date().toISOString()
     };
   }
 

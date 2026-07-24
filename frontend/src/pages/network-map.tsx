@@ -6,6 +6,11 @@ import { useTheme } from '@/contexts/theme-context'
 import { mappingAPI, mapSettingsAPI } from '@/lib/api'
 import { Icon } from '@/components/ui/icon'
 import { useToast } from '@/components/ui/toast'
+import 'leaflet/dist/leaflet.css'
+
+// Start fetching the map engine as soon as this route chunk is evaluated. The
+// topology request and Leaflet download can then run in parallel.
+const leafletModulePromise = import('leaflet')
 
 type NodeType = 'htb' | 'olt' | 'odc' | 'odp' | 'ont' | 'server'
 type FiberType = 'backbone' | 'feeder' | 'distribution' | 'drop' | 'patch'
@@ -311,7 +316,7 @@ export default function NetworkMap() {
   const cablesLayerRef = useRef<any>(null)
   const tileLayerRef = useRef<any>(null)
   const leafletRef = useRef<any>(null)
-  const hasFitBoundsRef = useRef(false)
+  const hasCenteredAssetsRef = useRef(false)
 
   const normalizeNodes = (data: unknown): MapNode[] =>
     (Array.isArray(data) ? data : []).map((raw: any) => ({
@@ -368,11 +373,6 @@ export default function NetworkMap() {
   useEffect(() => {
     const saved = localStorage.getItem('networkMapBasemap')
     if (saved === 'osm' || saved === 'google') setBasemap(saved)
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
-    document.head.appendChild(link)
-    return () => { link.remove() }
   }, [])
   useEffect(() => () => {
     mapRef.current?.remove()
@@ -421,7 +421,6 @@ export default function NetworkMap() {
       line.on('click', () => { setSelectedEdge(edge); setSelectedNode(null) })
     })
 
-    const bounds = L.latLngBounds([])
     nodes.forEach((node) => {
       const iconColor = isDarkMode ? '#f4f3ed' : '#173f35'
       const html = `<div style="width:28px;height:28px;padding:3px;border-radius:8px;background:${isDarkMode ? '#17211c' : '#fff'};border:1px solid ${isDarkMode ? '#53615a' : '#bdc9c2'};box-shadow:0 2px 6px rgba(0,0,0,.2)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${iconColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${getNodeSvg(node.type)}</svg></div>`
@@ -430,20 +429,26 @@ export default function NetworkMap() {
       }).addTo(markersLayerRef.current)
       marker.bindTooltip(`<strong>${escapeHtml(node.name)}</strong><br>${escapeHtml(getTypeLabel(node.type))} · ${escapeHtml(node.node_id)}`)
       marker.on('click', () => { setSelectedNode(node); setSelectedEdge(null) })
-      bounds.extend([node.latitude, node.longitude])
     })
-    if (nodes.length && !hasFitBoundsRef.current) {
-      map.fitBounds(bounds.pad(0.2), { maxZoom: 17 })
-      hasFitBoundsRef.current = true
+    if (nodes.length && !hasCenteredAssetsRef.current) {
+      const center = nodes.reduce(
+        (total, node) => [total[0] + node.latitude, total[1] + node.longitude] as [number, number],
+        [0, 0] as [number, number]
+      )
+      map.setView(
+        [center[0] / nodes.length, center[1] / nodes.length],
+        Math.min(maxZoom, Math.max(minZoom, 15))
+      )
+      hasCenteredAssetsRef.current = true
     }
-  }, [edges, isDarkMode, nodes])
+  }, [edges, isDarkMode, maxZoom, minZoom, nodes])
 
   useEffect(() => {
-    if (mapView !== 'map' || loading) return
+    if (mapView !== 'map') return
     let cancelled = false
     void (async () => {
       if (!leafletRef.current) {
-        const module = await import('leaflet')
+        const module = await leafletModulePromise
         leafletRef.current = (module as any).default ?? module
       }
       if (cancelled || !mapContainerRef.current) return
@@ -461,7 +466,7 @@ export default function NetworkMap() {
       window.setTimeout(() => mapRef.current?.invalidateSize(), 80)
     })()
     return () => { cancelled = true }
-  }, [defaultZoom, loading, mapCenter, mapView, maxZoom, minZoom, nodes.length, updateMapObjects, updateTileLayer])
+  }, [defaultZoom, mapCenter, mapView, maxZoom, minZoom, nodes.length, updateMapObjects, updateTileLayer])
   useEffect(() => { if (mapRef.current) updateTileLayer() }, [updateTileLayer])
   useEffect(() => { if (mapRef.current) updateMapObjects() }, [updateMapObjects])
 
@@ -646,7 +651,12 @@ export default function NetworkMap() {
               </div>
             </div>
           </section>
-          {loading && <div className="absolute inset-0 z-[500] flex items-center justify-center rounded-[var(--radius)] bg-background/65 backdrop-blur-[1px]"><div className="modern-card flex items-center gap-3 px-4 py-3"><Icon name="refresh" className="animate-spin" /><span className="font-semibold">Refreshing topology…</span></div></div>}
+          {loading && (
+            <div className="pointer-events-none absolute right-3 top-3 z-[500] flex items-center gap-2 rounded-md border border-border bg-card/95 px-3 py-2 text-xs font-semibold shadow-sm">
+              <Icon name="refresh" size={15} className="animate-spin" />
+              Loading topology…
+            </div>
+          )}
         </div>
 
         {selectedNode && (

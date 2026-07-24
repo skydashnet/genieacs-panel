@@ -3,6 +3,7 @@ import { getDb } from './database.js';
 export const DEFAULT_SETTINGS = {
   appName: 'SkyGenPanel',
   genieAcsUrl: '',
+  autoGenerateCustomerId: 'false',
   vpPppoeUsername: 'VirtualParameters.PPPUsername',
   vpWanBridge: 'VirtualParameters.WANBridge',
   vpRxPower: 'VirtualParameters.OpticalRXPower',

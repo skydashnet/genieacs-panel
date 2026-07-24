@@ -95,6 +95,27 @@ test('updater removes only known legacy Next.js build directories', () => {
   assert.match(updater, /install -m 0755 "\$INSTALL_DIR\/deploy\/skygenpanel"/);
   assert.match(updater, /mv -f -- "\$cli_temp" "\$CLI_PATH"/);
   assert.doesNotMatch(updater, /git\s+-C\s+"?\$INSTALL_DIR"?\s+clean/);
+  assert.match(updater, /PORTAL_PORT=5891/);
+  assert.match(updater, /PORTAL_JWT_SECRET/);
+});
+
+test('map is bundled locally and centers existing assets at zoom 15', () => {
+  const source = fs.readFileSync(path.join(repoDir, 'frontend', 'src', 'pages', 'network-map.tsx'), 'utf8');
+  assert.match(source, /import 'leaflet\/dist\/leaflet\.css'/);
+  assert.match(source, /leafletModulePromise = import\('leaflet'\)/);
+  assert.match(source, /map\.setView\(/);
+  assert.match(source, /Math\.min\(maxZoom, Math\.max\(minZoom, 15\)\)/);
+  assert.doesNotMatch(source, /unpkg\.com/);
+  assert.doesNotMatch(source, /mapView !== 'map' \|\| loading/);
+});
+
+test('deployment exposes the isolated customer portal and generates independent secrets', () => {
+  const installer = fs.readFileSync(path.join(repoDir, 'deploy', 'install.sh'), 'utf8');
+  const dockerfile = fs.readFileSync(path.join(repoDir, 'Dockerfile'), 'utf8');
+  assert.match(installer, /SKYGP_PORTAL_PORT:-5891/);
+  assert.match(installer, /PORTAL_JWT_SECRET/);
+  assert.match(installer, /Panel and customer portal ports must be different/);
+  assert.match(dockerfile, /EXPOSE 5890 5891/);
 });
 
 test('release metadata stays synchronized with every package manifest and lockfile', () => {

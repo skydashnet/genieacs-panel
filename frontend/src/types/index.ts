@@ -18,6 +18,8 @@ export interface Device {
   _id: string
   SerialNumber: string | null
   productclass: string | null
+  softwareId?: string | null
+  customerId?: string | null
   pppoe?: string
   wanbridge?: string
   rxpower?: number | null

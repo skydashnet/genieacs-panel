@@ -7,8 +7,13 @@ export async function ensureSchema(db = getDb()) {
       t.string('username', 64).notNullable().unique();
       t.string('password', 255).notNullable();
       t.string('role', 32).notNullable().defaultTo('user');
+      t.integer('token_version').notNullable().defaultTo(0);
       t.timestamp('created_at').defaultTo(db.fn.now());
       t.timestamp('updated_at').defaultTo(db.fn.now());
+    });
+  } else if (!(await db.schema.hasColumn('users', 'token_version'))) {
+    await db.schema.alterTable('users', (t) => {
+      t.integer('token_version').notNullable().defaultTo(0);
     });
   }
 
@@ -112,6 +117,21 @@ export async function ensureSchema(db = getDb()) {
       t.string('max_zoom_in', 8).notNullable();
       t.string('max_zoom_out', 8).notNullable();
       t.string('default_zoom', 8).notNullable();
+      t.timestamp('updated_at').defaultTo(db.fn.now());
+    });
+  }
+
+  if (!(await db.schema.hasTable('customer_accounts'))) {
+    await db.schema.createTable('customer_accounts', (t) => {
+      t.increments('id').primary();
+      t.string('customer_id', 32).notNullable().unique();
+      t.string('device_id', 255).notNullable().unique();
+      t.string('identity_hash', 64).notNullable().unique();
+      t.string('software_id', 255).notNullable();
+      t.string('pppoe_username', 255).notNullable();
+      t.boolean('active').notNullable().defaultTo(true);
+      t.timestamp('last_seen_at').defaultTo(db.fn.now());
+      t.timestamp('created_at').defaultTo(db.fn.now());
       t.timestamp('updated_at').defaultTo(db.fn.now());
     });
   }

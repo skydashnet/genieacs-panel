@@ -1,5 +1,48 @@
 import Setting from '../models/Setting.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
+import CustomerService from '../services/customerService.js';
+import DeviceService from '../services/deviceService.js';
+
+const ALLOWED_SETTING_KEYS = new Set([
+  'appName',
+  'genieAcsUrl',
+  'autoGenerateCustomerId',
+  'vpPppoeUsername',
+  'vpWanBridge',
+  'vpRxPower',
+  'vpTemperature',
+  'vpActiveDevices',
+  'vpSuperAdmin',
+  'vpSuperPassword',
+  'vpUserAdmin',
+  'vpUserPassword'
+]);
+
+function validateSetting(key, value) {
+  if (!ALLOWED_SETTING_KEYS.has(key)) {
+    return { error: 'Unsupported setting key' };
+  }
+  const normalized = String(value);
+  if (normalized.length > 2048) {
+    return { error: 'Setting value is too long' };
+  }
+  if (key === 'autoGenerateCustomerId' && !['true', 'false'].includes(normalized)) {
+    return { error: 'Auto generation must be true or false' };
+  }
+  if (key === 'appName' && (normalized.trim().length < 1 || normalized.length > 80)) {
+    return { error: 'Application name must be between 1 and 80 characters' };
+  }
+  return { value: normalized };
+}
+
+function startCustomerSyncIfEnabled(key, value) {
+  if (key !== 'autoGenerateCustomerId' || value !== 'true') return;
+  void DeviceService.getCustomerIdentityDevices()
+    .then((devices) => CustomerService.syncDevices(devices, { enabled: true }))
+    .catch((error) => {
+      console.warn(`Customer ID background sync skipped: ${error.message}`);
+    });
+}
 
 class SettingsController {
   static async getAllSettings(req, res) {
@@ -24,6 +67,9 @@ class SettingsController {
         return res.status(400).json(
           createErrorResponse('Setting key is required')
         );
+      }
+      if (!ALLOWED_SETTING_KEYS.has(key)) {
+        return res.status(404).json(createErrorResponse('Setting not found'));
       }
 
       const value = await Setting.getByKey(key);
@@ -55,10 +101,16 @@ class SettingsController {
         );
       }
 
-      await Setting.create(key, value);
+      const validated = validateSetting(String(key), value);
+      if (validated.error) {
+        return res.status(400).json(createErrorResponse(validated.error));
+      }
+
+      await Setting.create(key, validated.value);
+      startCustomerSyncIfEnabled(key, validated.value);
       
       return res.json(
-        createResponse('Setting created successfully', { [key]: value })
+        createResponse('Setting created successfully', { [key]: validated.value })
       );
     } catch (error) {
       console.error('Create setting error:', error);
@@ -79,7 +131,12 @@ class SettingsController {
         );
       }
 
-      const updated = await Setting.update(key, value);
+      const validated = validateSetting(String(key), value);
+      if (validated.error) {
+        return res.status(400).json(createErrorResponse(validated.error));
+      }
+
+      const updated = await Setting.update(key, validated.value);
       
       if (!updated) {
         return res.status(404).json(
@@ -87,8 +144,9 @@ class SettingsController {
         );
       }
 
+      startCustomerSyncIfEnabled(key, validated.value);
       return res.json(
-        createResponse('Setting updated successfully', { [key]: value })
+        createResponse('Setting updated successfully', { [key]: validated.value })
       );
     } catch (error) {
       console.error('Update setting error:', error);
@@ -106,6 +164,9 @@ class SettingsController {
         return res.status(400).json(
           createErrorResponse('Setting key is required')
         );
+      }
+      if (!ALLOWED_SETTING_KEYS.has(key)) {
+        return res.status(404).json(createErrorResponse('Setting not found'));
       }
 
       const deleted = await Setting.delete(key);

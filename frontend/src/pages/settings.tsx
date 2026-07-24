@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { vendorsAPI, settingsAPI, authAPI, databaseAPI, type DbConfigPayload } from '@/lib/api'
+import { apiClient, vendorsAPI, settingsAPI, authAPI, databaseAPI, type DbConfigPayload } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { useLoading } from '@/components/ui/loading'
 import { Icon } from '@/components/ui/icon'
@@ -35,6 +35,7 @@ export default function Settings() {
   const [settings, setSettings] = useState({
     appName: 'SkyGenPanel',
     genieAcsUrl: 'http://127.0.0.1:7557',
+    autoGenerateCustomerId: 'false',
     ...INSTALLER_VIRTUAL_PARAMETERS
   })
   const [loading, setLoading] = useState(false)
@@ -156,8 +157,9 @@ export default function Settings() {
     }
     const res = await authAPI.changePassword(passwordForm.currentPassword, passwordForm.newPassword)
     if (res.success) {
-      toast.success(res.message || 'Password updated successfully')
+      toast.success('Password updated. Sign in again with the new password.')
       setPasswordForm({ currentPassword: '', newPassword: '', confirmNewPassword: '' })
+      apiClient.clearTokens()
     } else {
       toast.error(res.message || 'Failed to update password')
     }
@@ -417,6 +419,15 @@ export default function Settings() {
               TR-069 parameters
             </button>
             <button
+              onClick={() => setActiveTab('customer-portal')}
+              className="tab-button"
+              data-active={activeTab === 'customer-portal'}
+              role="tab"
+              aria-selected={activeTab === 'customer-portal'}
+            >
+              Customer portal
+            </button>
+            <button
               onClick={() => setActiveTab('security')}
               className="tab-button"
               data-active={activeTab === 'security'}
@@ -555,6 +566,51 @@ export default function Settings() {
                   <p className="field-hint">{field.description}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'customer-portal' && (
+          <div className="modern-card max-w-3xl p-5 sm:p-6">
+            <p className="page-kicker">Self-service access</p>
+            <h2 className="section-heading">Portal pelanggan</h2>
+            <p className="section-description mb-6">
+              Portal berjalan terpisah pada port <span className="font-mono font-semibold">5891</span> dan hanya menampilkan ringkasan ONT yang aman untuk pelanggan.
+            </p>
+
+            <label className="flex cursor-pointer items-start gap-3 rounded-md border border-border bg-[hsl(var(--surface-subtle))] p-4">
+              <input
+                type="checkbox"
+                className="mt-1 h-5 w-5 shrink-0 accent-[hsl(var(--primary))]"
+                checked={settings.autoGenerateCustomerId === 'true'}
+                onChange={(event) => setSettings((current) => ({
+                  ...current,
+                  autoGenerateCustomerId: event.target.checked ? 'true' : 'false'
+                }))}
+              />
+              <span>
+                <span className="block font-semibold">Auto Generate ID Customer</span>
+                <span className="mt-1 block text-sm leading-6 text-muted-foreground">
+                  Buat ID permanen berformat <span className="font-mono">CSG-XXXXXXX-XXXXXX</span> untuk ONT yang memiliki SoftwareVersion dan PPPoE username.
+                </span>
+              </span>
+            </label>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-md border border-border p-4">
+                <p className="metric-label">Login pelanggan</p>
+                <p className="mt-2 text-sm font-semibold">ID Customer</p>
+                <p className="mt-1 text-xs text-muted-foreground">Password awal: enam digit terakhir ID Customer.</p>
+              </div>
+              <div className="rounded-md border border-border p-4">
+                <p className="metric-label">Identitas permanen</p>
+                <p className="mt-2 text-sm font-semibold">SoftwareID + PPPoE</p>
+                <p className="mt-1 text-xs text-muted-foreground">ID yang sudah tersimpan tidak berubah ketika proses sinkronisasi dijalankan ulang.</p>
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-md border border-[hsl(var(--status-warning))]/40 bg-[hsl(var(--status-warning))]/10 p-4 text-sm leading-6">
+              Jika opsi dimatikan, SkyGenPanel tidak membuat ID baru. ID yang sudah ada tetap disimpan agar akses pelanggan tidak berubah.
             </div>
           </div>
         )}
@@ -1114,7 +1170,7 @@ export default function Settings() {
         )}
 
         {/* Save Button */}
-        {(activeTab === 'general' || activeTab === 'virtual-params') && (
+        {(activeTab === 'general' || activeTab === 'virtual-params' || activeTab === 'customer-portal') && (
           <div className="flex justify-end mt-8">
             <button
               onClick={handleSaveSettings}

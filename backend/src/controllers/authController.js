@@ -3,6 +3,8 @@ import User from '../models/User.js';
 import { generateTokens, verifyToken } from '../middleware/auth.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('skygenpanel-invalid-login-placeholder', 12);
+
 class AuthController {
   static async login(req, res) {
     try {
@@ -13,10 +15,22 @@ class AuthController {
           createErrorResponse('Username and password are required')
         );
       }
+      const normalizedUsername = String(username).trim();
+      if (
+        normalizedUsername.length < 1 ||
+        normalizedUsername.length > 64 ||
+        String(password).length > 128
+      ) {
+        await bcrypt.compare(String(password).slice(0, 128), DUMMY_PASSWORD_HASH);
+        return res.status(401).json(
+          createErrorResponse('Invalid username or password')
+        );
+      }
       
-      const user = await User.findByUsername(username);
+      const user = await User.findByUsername(normalizedUsername);
       
       if (!user) {
+        await bcrypt.compare(String(password), DUMMY_PASSWORD_HASH);
         return res.status(401).json(
           createErrorResponse('Invalid username or password')
         );
@@ -148,6 +162,7 @@ class AuthController {
   }
 
   static async logout(req, res) {
+    await User.revokeSessions(req.user.userId);
     return res.json(
       createResponse('Logout successful')
     );
@@ -161,6 +176,9 @@ class AuthController {
         return res.status(400).json(
           createErrorResponse('Refresh token is required')
         );
+      }
+      if (typeof refreshToken !== 'string' || refreshToken.length > 4096) {
+        return res.status(403).json(createErrorResponse('Invalid refresh token'));
       }
       
       const decoded = verifyToken(refreshToken);
@@ -182,6 +200,12 @@ class AuthController {
       if (!user) {
         return res.status(404).json(
           createErrorResponse('User not found')
+        );
+      }
+
+      if (Number(user.token_version || 0) !== Number(decoded.tokenVersion || 0)) {
+        return res.status(403).json(
+          createErrorResponse('Refresh session is no longer valid')
         );
       }
       

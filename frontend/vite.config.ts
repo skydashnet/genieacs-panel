@@ -22,5 +22,11 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     target: 'es2020',
+    rollupOptions: {
+      input: {
+        panel: fileURLToPath(new URL('./index.html', import.meta.url)),
+        portal: fileURLToPath(new URL('./portal.html', import.meta.url)),
+      },
+    },
   },
 })

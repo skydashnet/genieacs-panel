@@ -29,6 +29,7 @@ async function main() {
     const hashed = await bcrypt.hash(password, 12);
     await db('users').where({ username }).update({
       password: hashed,
+      token_version: db.raw('token_version + 1'),
       updated_at: new Date()
     });
     console.log(`Password updated for "${username}"`);

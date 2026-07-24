@@ -75,6 +75,68 @@ test('GenieACS metadata-only nodes and typed tuples never escape as renderable o
   assert.equal(DeviceService.getParameterValue(item, 'VirtualParameters.PPPUsername'), null);
 });
 
+test('customer portal requests only safe ONT and WiFi fields and never returns admin configuration', async () => {
+  const originalVirtual = DeviceService.getVirtualParameters;
+  const originalFetch = DeviceService.fetchFromGenieAcs;
+  let projection = '';
+
+  DeviceService.getVirtualParameters = async () => ({
+    vpRxPower: 'VirtualParameters.OpticalRXPower',
+    vpTemperature: 'VirtualParameters.OpticalTemperature',
+    vpActiveDevices: 'VirtualParameters.TotalStations',
+    vpPppoeUsername: 'VirtualParameters.PPPUsername'
+  });
+  DeviceService.fetchFromGenieAcs = async (_endpoint, query) => {
+    projection = query.projection;
+    return [{
+      _id: 'portal-device',
+      _deviceId: {
+        _Manufacturer: 'ZTE',
+        _ProductClass: 'F663',
+        _SerialNumber: 'SN-PORTAL'
+      },
+      InternetGatewayDevice: {
+        DeviceInfo: {
+          SoftwareVersion: { _value: 'V1.0' },
+          HardwareVersion: { _value: 'V3.1' },
+          UpTime: { _value: 3600 }
+        },
+        LANDevice: {
+          1: {
+            WLANConfiguration: {
+              1: {
+                Enable: { _value: true },
+                SSID: { _value: 'Home WiFi' },
+                TotalAssociations: { _value: 2 }
+              }
+            }
+          }
+        }
+      },
+      VirtualParameters: {
+        OpticalRXPower: { _value: '-21.5' },
+        OpticalTemperature: { _value: 42 },
+        TotalStations: { _value: 2 }
+      },
+      _lastInform: new Date().toISOString()
+    }];
+  };
+
+  try {
+    const result = await DeviceService.getCustomerPortalOverview('portal-device');
+    assert.doesNotMatch(projection, /WANDevice/i);
+    assert.doesNotMatch(projection, /PPPUsername/i);
+    assert.doesNotMatch(projection, /Password|KeyPassphrase/i);
+    assert.equal(result.ont.serialNumber, 'SN-PORTAL');
+    assert.equal(result.wifi[0].ssid, 'Home WiFi');
+    assert.equal(result.pppoe, undefined);
+    assert.equal(result.wan, undefined);
+  } finally {
+    DeviceService.getVirtualParameters = originalVirtual;
+    DeviceService.fetchFromGenieAcs = originalFetch;
+  }
+});
+
 test('WAN discovery keeps every IP and PPP instance and updates the selected PPP path', async () => {
   const item = {
     _id: 'device-1',

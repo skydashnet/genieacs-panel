@@ -1,4 +1,5 @@
 import DeviceService from '../services/deviceService.js';
+import CustomerService from '../services/customerService.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
 class DeviceController {
@@ -44,8 +45,9 @@ class DeviceController {
   static async getDevices(req, res) {
     try {
       const devices = await DeviceService.getDevices();
+      const decoratedDevices = await CustomerService.decorateDevices(devices);
       return res.json(
-        createResponse('Devices retrieved successfully', devices.reverse())
+        createResponse('Devices retrieved successfully', decoratedDevices.reverse())
       );
     } catch (error) {
       console.error('Get devices error:', error);

@@ -13,7 +13,8 @@ const COPY_TABLES = [
   'wifi_security_mappings',
   'mapping_nodes',
   'mapping_edges',
-  'map_settings'
+  'map_settings',
+  'customer_accounts'
 ];
 
 function normalizeConfig(input) {

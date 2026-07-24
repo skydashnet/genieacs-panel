@@ -2,7 +2,7 @@
   "name": "skygenpanel",
   "version": "1.9.2",
   "private": true,
-  "description": "GenieACS management panel — single service (UI + API on one port).",
+  "description": "GenieACS management panel with an isolated customer self-service portal.",
   "scripts": {
     "install:all": "cd backend && npm ci && cd ../frontend && npm ci --include=dev",
     "build": "cd frontend && npm run build",

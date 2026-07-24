@@ -11,6 +11,7 @@ FROM node:22-alpine AS runtime
 ENV APP_ENV=production \
     APP_HOST=0.0.0.0 \
     APP_PORT=5890 \
+    PORTAL_PORT=5891 \
     DATA_DIR=/var/lib/skygenpanel
 
 WORKDIR /app/backend
@@ -22,7 +23,7 @@ COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
 RUN mkdir -p /var/lib/skygenpanel && chown -R node:node /var/lib/skygenpanel
 
 USER node
-EXPOSE 5890
+EXPOSE 5890 5891
 VOLUME ["/var/lib/skygenpanel"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -4,9 +4,9 @@ import { authenticateToken, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.get('/', authenticateToken, SettingsController.getAllSettings);
+router.get('/', authenticateToken, requireRole(['admin']), SettingsController.getAllSettings);
 
-router.get('/:key', authenticateToken, SettingsController.getSettingByKey);
+router.get('/:key', authenticateToken, requireRole(['admin']), SettingsController.getSettingByKey);
 
 router.post('/', authenticateToken, requireRole(['admin']), SettingsController.createSetting);
 

@@ -12,6 +12,7 @@ DATA_DIR="${SKYGP_DATA:-/var/lib/skygenpanel}"
 SERVICE_NAME="skygenpanel"
 SERVICE_USER="${SKYGP_USER:-skygenpanel}"
 APP_PORT="${SKYGP_PORT:-5890}"
+PORTAL_PORT="${SKYGP_PORTAL_PORT:-5891}"
 CLI_PATH="/usr/local/bin/skygenpanel"
 NODE_MAJOR_MIN=20
 NODE_RELEASE_LINE=22
@@ -190,6 +191,9 @@ validate_dir_syntax "data directory" "$DATA_DIR"
 
 [[ "$APP_PORT" =~ ^[0-9]+$ ]] && [ "$APP_PORT" -ge 1 ] && [ "$APP_PORT" -le 65535 ] \
   || die "SKYGP_PORT must be an integer between 1 and 65535."
+[[ "$PORTAL_PORT" =~ ^[0-9]+$ ]] && [ "$PORTAL_PORT" -ge 1 ] && [ "$PORTAL_PORT" -le 65535 ] \
+  || die "SKYGP_PORTAL_PORT must be an integer between 1 and 65535."
+[ "$APP_PORT" != "$PORTAL_PORT" ] || die "Panel and customer portal ports must be different."
 
 if [ "$EUID" -eq 0 ]; then
   log "Root privileges detected; sudo is not required."
@@ -244,13 +248,16 @@ mkdir -p "$DATA_DIR"
 ENV_FILE="$INSTALL_DIR/backend/.env"
 [ ! -L "$ENV_FILE" ] || die "Refusing symbolic-link env file: $ENV_FILE"
 if [ ! -f "$ENV_FILE" ]; then
-  log "Generating $ENV_FILE with a random JWT secret"
+  log "Generating $ENV_FILE with random session secrets"
   JWT_SECRET="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
+  PORTAL_JWT_SECRET="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
   cat > "$ENV_FILE" <<EOF
 APP_PORT=${APP_PORT}
+PORTAL_PORT=${PORTAL_PORT}
 APP_HOST=127.0.0.1
 APP_ENV=production
 JWT_SECRET=${JWT_SECRET}
+PORTAL_JWT_SECRET=${PORTAL_JWT_SECRET}
 JWT_EXPIRES_IN=1h
 REFRESH_TOKEN_EXPIRES_IN=7d
 CORS_ORIGINS=http://localhost:${APP_PORT}
@@ -259,12 +266,24 @@ EOF
   chmod 600 "$ENV_FILE"
 else
   log "Keeping existing $ENV_FILE"
+  if ! grep -qE '^PORTAL_PORT=' "$ENV_FILE"; then
+    printf 'PORTAL_PORT=%s\n' "$PORTAL_PORT" >> "$ENV_FILE"
+  fi
+  if ! grep -qE '^PORTAL_JWT_SECRET=' "$ENV_FILE"; then
+    PORTAL_JWT_SECRET="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
+    printf 'PORTAL_JWT_SECRET=%s\n' "$PORTAL_JWT_SECRET" >> "$ENV_FILE"
+  fi
 fi
 
 ACTIVE_PORT="$(grep -E '^APP_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2)"
 ACTIVE_PORT="${ACTIVE_PORT:-$APP_PORT}"
 [[ "$ACTIVE_PORT" =~ ^[0-9]+$ ]] && [ "$ACTIVE_PORT" -ge 1 ] && [ "$ACTIVE_PORT" -le 65535 ] \
   || die "Existing APP_PORT must be an integer between 1 and 65535."
+ACTIVE_PORTAL_PORT="$(grep -E '^PORTAL_PORT=' "$ENV_FILE" | head -1 | cut -d= -f2)"
+ACTIVE_PORTAL_PORT="${ACTIVE_PORTAL_PORT:-$PORTAL_PORT}"
+[[ "$ACTIVE_PORTAL_PORT" =~ ^[0-9]+$ ]] && [ "$ACTIVE_PORTAL_PORT" -ge 1 ] && [ "$ACTIVE_PORTAL_PORT" -le 65535 ] \
+  || die "Existing PORTAL_PORT must be an integer between 1 and 65535."
+[ "$ACTIVE_PORT" != "$ACTIVE_PORTAL_PORT" ] || die "Existing panel and customer portal ports must be different."
 
 chown -R root:root "$INSTALL_DIR"
 chown -R "$SERVICE_USER":"$SERVICE_USER" "$DATA_DIR"
@@ -313,7 +332,12 @@ systemctl restart "$SERVICE_NAME"
 ready=false
 for _ in $(seq 1 20); do
   if systemctl is-active --quiet "$SERVICE_NAME" && \
-    node -e "fetch('http://127.0.0.1:${ACTIVE_PORT}/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"; then
+    node -e "Promise.all([
+      fetch('http://127.0.0.1:${ACTIVE_PORT}/api/health'),
+      fetch('http://127.0.0.1:${ACTIVE_PORTAL_PORT}/api/health')
+    ]).then(responses => {
+      if (responses.some(response => !response.ok)) process.exit(1)
+    }).catch(() => process.exit(1))"; then
     ready=true
     break
   fi
@@ -323,6 +347,7 @@ done
 if [ "$ready" = true ]; then
   log "Service is running."
   log "Open http://localhost:${ACTIVE_PORT} to finish setup."
+  log "Customer portal: http://localhost:${ACTIVE_PORTAL_PORT}"
   log "By default the panel binds to 127.0.0.1. Run 'skygenpanel expose' to allow LAN access."
 else
   warn "Service failed to start. Check: journalctl -u ${SERVICE_NAME} -n 50"

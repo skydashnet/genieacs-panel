@@ -178,7 +178,8 @@ export default function DevicesPage() {
                           (device.SerialNumber || '').toLowerCase().includes(search) ||
                           device.brand.toLowerCase().includes(search) ||
                           (device.productclass || '').toLowerCase().includes(search) ||
-                          device.pppoe?.toLowerCase().includes(search)
+                          device.pppoe?.toLowerCase().includes(search) ||
+                          device.customerId?.toLowerCase().includes(search)
 
       return statusMatch && searchMatch
     })
@@ -244,7 +245,7 @@ export default function DevicesPage() {
                   <input
                     id="device-search"
                     type="search"
-                    placeholder="Serial, brand, PPPoE, or product class"
+                    placeholder="Serial, Customer ID, PPPoE, brand, or model"
                     className="modern-input pl-10"
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
@@ -295,6 +296,7 @@ export default function DevicesPage() {
                           <th>Serial / Device ID</th>
                           <th>Vendor & model</th>
                           <th>Subscriber</th>
+                          <th>Customer ID</th>
                           <th>Optical RX</th>
                           <th>Last Inform</th>
                           <th><span className="sr-only">Actions</span></th>
@@ -317,6 +319,7 @@ export default function DevicesPage() {
                                 <span className="mt-0.5 block text-xs text-muted-foreground">{device.productclass || 'Model not reported'}</span>
                               </td>
                               <td className="font-mono text-xs">{device.pppoe || 'Not reported'}</td>
+                              <td className="font-mono text-xs font-semibold">{device.customerId || 'Not generated'}</td>
                               <td>
                                 <span className={`font-mono text-sm font-semibold ${signalInfo.color}`}>
                                   {device.rxpower !== null && device.rxpower !== undefined ? `${device.rxpower} dBm` : 'N/A'}
@@ -361,6 +364,7 @@ export default function DevicesPage() {
                         </div>
                         <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 border-t border-border pt-4 text-sm">
                           <div><dt className="text-xs text-muted-foreground">PPPoE</dt><dd className="mt-1 truncate font-mono text-xs">{device.pppoe || 'Not reported'}</dd></div>
+                          <div><dt className="text-xs text-muted-foreground">Customer ID</dt><dd className="mt-1 truncate font-mono text-xs font-semibold">{device.customerId || 'Not generated'}</dd></div>
                           <div><dt className="text-xs text-muted-foreground">Optical RX</dt><dd className={`mt-1 font-mono text-xs font-semibold ${signalInfo.color}`}>{device.rxpower ?? 'N/A'}{device.rxpower !== null && device.rxpower !== undefined ? ' dBm' : ''}</dd></div>
                           <div className="col-span-2"><dt className="text-xs text-muted-foreground">Last Inform</dt><dd className="mt-1 text-xs">{formatDate(device._lastInform)}</dd></div>
                         </dl>

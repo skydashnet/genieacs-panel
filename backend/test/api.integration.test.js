@@ -6,12 +6,15 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Database from 'better-sqlite3';
 
 const backendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 let dataDir;
 let frontendDir;
 let port;
 let baseUrl;
+let portalPort;
+let portalBaseUrl;
 let server;
 let serverOutput = '';
 
@@ -31,7 +34,8 @@ async function waitForHealth() {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`${baseUrl}/api/health`);
-      if (response.ok) return;
+      const portalResponse = await fetch(`${portalBaseUrl}/api/health`);
+      if (response.ok && portalResponse.ok) return;
     } catch {
       // Server is still starting.
     }
@@ -67,15 +71,23 @@ before(async () => {
     path.join(frontendDir, 'index.html'),
     '<!doctype html><html><body><div id="root"></div><script type="module" src="/assets/app-test.js"></script></body></html>'
   );
+  await fs.writeFile(
+    path.join(frontendDir, 'portal.html'),
+    '<!doctype html><html><body><div id="root">Customer portal</div></body></html>'
+  );
   await fs.writeFile(path.join(frontendDir, 'assets', 'app-test.js'), 'document.querySelector("#root").textContent = "SkyGenPanel";');
   port = await getFreePort();
+  portalPort = await getFreePort();
   baseUrl = `http://127.0.0.1:${port}`;
+  portalBaseUrl = `http://127.0.0.1:${portalPort}`;
   server = spawn(process.execPath, ['src/server.js'], {
     cwd: backendDir,
     env: {
       ...process.env,
       APP_PORT: String(port),
+      PORTAL_PORT: String(portalPort),
       APP_HOST: '127.0.0.1',
+      PORTAL_HOST: '127.0.0.1',
       APP_ENV: 'production',
       JWT_SECRET: 'integration-test-secret-that-is-long-and-random-enough',
       DATA_DIR: dataDir,
@@ -166,13 +178,13 @@ test('initial setup is atomic and authentication token types stay separated', as
     token: loginPayload.data.token,
     body: { value: '' }
   });
-  assert.equal(emptySetting.status, 200);
+  assert.equal(emptySetting.status, 400);
 
   const getEmptySetting = await request('/api/settings/appName', {
     token: loginPayload.data.token
   });
   assert.equal(getEmptySetting.status, 200);
-  assert.equal((await getEmptySetting.json()).data.appName, '');
+  assert.equal((await getEmptySetting.json()).data.appName, 'SkyGenPanel');
 
   const nodeA = await request('/api/mapping-data/nodes', {
     method: 'POST',
@@ -261,6 +273,26 @@ test('initial setup is atomic and authentication token types stay separated', as
   });
   assert.deepEqual((await remainingNodes.json()).data, []);
   assert.deepEqual((await remainingEdges.json()).data, []);
+
+  const changedPassword = await request('/api/auth/change-password', {
+    method: 'POST',
+    token: loginPayload.data.token,
+    body: {
+      currentPassword: credentials.password,
+      newPassword: 'replacementPassword123'
+    }
+  });
+  assert.equal(changedPassword.status, 200);
+
+  const revokedAccess = await request('/api/settings', { token: loginPayload.data.token });
+  assert.equal(revokedAccess.status, 403);
+  assert.equal((await revokedAccess.json()).code, 'invalid_token');
+
+  const revokedRefresh = await request('/api/auth/refresh', {
+    method: 'POST',
+    body: { refreshToken: loginPayload.data.refreshToken }
+  });
+  assert.equal(revokedRefresh.status, 403);
 });
 
 test('production error handling, CSP, and static fallback are safe', async () => {
@@ -293,4 +325,71 @@ test('production error handling, CSP, and static fallback are safe', async () =>
 
   const missingAsset = await fetch(`${baseUrl}/missing-script.js`);
   assert.equal(missingAsset.status, 404);
+});
+
+test('customer portal is isolated, rate-limited, and uses an HttpOnly session cookie', async () => {
+  const adminApiOnPortal = await fetch(`${portalBaseUrl}/api/settings`);
+  assert.equal(adminApiOnPortal.status, 404);
+
+  const db = new Database(path.join(dataDir, 'panel.sqlite'));
+  db.prepare(`
+    INSERT INTO customer_accounts
+      (customer_id, device_id, identity_hash, software_id, pppoe_username, active)
+    VALUES (?, ?, ?, ?, ?, 1)
+  `).run(
+    'CSG-ABCD234-654321',
+    'test-portal-device',
+    'a'.repeat(64),
+    'V1.0.0',
+    'customer@example'
+  );
+  db.close();
+
+  const invalid = await fetch(`${portalBaseUrl}/api/customer/login`, {
+    method: 'POST',
+    headers: {
+      Origin: portalBaseUrl,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      customerId: 'CSG-ABCD234-654321',
+      password: '000000'
+    })
+  });
+  assert.equal(invalid.status, 401);
+  assert.equal((await invalid.json()).message, 'ID Customer atau password salah');
+
+  const login = await fetch(`${portalBaseUrl}/api/customer/login`, {
+    method: 'POST',
+    headers: {
+      Origin: portalBaseUrl,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      customerId: 'CSG-ABCD234-654321',
+      password: '654321'
+    })
+  });
+  assert.equal(login.status, 200);
+  const setCookie = login.headers.get('set-cookie') || '';
+  assert.match(setCookie, /skygp_portal_session=/);
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Strict/i);
+  const cookie = setCookie.split(';', 1)[0];
+
+  const session = await fetch(`${portalBaseUrl}/api/customer/session`, {
+    headers: { Cookie: cookie, Origin: portalBaseUrl }
+  });
+  assert.equal(session.status, 200);
+  assert.equal((await session.json()).data.customerId, 'CSG-ABCD234-654321');
+
+  const crossSiteLogout = await fetch(`${portalBaseUrl}/api/customer/logout`, {
+    method: 'POST',
+    headers: {
+      Cookie: cookie,
+      Origin: 'https://attacker.invalid',
+      'Sec-Fetch-Site': 'cross-site'
+    }
+  });
+  assert.equal(crossSiteLogout.status, 403);
 });
