@@ -3,6 +3,14 @@
 SkyGenPanel follows [Semantic Versioning](https://semver.org/). Release versions
 are calculated from conventional commits since the previous `v*` Git tag.
 
+## [1.10.2] - 2026-07-24
+
+### Fixed
+
+- Bind overview cache independently of request context (`d940608`)
+
+[Full comparison](https://github.com/skydashnet/genieacs-panel/compare/v1.10.1...v1.10.2)
+
 ## [1.10.1] - 2026-07-24
 
 ### Fixed
