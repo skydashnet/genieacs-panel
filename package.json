@@ -1,6 +1,6 @@
 {
   "name": "skygenpanel",
-  "version": "1.10.0",
+  "version": "1.10.1",
   "private": true,
   "description": "GenieACS management panel with an isolated customer self-service portal.",
   "scripts": {

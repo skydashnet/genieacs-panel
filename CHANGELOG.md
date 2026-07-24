@@ -3,6 +3,14 @@
 SkyGenPanel follows [Semantic Versioning](https://semver.org/). Release versions
 are calculated from conventional commits since the previous `v*` Git tag.
 
+## [1.10.1] - 2026-07-24
+
+### Fixed
+
+- Deduplicate global toast notifications (`f10067e`)
+
+[Full comparison](https://github.com/skydashnet/genieacs-panel/compare/v1.10.0...v1.10.1)
+
 ## [1.10.0] - 2026-07-24
 
 ### New

@@ -1,34 +1,16 @@
 {
-  "version": "1.10.0",
-  "build": 40,
-  "sourceCommit": "002531662429",
+  "version": "1.10.1",
+  "build": 42,
+  "sourceCommit": "f10067ebd06b",
   "releasedAt": "2026-07-24",
-  "basedOnTag": "v1.9.2",
-  "compareUrl": "https://github.com/skydashnet/genieacs-panel/compare/v1.9.2...v1.10.0",
+  "basedOnTag": "v1.10.0",
+  "compareUrl": "https://github.com/skydashnet/genieacs-panel/compare/v1.10.0...v1.10.1",
   "changes": [
     {
-      "shortHash": "0025316",
+      "shortHash": "f10067e",
       "date": "2026-07-24",
-      "title": "Portal pelanggan terisolasi di port 5891 dengan ringkasan ONT dan WiFi yang aman",
-      "category": "New"
-    },
-    {
-      "shortHash": "0025316",
-      "date": "2026-07-24",
-      "title": "ID Customer permanen CSG yang terikat SoftwareVersion dan PPPoE serta dikontrol dari Settings",
-      "category": "New"
-    },
-    {
-      "shortHash": "0025316",
-      "date": "2026-07-24",
-      "title": "Peta memuat engine dan data secara paralel, memakai CSS lokal, lalu center ke asset pada zoom 15",
+      "title": "Deduplicate global toast notifications",
       "category": "Fixed"
-    },
-    {
-      "shortHash": "0025316",
-      "date": "2026-07-24",
-      "title": "Session revocation, route isolation, origin checks, rate limits, CSP, dan deployment secrets diperketat",
-      "category": "Security"
     }
   ]
 }
