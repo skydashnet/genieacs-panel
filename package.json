@@ -1,6 +1,6 @@
 {
   "name": "skygenpanel",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "private": true,
   "description": "GenieACS management panel — single service (UI + API on one port).",
   "scripts": {

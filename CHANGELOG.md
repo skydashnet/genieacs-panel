@@ -3,6 +3,14 @@
 SkyGenPanel follows [Semantic Versioning](https://semver.org/). Release versions
 are calculated from conventional commits since the previous `v*` Git tag.
 
+## [1.9.1] - 2026-07-24
+
+### Fixed
+
+- Keep desktop sidebar anchored while scrolling (`9eef4fd`)
+
+[Full comparison](https://github.com/skydashnet/genieacs-panel/compare/v1.9.0...v1.9.1)
+
 ## [1.9.0] - 2026-07-24
 
 ### New
