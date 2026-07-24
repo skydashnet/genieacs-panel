@@ -36,6 +36,9 @@ const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5890')
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
+      // Next.js static exports embed hydration/redirect state in inline scripts.
+      // Keep script attributes blocked while allowing only those script blocks.
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: [
         "'self'",
         'data:',
