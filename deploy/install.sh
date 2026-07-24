@@ -230,7 +230,13 @@ fi
 log "Installing backend dependencies"
 ( cd "$INSTALL_DIR/backend" && npm ci --omit=dev )
 
-log "Installing frontend dependencies + building static export"
+log "Installing frontend dependencies + building production bundle"
+for legacy_dir in "$INSTALL_DIR/frontend/.next" "$INSTALL_DIR/frontend/out"; do
+  [ ! -L "$legacy_dir" ] || die "Refusing symbolic-link legacy artifact: $legacy_dir"
+  if [ -e "$legacy_dir" ]; then
+    rm -rf -- "$legacy_dir"
+  fi
+done
 ( cd "$INSTALL_DIR/frontend" && npm ci --include=dev && npm run build )
 
 # --- data dir + env ---------------------------------------------------------

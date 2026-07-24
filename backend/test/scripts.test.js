@@ -92,6 +92,8 @@ test('updater removes only known legacy Next.js build directories', () => {
   assert.match(updater, /frontend\/\.next/);
   assert.match(updater, /frontend\/out/);
   assert.match(updater, /Refusing symbolic-link legacy artifact/);
+  assert.match(updater, /install -m 0755 "\$INSTALL_DIR\/deploy\/skygenpanel"/);
+  assert.match(updater, /mv -f -- "\$cli_temp" "\$CLI_PATH"/);
   assert.doesNotMatch(updater, /git\s+-C\s+"?\$INSTALL_DIR"?\s+clean/);
 });
 
