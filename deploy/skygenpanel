@@ -104,6 +104,13 @@ cmd_restart() { need_root; systemctl restart "$SERVICE_NAME"; log "Restarted."; 
 cmd_start()   { need_root; systemctl start "$SERVICE_NAME"; log "Started."; }
 cmd_stop()    { need_root; systemctl stop "$SERVICE_NAME"; log "Stopped."; }
 cmd_status()  { systemctl status "$SERVICE_NAME" --no-pager; }
+cmd_version() {
+  local version commit
+  [ -f "$INSTALL_DIR/package.json" ] || die "Package manifest not found: $INSTALL_DIR/package.json"
+  version="$(node -p "require('${INSTALL_DIR}/package.json').version")"
+  commit="$(git -C "$INSTALL_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+  printf 'SkyGenPanel v%s (%s)\n' "$version" "$commit"
+}
 cmd_logs() {
   local lines="${1:-100}"
   [[ "$lines" =~ ^[0-9]+$ ]] || die "Log line count must be a positive integer."
@@ -135,6 +142,7 @@ Commands:
   unexpose                    Bind to 127.0.0.1 (localhost only) + restart
   restart | start | stop      Control the systemd service
   status                      Show service status
+  version                     Show installed version and Git revision
   logs [N]                    Follow the last N log lines (default 100)
   reset-password <u> [p]      Reset password (prompts securely when omitted)
   help                        Show this help
@@ -149,6 +157,7 @@ case "${1:-help}" in
   start)           cmd_start ;;
   stop)            cmd_stop ;;
   status)          cmd_status ;;
+  version|-v|--version) cmd_version ;;
   logs)            cmd_logs "${2:-100}" ;;
   reset-password)  cmd_reset_password "${2:-}" "${3:-}" ;;
   help|-h|--help)  usage ;;

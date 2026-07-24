@@ -12,7 +12,8 @@
     "test": "cd backend && npm test",
     "lint": "cd frontend && npm run lint",
     "typecheck": "cd frontend && npm run typecheck",
-    "verify": "npm test && npm run lint && npm run typecheck && npm run build"
+    "verify": "npm test && npm run lint && npm run typecheck && npm run build",
+    "release:prepare": "node scripts/prepare-release.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

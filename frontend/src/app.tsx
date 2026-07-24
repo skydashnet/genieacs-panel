@@ -45,7 +45,7 @@ function ProtectedShell() {
   if (!isAuthenticated) return <Navigate to="/login" replace />
 
   return (
-    <div className="flex min-h-screen overflow-hidden">
+    <div className="flex min-h-screen overflow-x-hidden">
       <Sidebar />
       <main className="min-w-0 flex-1">
         <Suspense fallback={<PageFallback />}>

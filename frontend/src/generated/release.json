@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "build": 32,
+  "sourceCommit": "f00c648",
+  "releasedAt": "2026-07-24",
+  "basedOnTag": "v1.0.0",
+  "compareUrl": "https://github.com/skydashnet/genieacs-panel/commits/main",
+  "changes": [
+    {
+      "shortHash": "f00c648",
+      "date": "2026-07-24",
+      "title": "Full topology CRUD, typed WiFi updates, dashboard analytics, and GenieACS faults",
+      "category": "New"
+    },
+    {
+      "shortHash": "0e9fb02",
+      "date": "2026-07-24",
+      "title": "Preserve the Leaflet map and viewport across refreshes",
+      "category": "Fixed"
+    },
+    {
+      "shortHash": "99b5761",
+      "date": "2026-07-24",
+      "title": "Prevent GenieACS metadata objects from crashing React",
+      "category": "Fixed"
+    },
+    {
+      "shortHash": "583c1e6",
+      "date": "2026-07-24",
+      "title": "Self-update the deployment CLI safely",
+      "category": "Improved"
+    }
+  ]
+}

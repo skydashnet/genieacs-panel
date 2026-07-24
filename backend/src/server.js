@@ -27,6 +27,9 @@ const PORT = Number(process.env.APP_PORT) || 5890;
 const HOST = process.env.APP_HOST || '127.0.0.1';
 const APP_ENV = process.env.APP_ENV || 'development';
 const FRONTEND_DIR = process.env.FRONTEND_DIR || path.join(__dirname, '..', '..', 'frontend', 'dist');
+const APP_VERSION = JSON.parse(
+  fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')
+).version;
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5890')
   .split(',')
@@ -115,7 +118,8 @@ app.get('/api/health', async (req, res) => {
     status: database ? 'ok' : 'degraded',
     database: database ? 'ok' : 'unavailable',
     timestamp: new Date().toISOString(),
-    environment: APP_ENV
+    environment: APP_ENV,
+    version: APP_VERSION
   });
 });
 

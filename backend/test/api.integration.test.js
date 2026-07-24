@@ -100,6 +100,10 @@ after(async () => {
 });
 
 test('same-origin CORS works and an untrusted origin is rejected', async () => {
+  const health = await fetch(`${baseUrl}/api/health`);
+  const healthPayload = await health.json();
+  assert.equal(healthPayload.version, '1.0.0');
+
   const sameOrigin = await request('/api/auth/setup-status');
   assert.equal(sameOrigin.status, 200);
   assert.equal(sameOrigin.headers.get('access-control-allow-origin'), baseUrl);

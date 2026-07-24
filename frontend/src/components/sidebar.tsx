@@ -6,6 +6,7 @@ import { useTheme } from '@/contexts/theme-context'
 import { useAuth } from '@/contexts/auth-context'
 import { Icon } from '@/components/ui/icon'
 import { BrandMark } from '@/components/brand-mark'
+import { APP_RELEASE, ReleaseNotesModal } from '@/components/release-notes-modal'
 
 const menuItems = [
   { href: '/dashboard', label: 'Operations', description: 'Fleet health', icon: 'dashboard' },
@@ -64,7 +65,7 @@ export default function Sidebar() {
       )}
 
       <aside
-        className={`relative hidden h-screen shrink-0 flex-col bg-[#18211d] text-[#f4f3ed] transition-[width] duration-200 md:flex ${
+        className={`sticky top-0 hidden h-screen max-h-screen shrink-0 self-start flex-col overflow-hidden bg-[#18211d] text-[#f4f3ed] transition-[width] duration-200 md:flex ${
           isCollapsed ? 'w-[4.75rem]' : 'w-[16.5rem]'
         }`}
       >
@@ -96,6 +97,7 @@ function SidebarContent({
   const displayName = user?.username || 'Operator'
   const initial = displayName.slice(0, 1).toUpperCase()
   const [appName, setAppName] = useState('SkyGenPanel')
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false)
 
   useEffect(() => {
     const syncName = (event?: Event) => {
@@ -121,7 +123,7 @@ function SidebarContent({
         </Link>
       </div>
 
-      <nav className={`flex-1 overflow-y-auto py-5 ${isCollapsed ? 'px-2.5' : 'px-3'}`} aria-label="Primary">
+      <nav className={`min-h-0 flex-1 overflow-y-auto py-5 ${isCollapsed ? 'px-2.5' : 'px-3'}`} aria-label="Primary">
         {!isCollapsed && <div className="mb-2 px-3 text-[0.62rem] font-bold uppercase tracking-[0.16em] text-[#829188]">Monitor & manage</div>}
         <ul className="space-y-1">
           {menuItems.map((item) => {
@@ -158,6 +160,24 @@ function SidebarContent({
       </nav>
 
       <div className={`border-t border-white/10 ${isCollapsed ? 'p-2.5' : 'p-3'}`}>
+        <button
+          type="button"
+          onClick={() => setShowReleaseNotes(true)}
+          className={`mb-2 flex min-h-11 w-full items-center rounded-md text-[#aab8b0] transition-colors hover:bg-white/8 hover:text-white ${
+            isCollapsed ? 'justify-center px-1' : 'justify-between gap-3 px-2.5'
+          }`}
+          aria-label={`Open release notes for SkyGenPanel version ${APP_RELEASE.version}`}
+          title={isCollapsed ? `Version ${APP_RELEASE.version} · What’s new` : undefined}
+        >
+          {isCollapsed ? (
+            <span className="font-mono text-[0.62rem] font-bold">v{APP_RELEASE.version.split('.').slice(0, 2).join('.')}</span>
+          ) : (
+            <>
+              <span className="flex items-center gap-2 text-xs font-semibold"><Icon name="info" size={17} />What’s new</span>
+              <span className="rounded bg-white/8 px-2 py-1 font-mono text-[0.65rem] font-bold text-[#d7dfda]">v{APP_RELEASE.version}</span>
+            </>
+          )}
+        </button>
         <div className={`mb-2 flex items-center ${isCollapsed ? 'justify-center' : 'gap-3 px-2 py-2'}`}>
           <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-[#d97706] text-sm font-bold text-[#1f251f]">
             {initial}
@@ -192,6 +212,7 @@ function SidebarContent({
           </button>
         </div>
       </div>
+      <ReleaseNotesModal open={showReleaseNotes} onClose={() => setShowReleaseNotes(false)} />
     </>
   )
 }
