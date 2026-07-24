@@ -97,6 +97,7 @@ export default function NetworkMap() {
   const markersLayerRef = useRef<any>(null)
   const tileLayerRef = useRef<any>(null)
   const leafletRef = useRef<any>(null)
+  const hasFitBoundsRef = useRef(false)
 
   const loadData = useCallback(async (withSettings = true) => {
     try {
@@ -224,8 +225,9 @@ export default function NetworkMap() {
       bounds.extend([n.latitude, n.longitude])
     })
 
-    if (nodes.length > 0) {
+    if (nodes.length > 0 && !hasFitBoundsRef.current) {
       map.fitBounds(bounds.pad(0.2))
+      hasFitBoundsRef.current = true
     }
   }, [isDarkMode, nodes])
 
@@ -373,101 +375,103 @@ export default function NetworkMap() {
           </div>
         </section>
 
-        {/* Content */}
-        {loading ? (
-          <div className="modern-card h-[36rem] animate-pulse bg-muted" role="status">
-            <span className="sr-only">Loading network topology</span>
-          </div>
-        ) : (
-          <>
-            {mapView === 'map' ? (
-              <div className="modern-card overflow-hidden">
-                <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h2 className="section-heading">Physical node map</h2>
-                    <p className="text-xs text-muted-foreground">Click a node for capacity, coordinates, and subscriber reference.</p>
-                  </div>
-                  <div
-                    role="group"
-                    aria-label="Basemap"
-                    className="inline-flex w-fit rounded-md border border-border bg-muted p-1"
+        {/* Keep both views mounted: Leaflet owns its map DOM and must not lose
+            that element while a refresh or view switch is in progress. */}
+        <div className="relative">
+          <div className={`modern-card overflow-hidden ${mapView === 'map' ? '' : 'hidden'}`} aria-hidden={mapView !== 'map'}>
+            <div className="flex flex-col gap-3 border-b border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="section-heading">Physical node map</h2>
+                <p className="text-xs text-muted-foreground">Click a node for capacity, coordinates, and subscriber reference.</p>
+              </div>
+              <div
+                role="group"
+                aria-label="Basemap"
+                className="inline-flex w-fit rounded-md border border-border bg-muted p-1"
+              >
+                {([
+                  ['osm', 'OpenStreetMap'],
+                  ['google', 'Google Maps']
+                ] as const).map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={basemap === value}
+                    onClick={() => handleBasemapChange(value)}
+                    className={`min-h-9 rounded px-3 py-1.5 text-xs font-semibold transition ${
+                      basemap === value
+                        ? 'bg-card text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
                   >
-                    {([
-                      ['osm', 'OpenStreetMap'],
-                      ['google', 'Google Maps']
-                    ] as const).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-pressed={basemap === value}
-                        onClick={() => handleBasemapChange(value)}
-                        className={`min-h-9 rounded px-3 py-1.5 text-xs font-semibold transition ${
-                          basemap === value
-                            ? 'bg-card text-foreground shadow-sm'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="h-[60vh] min-h-[25rem] max-h-[52rem] overflow-hidden">
-                  <div ref={mapContainerRef} className="w-full h-full" />
-                </div>
+                    {label}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <div className="modern-card overflow-hidden">
-                <div className="border-b border-border px-5 py-4">
-                  <h2 className="section-heading">Mapped network nodes</h2>
-                  <p className="section-description">Structured inventory for topology verification.</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="modern-table">
-                    <thead>
-                      <tr>
-                        <th>Node ID</th>
-                        <th>Name</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                        <th>Details</th>
-                        <th>Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {nodes.map((node) => (
-                        <tr key={node.id}>
-                          <td className="font-mono text-sm">{node.node_id}</td>
-                          <td>{node.name}</td>
-                          <td>
-                            <div className="flex items-center space-x-2">
-                              <Icon name={getNodeIconName(node.type)} size={18} className="text-gray-500 dark:text-gray-400" />
-                              <span>{getTypeLabel(node.type)}</span>
-                            </div>
-                          </td>
-                          <td>{getStatusBadge(node.status)}</td>
-                          <td className="text-sm">
-                            {node.capacity && <div>Capacity: {node.capacity}</div>}
-                            {node.splitter && <div>Splitter: {node.splitter}</div>}
-                            {node.pppoe && <div>PPPoE: {node.pppoe}</div>}
-                          </td>
-                          <td>
-                            <button
-                              onClick={() => setSelectedNode(node)}
-                              className="min-h-11 font-semibold text-primary hover:underline"
-                            >
-                              View Details
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            </div>
+            <div className="h-[60vh] min-h-[25rem] max-h-[52rem] overflow-hidden">
+              <div ref={mapContainerRef} className="h-full w-full" />
+            </div>
+          </div>
+
+          <div className={`modern-card overflow-hidden ${mapView === 'list' ? '' : 'hidden'}`} aria-hidden={mapView !== 'list'}>
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="section-heading">Mapped network nodes</h2>
+              <p className="section-description">Structured inventory for topology verification.</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="modern-table">
+                <thead>
+                  <tr>
+                    <th>Node ID</th>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nodes.map((node) => (
+                    <tr key={node.id}>
+                      <td className="font-mono text-sm">{node.node_id}</td>
+                      <td>{node.name}</td>
+                      <td>
+                        <div className="flex items-center space-x-2">
+                          <Icon name={getNodeIconName(node.type)} size={18} className="text-gray-500 dark:text-gray-400" />
+                          <span>{getTypeLabel(node.type)}</span>
+                        </div>
+                      </td>
+                      <td>{getStatusBadge(node.status)}</td>
+                      <td className="text-sm">
+                        {node.capacity && <div>Capacity: {node.capacity}</div>}
+                        {node.splitter && <div>Splitter: {node.splitter}</div>}
+                        {node.pppoe && <div>PPPoE: {node.pppoe}</div>}
+                      </td>
+                      <td>
+                        <button
+                          onClick={() => setSelectedNode(node)}
+                          className="min-h-11 font-semibold text-primary hover:underline"
+                        >
+                          View Details
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {loading && (
+            <div className="absolute inset-0 z-[500] flex items-center justify-center rounded-[var(--radius)] bg-background/70 backdrop-blur-[1px]" role="status">
+              <div className="modern-card flex items-center gap-3 px-4 py-3 shadow-lg">
+                <Icon name="refresh" size={18} className="animate-spin text-primary" />
+                <span className="text-sm font-semibold">Refreshing topology…</span>
               </div>
-            )}
-          </>
-        )}
+            </div>
+          )}
+        </div>
 
         {/* Node Details Modal */}
         {selectedNode && (
