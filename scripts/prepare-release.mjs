@@ -26,6 +26,14 @@ function git(args) {
   }).trim();
 }
 
+function tryGit(args) {
+  try {
+    return git(args);
+  } catch {
+    return '';
+  }
+}
+
 function readJson(relativePath) {
   return JSON.parse(fs.readFileSync(path.join(rootDir, relativePath), 'utf8'));
 }
@@ -62,9 +70,10 @@ function parseCommit(line) {
   const [hash, shortHash, date, ...subjectParts] = line.split('\u001f');
   const subject = subjectParts.join('\u001f').trim();
   const conventional = /^([a-z]+)(?:\([^)]+\))?(!)?:\s*(.+)$/i.exec(subject);
-  const type = conventional?.[1]?.toLowerCase() || 'other';
+  const loose = /^(feat|fix|perf|refactor|security)\b[\s:-]+(.+)$/i.exec(subject);
+  const type = (conventional?.[1] || loose?.[1] || 'other').toLowerCase();
   const breaking = Boolean(conventional?.[2]) || /BREAKING[ -]CHANGE/i.test(subject);
-  const rawTitle = conventional?.[3] || subject;
+  const rawTitle = conventional?.[3] || loose?.[2] || subject;
   const title = rawTitle ? `${rawTitle[0].toUpperCase()}${rawTitle.slice(1)}` : shortHash;
   const category = breaking
     ? 'Breaking'
@@ -83,6 +92,20 @@ function determineBump(commits) {
   if (commits.some((commit) => commit.breaking)) return 'major';
   if (commits.some((commit) => commit.type === 'feat')) return 'minor';
   return 'patch';
+}
+
+function calculateVersionFromHistory(commits) {
+  let version = '1.0.0';
+  for (const commit of commits) {
+    if (commit.breaking) {
+      version = bumpVersion(version, 'major');
+    } else if (commit.type === 'feat') {
+      version = bumpVersion(version, 'minor');
+    } else if (['fix', 'perf', 'refactor', 'security'].includes(commit.type)) {
+      version = bumpVersion(version, 'patch');
+    }
+  }
+  return version;
 }
 
 function renderChangelog(version, date, commits, compareUrl) {
@@ -106,27 +129,29 @@ function renderChangelog(version, date, commits, compareUrl) {
   return lines.join('\n');
 }
 
-const latestTag = git(['describe', '--tags', '--match', 'v[0-9]*', '--abbrev=0']);
-const baseVersion = latestTag.replace(/^v/, '');
-parseVersion(baseVersion);
-
+const latestTag = tryGit(['describe', '--tags', '--match', 'v[0-9]*', '--abbrev=0']);
+const logRange = latestTag ? `${latestTag}..HEAD` : 'HEAD';
 const logOutput = git([
   'log',
   '--reverse',
   '--format=%H%x1f%h%x1f%cs%x1f%s',
-  `${latestTag}..HEAD`
+  logRange
 ]);
 const commits = logOutput ? logOutput.split('\n').map(parseCommit) : [];
 if (commits.length === 0) {
-  throw new Error(`No commits found after ${latestTag}; there is nothing to release.`);
+  throw new Error(`No commits found after ${latestTag || 'repository start'}; there is nothing to release.`);
 }
 
-const nextVersion = bumpVersion(baseVersion, determineBump(commits));
+const nextVersion = latestTag
+  ? bumpVersion(latestTag.replace(/^v/, ''), determineBump(commits))
+  : calculateVersionFromHistory(commits);
 const currentCommit = git(['rev-parse', '--short=12', 'HEAD']);
 const currentCount = Number(git(['rev-list', '--count', 'HEAD']));
 const releaseDate = new Date().toISOString().slice(0, 10);
 const repositoryUrl = 'https://github.com/skydashnet/genieacs-panel';
-const compareUrl = `${repositoryUrl}/compare/${latestTag}...v${nextVersion}`;
+const compareUrl = latestTag
+  ? `${repositoryUrl}/compare/${latestTag}...v${nextVersion}`
+  : `${repositoryUrl}/commits/${currentCommit}`;
 
 for (const relativePath of packagePaths) {
   const manifest = readJson(relativePath);
@@ -145,7 +170,7 @@ writeJson(releasePath, {
   build: currentCount + 1,
   sourceCommit: currentCommit,
   releasedAt: releaseDate,
-  basedOnTag: latestTag,
+  basedOnTag: latestTag || 'repository start',
   compareUrl,
   changes: commits.map(({ shortHash, date, title, category }) => ({
     shortHash,

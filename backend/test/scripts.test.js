@@ -97,6 +97,32 @@ test('updater removes only known legacy Next.js build directories', () => {
   assert.doesNotMatch(updater, /git\s+-C\s+"?\$INSTALL_DIR"?\s+clean/);
 });
 
+test('release metadata stays synchronized with every package manifest and lockfile', () => {
+  const release = JSON.parse(fs.readFileSync(
+    path.join(repoDir, 'frontend', 'src', 'generated', 'release.json'),
+    'utf8'
+  ));
+  const versionedFiles = [
+    'package.json',
+    'backend/package.json',
+    'frontend/package.json',
+    'backend/package-lock.json',
+    'frontend/package-lock.json'
+  ];
+  for (const relativePath of versionedFiles) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(repoDir, relativePath), 'utf8'));
+    assert.equal(manifest.version, release.version, `${relativePath} has a different version`);
+    if (manifest.packages?.['']) {
+      assert.equal(manifest.packages[''].version, release.version, `${relativePath} root package is stale`);
+    }
+  }
+
+  const changelog = fs.readFileSync(path.join(repoDir, 'CHANGELOG.md'), 'utf8');
+  assert.match(changelog, new RegExp(`^## \\[${release.version.replaceAll('.', '\\.')}\\]`, 'm'));
+  assert.match(release.sourceCommit, /^[0-9a-f]{7,12}$/);
+  assert.ok(Number.isInteger(release.build) && release.build > 0);
+});
+
 test('database automation scripts load .env and reset passwords without sourcing it as shell', () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skygenpanel-scripts-'));
   const dataDir = path.join(tempDir, 'data');
