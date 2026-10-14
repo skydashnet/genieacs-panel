@@ -17,6 +17,7 @@ router.put('/config', authenticateToken, requirePermission('whatsapp.config'), W
 router.get('/bot-config', authenticateToken, requirePermission('whatsapp.config'), WhatsAppController.getBotConfig);
 router.put('/bot-config', authenticateToken, requirePermission('whatsapp.config'), WhatsAppController.updateBotConfig);
 router.post('/bot-config/ai-test', authenticateToken, requirePermission('whatsapp.config'), WhatsAppController.testBotAi);
+router.post('/bot-config/ai-improve-message', authenticateToken, requirePermission('whatsapp.config'), WhatsAppController.improveBotMessage);
 // O relatório do bot é leitura de quem atende, não de quem configura.
 router.get('/bot-report', authenticateToken, requirePermission('whatsapp.read'), WhatsAppController.getBotReport);
 // A pesquisa de satisfação: leitura de quem atende, como o relatório do bot.

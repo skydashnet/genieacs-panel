@@ -148,3 +148,14 @@ describe('Claude (Anthropic): cliente HTTP', () => {
     assert.equal(await caso(529, { type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }), 'ai_rate_limited');
   });
 });
+
+describe('IA melhora textos do bot', () => {
+  it('o prompt cita o papel da mensagem e a limpeza tira aspas e markdown', async () => {
+    const { promptDeMensagem, limparMensagem, mensagemTemContexto } = await import('../src/utils/wa/waMensagemIa.js');
+    assert.equal(mensagemTemContexto('greeting'), true);
+    assert.equal(mensagemTemContexto('nao-existe'), false);
+    assert.match(promptDeMensagem({ empresa: 'Tavares Fibra', key: 'askDocument' }), /CPF ou CNPJ/);
+    assert.equal(limparMensagem('"**Olá!** Como posso ajudar?"'), 'Olá! Como posso ajudar?');
+    assert.equal(limparMensagem('x'.repeat(2000)).length, 1000);
+  });
+});

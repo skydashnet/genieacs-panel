@@ -624,6 +624,7 @@ export default {
   'whatsapp.ai.error.failed': 'A IA falhou',
   'whatsapp.ai.suggested': 'Sugestão gerada',
   'whatsapp.ai.testOk': 'A IA respondeu',
+  'whatsapp.ai.improveOk': 'Texto melhorado pela IA',
   'whatsapp.dunning.error.invalidSteps': "As etapas da régua são inválidas",
   'whatsapp.dunning.error.tooManySteps': "A régua aceita no máximo {max} etapas",
   'whatsapp.dunning.error.invalidOffset': "O dia de uma etapa deve ficar entre {min} e {max}",

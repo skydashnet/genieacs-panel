@@ -15,6 +15,7 @@ import {
   tomValido,
   variaveisForaDaLista
 } from '../utils/wa/waModeloIa.js';
+import { MENSAGEM_MAX, limparMensagem, mensagemTemContexto, promptDeMensagem } from '../utils/wa/waMensagemIa.js';
 import { getDb, tdb } from '../config/database.js';
 import { currentTenantId } from '../config/tenantContext.js';
 import { isValidCnpj, isValidCpf, normalizeTaxId } from '../utils/taxId.js';
@@ -297,6 +298,42 @@ class WaAiService {
       if (!texto) throw new WaError('whatsapp.ai.error.badResponse', { code: 'ai_bad_response', status: 502 });
       await WaBotConfigService.recordAiError(null);
       return { text: texto, warnings: { removed: removidas, mirrors: espelhos } };
+    } catch (error) {
+      if (error?.code && String(error.code).startsWith('ai_')) await WaBotConfigService.recordAiError(error.code, error.details);
+      throw error;
+    }
+  }
+
+  /**
+   * Melhora um texto do bot (a aba Chatbot). Só devolve o texto: quem grava é
+   * o provedor, ao salvar a tela.
+   *
+   * @returns {Promise<{text: string}>}
+   */
+  static async improveMessage({ key, text } = {}) {
+    if (!mensagemTemContexto(key)) {
+      throw new WaError('whatsapp.error.invalidBotConfig', { code: 'invalid_bot_message', status: 400 });
+    }
+    const atual = String(text ?? '').trim().slice(0, MENSAGEM_MAX);
+    if (!atual) throw new WaError('whatsapp.ai.error.draftGoal', { code: 'ai_draft_goal', status: 400 });
+    const ai = await WaBotConfigService.aiSettings();
+    if (!ai.apiKey) throw new WaError('whatsapp.ai.error.keyRequired', { code: 'ai_key_required', status: 409 });
+    try {
+      const { content } = await WaAiClient.chat({
+        provider: ai.provider,
+        baseUrl: ai.baseUrl,
+        apiKey: ai.apiKey,
+        model: ai.model,
+        messages: [
+          { role: 'system', content: promptDeMensagem({ empresa: await nomeDaEmpresa(), key }) },
+          { role: 'user', content: atual }
+        ],
+        maxTokens: 400
+      });
+      const texto = limparMensagem(content);
+      if (!texto) throw new WaError('whatsapp.ai.error.badResponse', { code: 'ai_bad_response', status: 502 });
+      await WaBotConfigService.recordAiError(null);
+      return { text: texto };
     } catch (error) {
       if (error?.code && String(error.code).startsWith('ai_')) await WaBotConfigService.recordAiError(error.code, error.details);
       throw error;

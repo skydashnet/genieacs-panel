@@ -626,6 +626,7 @@ export default {
   'whatsapp.ai.error.failed': 'AI 發生錯誤',
   'whatsapp.ai.suggested': '已產生建議',
   'whatsapp.ai.testOk': 'AI 已回覆',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "催繳步驟無效",
   'whatsapp.dunning.error.tooManySteps': "最多允許 {max} 個步驟",
   'whatsapp.dunning.error.invalidOffset': "步驟的天數須介於 {min} 到 {max}",

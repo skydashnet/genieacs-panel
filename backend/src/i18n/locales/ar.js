@@ -626,6 +626,7 @@ export default {
   'whatsapp.ai.error.failed': 'فشل الذكاء الاصطناعي',
   'whatsapp.ai.suggested': 'تم إنشاء الاقتراح',
   'whatsapp.ai.testOk': 'رد الذكاء الاصطناعي',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "مراحل التذكير غير صالحة",
   'whatsapp.dunning.error.tooManySteps': "يُسمح بـ {max} مراحل كحد أقصى",
   'whatsapp.dunning.error.invalidOffset': "يجب أن يكون يوم المرحلة بين {min} و{max}",

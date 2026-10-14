@@ -628,6 +628,7 @@ export default {
   'whatsapp.ai.error.failed': 'Die KI ist fehlgeschlagen',
   'whatsapp.ai.suggested': 'Vorschlag erstellt',
   'whatsapp.ai.testOk': 'Die KI hat geantwortet',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "Die Mahnstufen sind ungültig",
   'whatsapp.dunning.error.tooManySteps': "Es sind höchstens {max} Mahnstufen erlaubt",
   'whatsapp.dunning.error.invalidOffset': "Der Tag einer Stufe muss zwischen {min} und {max} liegen",
