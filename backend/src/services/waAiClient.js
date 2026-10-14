@@ -1,6 +1,7 @@
 import { PinnedTransport, RESPONSE_TOO_LARGE } from '../utils/net/pinnedFetch.js';
 import { deploymentIsShared } from './genieacsEgress.js';
 import { WaError } from './whatsappConfigService.js';
+import { AI_ADAPTERS, AI_PROVIDERS, AI_PROVIDER_OPENAI, aiProviderOrDefault } from './waAiAdapters.js';
 
 /**
  * O cliente da IA do atendimento: uma API compatível com OpenAI
@@ -12,8 +13,8 @@ import { WaError } from './whatsappConfigService.js';
  * chave no cabeçalho não é uma API em que se confia a chave.
  */
 
-export const AI_DEFAULT_BASE_URL = 'https://api.z.ai/api/paas/v4';
-export const AI_DEFAULT_MODEL = 'glm-4.5-flash';
+export const AI_DEFAULT_BASE_URL = AI_PROVIDERS[AI_PROVIDER_OPENAI].defaultBaseUrl;
+export const AI_DEFAULT_MODEL = AI_PROVIDERS[AI_PROVIDER_OPENAI].defaultModel;
 
 const TIMEOUT_MS = 25_000;
 const MAX_BYTES = 1024 * 1024;
@@ -28,7 +29,7 @@ const erro = (code, status = 502, details = null) => new WaError(
  * Authentication failed". Só os campos de erro conhecidos, curto, numa linha,
  * e nunca com a chave dentro.
  */
-export function motivoDoProvedor(status, texto, apiKey) {
+export function motivoDoProvedor(status, texto, apiKey, { usarTipo = false } = {}) {
   let corpo = null;
   try {
     corpo = JSON.parse(texto);
@@ -36,7 +37,7 @@ export function motivoDoProvedor(status, texto, apiKey) {
     corpo = null;
   }
   const err = corpo && typeof corpo.error === 'object' && corpo.error ? corpo.error : null;
-  const codigo = err?.code ?? corpo?.code ?? null;
+  const codigo = err?.code ?? corpo?.code ?? (usarTipo ? err?.type : null) ?? null;
   const mensagem = err?.message ?? (typeof corpo?.error === 'string' ? corpo.error : null) ?? corpo?.msg ?? corpo?.message ?? null;
   let motivo = [codigo, mensagem].filter((v) => v !== null && v !== undefined && String(v).trim()).join(': ');
   motivo = motivo.replace(/\s+/g, ' ').trim();
@@ -46,9 +47,9 @@ export function motivoDoProvedor(status, texto, apiKey) {
 }
 
 /** O endereço como o painel guarda: só http/https, sem credenciais, sem barra no fim. */
-export function normalizeAiBaseUrl(value) {
+export function normalizeAiBaseUrl(value, provider = AI_PROVIDER_OPENAI) {
   const text = String(value ?? '').trim();
-  if (!text) return AI_DEFAULT_BASE_URL;
+  if (!text) return AI_PROVIDERS[aiProviderOrDefault(provider)].defaultBaseUrl;
   let url;
   try {
     url = new URL(text.includes('://') ? text : `https://${text}`);
@@ -72,17 +73,15 @@ class WaAiClient {
    *
    * @returns {Promise<{content: string|null, toolCalls: {id: string, name: string, arguments: object}[], message: object}>}
    */
-  static async chat({ baseUrl, apiKey, model, messages, tools = null, maxTokens = 600 }) {
+  static async chat({ provider, baseUrl, apiKey, model, messages, tools = null, maxTokens = 600 }) {
     if (!apiKey) throw erro('ai_key_required', 400);
-    const url = new URL(`${normalizeAiBaseUrl(baseUrl)}/chat/completions`);
+    const id = aiProviderOrDefault(provider);
+    const adapter = AI_ADAPTERS[id];
+    const url = new URL(`${normalizeAiBaseUrl(baseUrl, id)}${adapter.path}`);
     const hostname = url.hostname.replace(/^\[|\]$/g, '');
-    const body = {
-      model: model || AI_DEFAULT_MODEL,
-      messages,
-      temperature: 0.3,
-      max_tokens: maxTokens,
-      ...(tools?.length ? { tools, tool_choice: 'auto' } : {})
-    };
+    const { headers, body } = adapter.buildRequest({
+      apiKey, model: model || AI_PROVIDERS[id].defaultModel, messages, tools, maxTokens
+    });
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
@@ -103,7 +102,7 @@ class WaAiClient {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          Authorization: `Bearer ${apiKey}`
+          ...headers
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -125,11 +124,11 @@ class WaAiClient {
       } catch {
         texto = '';
       }
-      const { details, codigo, mensagem } = motivoDoProvedor(response.status, texto, apiKey);
+      const { details, codigo, mensagem } = motivoDoProvedor(response.status, texto, apiKey, { usarTipo: id !== AI_PROVIDER_OPENAI });
       if (response.status === 401 || response.status === 403) throw erro('ai_unauthorized', 502, details);
       // A z.ai diz "sem saldo" com 429 e o código 1113: não é esperar, é recarregar.
-      if (codigo === '1113' || /balance|saldo|余额|resource package/i.test(mensagem)) throw erro('ai_no_balance', 502, details);
-      if (response.status === 429) throw erro('ai_rate_limited', 502, details);
+      if (adapter.isNoBalance({ codigo, mensagem })) throw erro('ai_no_balance', 502, details);
+      if (response.status === 429 || response.status === 529) throw erro('ai_rate_limited', 502, details);
       throw erro('ai_bad_response', 502, details);
     }
 
@@ -139,24 +138,9 @@ class WaAiClient {
     } catch {
       throw erro('ai_bad_response');
     }
-    const message = data?.choices?.[0]?.message;
-    if (!message || typeof message !== 'object') throw erro('ai_bad_response');
-
-    const toolCalls = [];
-    for (const call of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
-      const name = call?.function?.name;
-      if (!name) continue;
-      let args = {};
-      try {
-        const raw = call.function.arguments;
-        args = typeof raw === 'string' ? (raw.trim() ? JSON.parse(raw) : {}) : (raw || {});
-      } catch {
-        args = {};
-      }
-      toolCalls.push({ id: String(call.id || `call_${toolCalls.length}`), name: String(name), arguments: args });
-    }
-    const content = typeof message.content === 'string' ? message.content.trim() : null;
-    return { content: content || null, toolCalls, message };
+    const parsed = adapter.parse(data);
+    if (!parsed) throw erro('ai_bad_response');
+    return parsed;
   }
 }
 

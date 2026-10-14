@@ -56,7 +56,7 @@ class WhatsAppController {
   static async testBotAi(req, res) {
     try {
       const body = req.body ?? {};
-      const result = await WaAiService.test({ baseUrl: body.baseUrl, apiKey: body.apiKey, model: body.model });
+      const result = await WaAiService.test({ provider: body.provider, baseUrl: body.baseUrl, apiKey: body.apiKey, model: body.model });
       return res.json(createResponse(req.t('whatsapp.ai.testOk'), result));
     } catch (error) {
       return aiError(req, res, error);
