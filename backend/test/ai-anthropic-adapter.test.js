@@ -42,6 +42,61 @@ describe('Claude (Anthropic): conversão de mensagens', () => {
   });
 });
 
+describe('Claude (Anthropic): compatibilidade com os modelos atuais', () => {
+  const pedido = (model, extra = {}) => AI_ADAPTERS.anthropic.buildRequest({
+    apiKey: 'k', model, maxTokens: 600, messages: [{ role: 'user', content: 'oi' }], ...extra
+  }).body;
+
+  it('nunca envia temperature; modelos 5.x ganham esforço baixo e folga de tokens', () => {
+    const novo = pedido('claude-sonnet-5-5');
+    assert.equal('temperature' in novo, false);
+    assert.deepEqual(novo.output_config, { effort: 'low' });
+    assert.equal(novo.max_tokens, 600 + 1024);
+  });
+
+  it('modelo antigo não recebe effort nem folga', () => {
+    const velho = pedido('claude-haiku-4-5');
+    assert.equal('output_config' in velho, false);
+    assert.equal(velho.max_tokens, 600);
+  });
+
+  it('sem ferramentas na chamada, blocos de ferramenta do histórico viram texto', () => {
+    const historico = [
+      { role: 'user', content: 'fatura' },
+      { role: 'assistant', content: '', tool_calls: [{ id: 't1', type: 'function', function: { name: 'consultar_fatura', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 't1', content: 'R$ 99' }
+    ];
+    const sem = pedido('claude-sonnet-5-5', { messages: historico, tools: [] });
+    assert.equal(JSON.stringify(sem.messages).includes('tool_use'), false);
+    assert.equal(JSON.stringify(sem.messages).includes('tool_result'), false);
+    assert.match(JSON.stringify(sem.messages), /R\$ 99/);
+    const com = pedido('claude-sonnet-5-5', {
+      messages: historico,
+      tools: [{ type: 'function', function: { name: 'consultar_fatura', description: 'x', parameters: { type: 'object', properties: {} } } }]
+    });
+    assert.match(JSON.stringify(com.messages), /tool_use/);
+  });
+});
+
+describe('OpenAI-compatível: parâmetros', () => {
+  const corpo = (hostname) => AI_ADAPTERS['openai-compatible'].buildRequest({
+    apiKey: 'k', model: 'm', maxTokens: 50, messages: [], hostname
+  }).body;
+
+  it('api.openai.com usa max_completion_tokens e sem temperature', () => {
+    const b = corpo('api.openai.com');
+    assert.equal(b.max_completion_tokens, 50);
+    assert.equal('max_tokens' in b, false);
+    assert.equal('temperature' in b, false);
+  });
+
+  it('z.ai e outros compatíveis seguem com max_tokens e temperature', () => {
+    const b = corpo('api.z.ai');
+    assert.equal(b.max_tokens, 50);
+    assert.equal(b.temperature, 0.3);
+  });
+});
+
 describe('Claude (Anthropic): cliente HTTP', () => {
   let server;
   let url;

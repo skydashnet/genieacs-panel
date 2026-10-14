@@ -80,7 +80,7 @@ class WaAiClient {
     const url = new URL(`${normalizeAiBaseUrl(baseUrl, id)}${adapter.path}`);
     const hostname = url.hostname.replace(/^\[|\]$/g, '');
     const { headers, body } = adapter.buildRequest({
-      apiKey, model: model || AI_PROVIDERS[id].defaultModel, messages, tools, maxTokens
+      apiKey, model: model || AI_PROVIDERS[id].defaultModel, messages, tools, maxTokens, hostname
     });
 
     const controller = new AbortController();
