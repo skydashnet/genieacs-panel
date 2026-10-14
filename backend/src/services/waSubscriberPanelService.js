@@ -120,9 +120,14 @@ class WaSubscriberPanelService {
     const { link, matchedOn } = await this.storedLink(conversation);
     // A thread bound to an SGP client with no contract and no ONT: its
     // document is the only handle the SGP lookup accepts.
-    const contact = !link && !conversation.contract && conversation.sgp_contact_id
-      ? await SgpContact.getById(conversation.sgp_contact_id)
-      : null;
+    // Sem ONT, o cadastro sincronizado (`sgp_contacts`) é quem guarda o CPF/CNPJ:
+    // sem ele a busca ia só pelo contrato e achava um contrato só, mesmo para o
+    // cliente que tem vários.
+    const contact = link
+      ? null
+      : (conversation.contract
+        ? await SgpContact.getByContract(conversation.contract)
+        : (conversation.sgp_contact_id ? await SgpContact.getById(conversation.sgp_contact_id) : null));
     const searchDocument = onlyDigits(document) || onlyDigits(link?.document) || onlyDigits(contact?.document);
     const searchContract = conversation.contract || link?.contract || null;
 
@@ -131,9 +136,23 @@ class WaSubscriberPanelService {
     }
 
     try {
-      const { contracts } = await SgpService.lookupCustomer(
+      let { contracts } = await SgpService.lookupCustomer(
         searchDocument ? { document: searchDocument } : { contract: searchContract }
       );
+      // Achou pelo contrato e o cadastro daquele contrato diz de quem é: os
+      // outros contratos do mesmo cliente vêm pelo documento. Se esta segunda
+      // consulta falhar, fica o que a primeira trouxe.
+      if (!searchDocument) {
+        const documento = onlyDigits(SgpService.exactContract(contracts, searchContract)?.document);
+        if (documento) {
+          try {
+            const todos = (await SgpService.lookupCustomer({ document: documento })).contracts;
+            if (todos.some((c) => String(c.contract) === String(searchContract))) contracts = todos;
+          } catch {
+            // a lista curta, de um contrato só, continua valendo
+          }
+        }
+      }
       return { link, matchedOn, contracts, error: null, stale: false, searched: true };
     } catch (error) {
       if (error instanceof SgpError && error.code === 'not_configured') throw error;

@@ -269,3 +269,22 @@ describe('o contato sem ONT no resto do WhatsApp', () => {
     assert.equal(doBeta.length, 0);
   });
 });
+
+describe('o Módulo SGP de um cliente com mais de um contrato', () => {
+  it('lista todos os contratos do cliente mesmo sem ONT e sem documento guardado', async () => {
+    // Uma conversa ligada a mão a S-300, sem ONT e com o cadastro sincronizado
+    // sem CPF: a busca só pelo contrato achava um contrato só.
+    await asTenant(() => getDb()('sgp_contacts').where({ contract: 'S-300' }).update({ document: null }));
+    await hook(eventoV2({ id: 'MSG-SGP-DUAS', remoteJid: '5593977770000@s.whatsapp.net' }));
+    const fio = await asTenant(() => WaConversation.getByThread(accountId, '5593977770000@s.whatsapp.net'));
+    await asTenant(() => WaConversation.update(fio.id, { contract: 'S-300' }));
+
+    const res = await call(`${panelUrl}/api/whatsapp/conversations/${fio.id}/subscriber`, { headers: authHeaders(token) });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.data.contracts.items.map((c) => c.contract).sort(), ['S-300', 'S-301']);
+    assert.equal(res.body.data.contract.contract, 'S-300', 'o contrato da conversa continua selecionado');
+
+    const outro = await call(`${panelUrl}/api/whatsapp/conversations/${fio.id}/subscriber?contract=S-301`, { headers: authHeaders(token) });
+    assert.equal(outro.body.data.contract.contract, 'S-301');
+  });
+});
