@@ -2320,6 +2320,7 @@ const ru: Dictionary = {
   'whatsapp.inbox.filterAll': 'Все',
   'whatsapp.inbox.filters': "Фильтры",
   'whatsapp.inbox.clearFilter': "Убрать фильтр",
+  'whatsapp.inbox.openUnread': "Открыть следующий непрочитанный диалог",
   'whatsapp.inbox.searchPlaceholder': 'Номер, имя или договор',
   'whatsapp.inbox.noMatch': 'Подходящих диалогов нет.',
   'whatsapp.source.bot': 'Автоматический ответ',

@@ -2313,6 +2313,7 @@ const es: Dictionary = {
   'whatsapp.inbox.filterAll': 'Todas',
   'whatsapp.inbox.filters': "Filtros",
   'whatsapp.inbox.clearFilter': "Quitar filtro",
+  'whatsapp.inbox.openUnread': "Abrir la siguiente conversación sin leer",
   'whatsapp.inbox.searchPlaceholder': 'Número, nombre o contrato',
   'whatsapp.inbox.noMatch': 'Ninguna conversación coincide con eso.',
   'whatsapp.source.bot': 'Respuesta automática',

@@ -2293,6 +2293,7 @@ const ar: Dictionary = {
   'whatsapp.inbox.filterAll': 'الكل',
   'whatsapp.inbox.filters': "عوامل التصفية",
   'whatsapp.inbox.clearFilter': "إزالة التصفية",
+  'whatsapp.inbox.openUnread': "فتح المحادثة التالية غير المقروءة",
   'whatsapp.inbox.searchPlaceholder': 'الرقم أو الاسم أو العقد',
   'whatsapp.inbox.noMatch': 'لا توجد محادثة مطابقة.',
   'whatsapp.source.bot': 'رد تلقائي',

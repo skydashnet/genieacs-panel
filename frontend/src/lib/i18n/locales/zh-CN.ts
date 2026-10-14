@@ -2313,6 +2313,7 @@ const zhCN: Dictionary = {
   'whatsapp.inbox.filterAll': '全部',
   'whatsapp.inbox.filters': "筛选",
   'whatsapp.inbox.clearFilter': "移除筛选",
+  'whatsapp.inbox.openUnread': "打开下一个未读会话",
   'whatsapp.inbox.searchPlaceholder': '号码、姓名或合同号',
   'whatsapp.inbox.noMatch': '没有符合条件的会话。',
   'whatsapp.source.bot': '自动回复',

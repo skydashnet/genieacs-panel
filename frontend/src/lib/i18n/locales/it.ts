@@ -2319,6 +2319,7 @@ const it: Dictionary = {
   'whatsapp.inbox.filterAll': 'Tutte',
   'whatsapp.inbox.filters': "Filtri",
   'whatsapp.inbox.clearFilter': "Rimuovi filtro",
+  'whatsapp.inbox.openUnread': "Apri la prossima conversazione non letta",
   'whatsapp.inbox.searchPlaceholder': 'Numero, nome o contratto',
   'whatsapp.inbox.noMatch': 'Nessuna conversazione corrisponde.',
   'whatsapp.source.bot': 'Risposta automatica',

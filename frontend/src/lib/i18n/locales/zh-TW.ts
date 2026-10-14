@@ -2313,6 +2313,7 @@ const zhTW: Dictionary = {
   'whatsapp.inbox.filterAll': '全部',
   'whatsapp.inbox.filters': "篩選",
   'whatsapp.inbox.clearFilter': "移除篩選",
+  'whatsapp.inbox.openUnread': "開啟下一個未讀對話",
   'whatsapp.inbox.searchPlaceholder': '號碼、姓名或合約',
   'whatsapp.inbox.noMatch': '沒有符合條件的對話。',
   'whatsapp.source.bot': '自動回覆',

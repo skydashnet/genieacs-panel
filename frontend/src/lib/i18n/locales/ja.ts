@@ -2312,6 +2312,7 @@ const ja: Dictionary = {
   'whatsapp.inbox.filterAll': 'すべて',
   'whatsapp.inbox.filters': "フィルター",
   'whatsapp.inbox.clearFilter': "フィルターを解除",
+  'whatsapp.inbox.openUnread': "次の未読の会話を開く",
   'whatsapp.inbox.searchPlaceholder': '番号、氏名、契約番号',
   'whatsapp.inbox.noMatch': '該当する会話はありません。',
   'whatsapp.source.bot': '自動応答',

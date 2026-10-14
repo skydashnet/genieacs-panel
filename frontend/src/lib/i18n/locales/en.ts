@@ -2315,6 +2315,7 @@ const en = {
   'whatsapp.inbox.filterAll': 'All',
   'whatsapp.inbox.filters': "Filters",
   'whatsapp.inbox.clearFilter': "Remove filter",
+  'whatsapp.inbox.openUnread': "Open the next unread conversation",
   'whatsapp.inbox.searchPlaceholder': 'Number, name or contract',
   'whatsapp.inbox.noMatch': 'No conversation matches that.',
   'whatsapp.source.bot': 'Automatic reply',

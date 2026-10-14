@@ -2902,6 +2902,7 @@ const fr: Dictionary = {
   'whatsapp.inbox.filterAll': 'Toutes',
   'whatsapp.inbox.filters': "Filtres",
   'whatsapp.inbox.clearFilter': "Retirer le filtre",
+  'whatsapp.inbox.openUnread': "Ouvrir la prochaine conversation non lue",
   'whatsapp.inbox.searchPlaceholder': 'Numéro, nom ou contrat',
   'whatsapp.inbox.noMatch': 'Aucune conversation ne correspond.',
   'whatsapp.source.bot': 'Réponse automatique',
