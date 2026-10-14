@@ -4,6 +4,7 @@ import WaBotConfigService, { chaveParaNovoEndereco, mesmoEnderecoIa } from './wa
 import WaConversationService from './waConversationService.js';
 import WhatsAppConfigService, { WaError } from './whatsappConfigService.js';
 import WaAiClient from './waAiClient.js';
+import { aiProviderOrDefault, isAiProvider } from './waAiAdapters.js';
 import { CATEGORIES, variaveisDaCategoria } from './waTemplateService.js';
 import {
   OBJETIVO_MAX,
@@ -275,7 +276,7 @@ class WaAiService {
     ];
     const chamar = async () => {
       const { content } = await WaAiClient.chat({
-        baseUrl: ai.baseUrl, apiKey: ai.apiKey, model: ai.model, messages: mensagens, maxTokens: 700
+        provider: ai.provider, baseUrl: ai.baseUrl, apiKey: ai.apiKey, model: ai.model, messages: mensagens, maxTokens: 700
       });
       if (!content) throw new WaError('whatsapp.ai.error.badResponse', { code: 'ai_bad_response', status: 502 });
       return content;
@@ -308,11 +309,17 @@ class WaAiService {
    * chave é recusado antes de qualquer pedido sair: senão a tela mandaria a
    * chave do provedor para um host qualquer.
    */
-  static async test({ baseUrl, apiKey, model } = {}) {
+  static async test({ provider, baseUrl, apiKey, model } = {}) {
     const salva = await WaBotConfigService.aiSettings();
     const chave = String(apiKey ?? '').trim();
-    if (!chave && !mesmoEnderecoIa(baseUrl, salva.baseUrl)) throw chaveParaNovoEndereco();
+    if (provider !== undefined && !isAiProvider(provider)) {
+      throw new WaError('whatsapp.error.invalidBotConfig', { code: 'invalid_bot_ai_provider', status: 400 });
+    }
+    const usado = provider ?? aiProviderOrDefault(salva.provider);
+    const trocou = usado !== aiProviderOrDefault(salva.provider);
+    if (!chave && (trocou || !mesmoEnderecoIa(baseUrl, salva.baseUrl, usado))) throw chaveParaNovoEndereco();
     const { content } = await WaAiClient.chat({
+      provider: usado,
       baseUrl: baseUrl || salva.baseUrl,
       apiKey: chave || salva.apiKey,
       model: model || salva.model,
@@ -376,6 +383,7 @@ class WaAiService {
       const disponiveis = rodada < RODADAS ? nomes() : [];
       // eslint-disable-next-line no-await-in-loop -- cada volta depende da anterior
       const resposta = await WaAiClient.chat({
+        provider: ai.provider,
         baseUrl: ai.baseUrl,
         apiKey: ai.apiKey,
         model: ai.model,

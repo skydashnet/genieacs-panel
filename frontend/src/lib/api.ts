@@ -5403,9 +5403,18 @@ export interface BotConfig {
   ai: BotAiConfig
 }
 
+export type BotAiProvider = 'openai-compatible' | 'anthropic'
+
+/** Endereço e modelo padrão de cada provedor de IA (o servidor usa os mesmos). */
+export const BOT_AI_PROVIDERS: Record<BotAiProvider, { baseUrl: string; model: string }> = {
+  'openai-compatible': { baseUrl: 'https://api.z.ai/api/paas/v4', model: 'glm-4.5-flash' },
+  anthropic: { baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-5-5' },
+}
+
 export interface BotAiConfig {
   enabled: boolean
   suggest: boolean
+  provider: BotAiProvider
   baseUrl: string
   model: string
   instructions: string
@@ -5420,6 +5429,7 @@ export interface BotAiConfig {
 export interface BotAiInput {
   enabled?: boolean
   suggest?: boolean
+  provider?: BotAiProvider
   baseUrl?: string
   model?: string
   instructions?: string
@@ -5505,7 +5515,7 @@ export const whatsappAPI = {
     apiClient.put<BotConfig>('/whatsapp/bot-config', config),
 
   /** Uma pergunta curta à IA, com a chave digitada ou a salva. */
-  testBotAi: (payload: { baseUrl?: string; model?: string; apiKey?: string }) =>
+  testBotAi: (payload: { provider?: BotAiProvider; baseUrl?: string; model?: string; apiKey?: string }) =>
     apiClient.post<{ reply: string }>('/whatsapp/bot-config/ai-test', payload),
 
   /** Se o botão "Sugerir (IA)" aparece para quem atende. */

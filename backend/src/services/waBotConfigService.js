@@ -4,6 +4,7 @@ import { DEFAULT_LOCALE, translate } from '../i18n/index.js';
 import WhatsAppConfigService, { WaError } from './whatsappConfigService.js';
 import { createSecretBox } from '../utils/secretBox.js';
 import { AI_DEFAULT_BASE_URL, AI_DEFAULT_MODEL, normalizeAiBaseUrl } from './waAiClient.js';
+import { AI_PROVIDERS, AI_PROVIDER_OPENAI, aiProviderOrDefault, isAiProvider } from './waAiAdapters.js';
 
 /** A chave da IA, cifrada num contexto só dela. */
 const aiKeyBox = createSecretBox('skygenpanel-wa-ai-key-v1');
@@ -74,6 +75,7 @@ function padroes() {
     ai: {
       enabled: false,
       suggest: false,
+      provider: AI_PROVIDER_OPENAI,
       baseUrl: AI_DEFAULT_BASE_URL,
       model: AI_DEFAULT_MODEL,
       apiKey: null,
@@ -86,9 +88,9 @@ function padroes() {
  * O endereço pedido é o mesmo onde a chave foi salva? Comparado já
  * normalizado (host em minúsculas, sem barra final), e vazio é o salvo.
  */
-export function mesmoEnderecoIa(pedido, salvo) {
+export function mesmoEnderecoIa(pedido, salvo, provider = AI_PROVIDER_OPENAI) {
   if (pedido === undefined || pedido === null || String(pedido).trim() === '') return true;
-  return normalizeAiBaseUrl(pedido) === normalizeAiBaseUrl(salvo);
+  return normalizeAiBaseUrl(pedido, provider) === normalizeAiBaseUrl(salvo, provider);
 }
 
 /** A chave salva só vale para o endereço onde foi salva: trocar o endereço pede a chave de novo. */
@@ -101,8 +103,19 @@ function lerIa(raw, atual) {
   if (!raw || typeof raw !== 'object') throw invalido('whatsapp.error.invalidBotConfig', 'invalid_bot_ai');
   // Trocar o endereço sem mandar a chave levaria a chave salva para outro host.
   // Compara com o que vai ser gravado: vazio aqui vira o endereço padrão.
-  const baseUrl = raw.baseUrl === undefined ? atual.baseUrl : normalizeAiBaseUrl(raw.baseUrl);
-  if (raw.apiKey === undefined && atual.apiKey && !mesmoEnderecoIa(baseUrl, atual.baseUrl)) {
+  const providerAtual = aiProviderOrDefault(atual.provider);
+  if (raw.provider !== undefined && !isAiProvider(raw.provider)) {
+    throw invalido('whatsapp.error.invalidBotConfig', 'invalid_bot_ai_provider');
+  }
+  const provider = raw.provider === undefined ? providerAtual : raw.provider;
+  const trocouProvedor = provider !== providerAtual;
+  // Trocar de provedor sem endereço novo volta ao endereço e ao modelo padrão do novo.
+  const baseUrl = raw.baseUrl === undefined
+    ? (trocouProvedor ? AI_PROVIDERS[provider].defaultBaseUrl : atual.baseUrl)
+    : normalizeAiBaseUrl(raw.baseUrl, provider);
+  // A chave salva é de outro serviço se o provedor ou o endereço mudou.
+  if (raw.apiKey === undefined && atual.apiKey
+    && (trocouProvedor || !mesmoEnderecoIa(baseUrl, atual.baseUrl, provider))) {
     throw chaveParaNovoEndereco();
   }
   let apiKey = atual.apiKey;
@@ -110,13 +123,17 @@ function lerIa(raw, atual) {
     const texto = String(raw.apiKey ?? '').trim();
     apiKey = texto ? { v: 1, ...aiKeyBox.encrypt(texto) } : null;
   }
-  const model = raw.model === undefined ? atual.model : String(raw.model ?? '').trim() || AI_DEFAULT_MODEL;
+  const modeloPadrao = AI_PROVIDERS[provider].defaultModel;
+  const model = raw.model === undefined
+    ? (trocouProvedor ? modeloPadrao : atual.model)
+    : String(raw.model ?? '').trim() || modeloPadrao;
   if (model.length > AI_MODEL_MAX) throw invalido('whatsapp.error.invalidBotConfig', 'invalid_bot_ai');
   const instructions = raw.instructions === undefined ? atual.instructions : String(raw.instructions ?? '').trim();
   if (instructions.length > AI_INSTRUCTIONS_MAX) throw invalido('whatsapp.error.invalidBotConfig', 'bot_message_too_long');
   const proximo = {
     enabled: raw.enabled === undefined ? atual.enabled : raw.enabled === true,
     suggest: raw.suggest === undefined ? atual.suggest : raw.suggest === true,
+    provider,
     baseUrl,
     model,
     apiKey,

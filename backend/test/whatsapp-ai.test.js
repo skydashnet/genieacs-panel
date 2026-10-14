@@ -245,6 +245,19 @@ describe('a configuração da IA', () => {
     assert.equal(pedidosIa.length, 0, 'nenhum pedido saiu');
   });
 
+  it('trocar de provedor sem chave nova é recusado; provedor desconhecido também', async () => {
+    const sem = await salvarIa({ provider: 'anthropic' });
+    assert.equal(sem.status, 400, JSON.stringify(sem.body));
+    assert.equal(sem.body.code, 'ai_key_required_for_new_url');
+    const teste = await api('/bot-config/ai-test', { method: 'POST', body: { provider: 'anthropic' } });
+    assert.equal(teste.body.code, 'ai_key_required_for_new_url');
+    assert.equal(pedidosIa.length, 0, 'a chave salva não saiu para outro serviço');
+    const invalido = await salvarIa({ provider: 'nao-existe', apiKey: 'x' });
+    assert.equal(invalido.status, 400, JSON.stringify(invalido.body));
+    const lido = await api('/bot-config');
+    assert.equal(lido.body.data.ai.provider, 'openai-compatible', 'config legada segue no padrão');
+  });
+
   it('o mesmo endereço, escrito de outro jeito, usa a chave salva', async () => {
     roteiro = [{ content: 'OK' }];
     const res = await api('/bot-config/ai-test', {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { whatsappAPI, type BotConfig, type BotHoursDay, type BotMessageKey, type WhatsAppTag } from '@/lib/api'
+import { whatsappAPI, BOT_AI_PROVIDERS, type BotAiProvider, type BotConfig, type BotHoursDay, type BotMessageKey, type WhatsAppTag } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/contexts/language-context'
 import type { TranslationKey } from '@/lib/i18n'
@@ -161,6 +161,7 @@ export function ChatbotTab() {
         ai: {
           enabled: config.ai.enabled,
           suggest: config.ai.suggest,
+          provider: config.ai.provider,
           baseUrl: config.ai.baseUrl,
           model: config.ai.model,
           instructions: config.ai.instructions,
@@ -184,6 +185,7 @@ export function ChatbotTab() {
     setAiTesting(true)
     try {
       const res = await whatsappAPI.testBotAi({
+        provider: config.ai.provider,
         baseUrl: config.ai.baseUrl,
         model: config.ai.model,
         ...(aiKey.trim() ? { apiKey: aiKey.trim() } : {})
@@ -234,6 +236,22 @@ export function ChatbotTab() {
             title={t('settings.chatbot.aiSuggest')}
             hint={t('settings.chatbot.aiSuggestHint')}
           />
+          <div>
+            <label htmlFor="bot-ai-provider" className="field-label">{t('settings.chatbot.aiProvider')}</label>
+            <select
+              id="bot-ai-provider"
+              className="modern-input w-full"
+              value={config.ai.provider}
+              onChange={(event) => {
+                const provider = event.target.value as BotAiProvider
+                patchAi({ provider, ...BOT_AI_PROVIDERS[provider] })
+              }}
+            >
+              <option value="openai-compatible">{t('settings.chatbot.aiProviderOpenai')}</option>
+              <option value="anthropic">{t('settings.chatbot.aiProviderAnthropic')}</option>
+            </select>
+            <p className="field-hint">{t('settings.chatbot.aiProviderHint')}</p>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <label htmlFor="bot-ai-url" className="field-label">{t('settings.chatbot.aiBaseUrl')}</label>

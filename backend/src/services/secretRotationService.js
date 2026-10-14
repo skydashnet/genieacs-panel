@@ -180,6 +180,12 @@ const BLOBS = Object.freeze([
     chave: 'asaas_gateway_config',
     caminho: ['webhookToken'],
     contexto: 'skygenpanel-asaas-gateway-v1'
+  },
+  {
+    // A chave da API de IA do atendimento (Claude, OpenAI-compatível…).
+    chave: 'wa_bot_config',
+    caminho: ['ai', 'apiKey'],
+    contexto: 'skygenpanel-wa-ai-key-v1'
   }
 ]);
 
