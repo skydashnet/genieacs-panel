@@ -11,6 +11,8 @@ import {
   type WhatsAppTag
 } from '@/lib/api'
 import { Icon } from '@/components/ui/icon'
+import { InboxFilterButton, InboxFilterChips } from '@/components/whatsapp/inbox-filters'
+import type { AssigneeFilter } from '@/lib/inbox-filters'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/contexts/language-context'
 import type { TranslationKey } from '@/lib/i18n'
@@ -91,15 +93,6 @@ const BACKOFF_CAP = 6
 const SEARCH_DEBOUNCE_MS = 350
 
 type ConversationStatus = 'open' | 'noreply' | 'closed' | 'all'
-type AssigneeFilter = 'all' | 'me' | 'unassigned'
-
-/** O recorte por atendente, por cima de qualquer pilha. */
-const ASSIGNEE_FILTERS = [
-  ['all', 'whatsapp.assign.filterAll'],
-  ['me', 'whatsapp.assign.filterMine'],
-  ['unassigned', 'whatsapp.assign.filterUnassigned']
-] as const
-
 /** The piles, in the order an operator reaches for them. */
 const FILTERS = [
   ['open', 'whatsapp.inbox.filterOpen', 'chat'],
@@ -839,11 +832,13 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
                   >
                     <Icon name="refresh" size={18} />
                   </button>
+                  <InboxFilterButton assignee={assignee} tagId={tagFilter} tags={tagOptions} onAssignee={setAssignee} onTag={setTagFilter} />
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="@container flex items-center gap-2">
                   {/* Uma linha só, sempre: quatro pilhas numa coluna estreita
                       quebravam e a última descia sozinha. Cada aba divide a
-                      largura; no celular fica só o ícone, no computador só o nome. */}
+                      largura; coluna estreita (celular ou lista ao lado da conversa) fica só o
+                      ícone, larga fica só o nome. */}
                   <div className="tab-rail min-w-0 flex-1 flex-nowrap!" role="tablist" aria-label={t('whatsapp.inbox.title')}>
                     {FILTERS.map(([id, labelKey, icon]) => (
                       <button
@@ -857,8 +852,8 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
                         aria-label={t(labelKey)}
                         title={t(labelKey)}
                       >
-                        <Icon name={icon} size={18} className="shrink-0 sm:hidden" />
-                        <span className="truncate max-sm:sr-only">{t(labelKey)}</span>
+                        <Icon name={icon} size={18} className="shrink-0 @min-[26rem]:hidden" />
+                        <span className="truncate @max-[26rem]:sr-only">{t(labelKey)}</span>
                       </button>
                     ))}
                   </div>
@@ -866,35 +861,7 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
                     <span className="modern-badge-success shrink-0">{t('whatsapp.inbox.unread', { count: unreadTotal })}</span>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={t('whatsapp.assign.agent')}>
-                  {ASSIGNEE_FILTERS.map(([id, labelKey]) => (
-                    <button
-                      key={id}
-                      type="button"
-                      role="radio"
-                      aria-checked={assignee === id}
-                      onClick={() => setAssignee(id)}
-                      className={`min-h-7 rounded-full border px-2.5 text-xs font-medium transition-colors ${
-                        assignee === id
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-[hsl(var(--surface-subtle))]'
-                      }`}
-                    >
-                      {t(labelKey)}
-                    </button>
-                  ))}
-                  {tagOptions.length > 0 && (
-                    <select
-                      className="h-7 max-w-40 rounded-full border border-border bg-background px-2 text-xs text-foreground"
-                      aria-label={t('whatsapp.tags.filter')}
-                      value={tagFilter ?? ''}
-                      onChange={(event) => setTagFilter(event.target.value ? Number(event.target.value) : null)}
-                    >
-                      <option value="">{t('whatsapp.tags.filterAll')}</option>
-                      {tagOptions.map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-                    </select>
-                  )}
-                </div>
+                <InboxFilterChips assignee={assignee} tagId={tagFilter} tags={tagOptions} onAssignee={setAssignee} onTag={setTagFilter} />
               </div>
               <WaitingBanner
                 report={waitingReport}

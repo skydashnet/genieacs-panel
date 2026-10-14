@@ -50,7 +50,8 @@ import {
   MicrophoneIcon,
   PlayIcon,
   StopIcon,
-  SparklesIcon
+  SparklesIcon,
+  FunnelIcon
 } from '@heroicons/react/24/outline'
 
 const ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
@@ -60,6 +61,7 @@ const ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> 
   settings: Cog6ToothIcon,
   check: CheckCircleIcon,
   x: XMarkIcon,
+  filter: FunnelIcon,
   info: InformationCircleIcon,
   warning: ExclamationTriangleIcon,
   bell: BellIcon,

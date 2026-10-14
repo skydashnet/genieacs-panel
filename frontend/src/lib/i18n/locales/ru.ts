@@ -2318,6 +2318,8 @@ const ru: Dictionary = {
   'whatsapp.inbox.filterNoReply': 'Без ответа',
   'whatsapp.inbox.filterClosed': 'Завершённые',
   'whatsapp.inbox.filterAll': 'Все',
+  'whatsapp.inbox.filters': "Фильтры",
+  'whatsapp.inbox.clearFilter': "Убрать фильтр",
   'whatsapp.inbox.searchPlaceholder': 'Номер, имя или договор',
   'whatsapp.inbox.noMatch': 'Подходящих диалогов нет.',
   'whatsapp.source.bot': 'Автоматический ответ',

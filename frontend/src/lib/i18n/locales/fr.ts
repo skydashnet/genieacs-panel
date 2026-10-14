@@ -2900,6 +2900,8 @@ const fr: Dictionary = {
   'whatsapp.inbox.filterNoReply': 'Sans réponse',
   'whatsapp.inbox.filterClosed': 'Clôturées',
   'whatsapp.inbox.filterAll': 'Toutes',
+  'whatsapp.inbox.filters': "Filtres",
+  'whatsapp.inbox.clearFilter': "Retirer le filtre",
   'whatsapp.inbox.searchPlaceholder': 'Numéro, nom ou contrat',
   'whatsapp.inbox.noMatch': 'Aucune conversation ne correspond.',
   'whatsapp.source.bot': 'Réponse automatique',
