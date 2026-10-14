@@ -25,6 +25,9 @@ export const isAiProvider = (id) => Object.hasOwn(AI_PROVIDERS, id);
 export const aiProviderOrDefault = (id) => (isAiProvider(id) ? id : AI_PROVIDER_OPENAI);
 
 const ANTHROPIC_VERSION = '2023-06-01';
+const ANTHROPIC_FOLGA_PENSAMENTO = 1024;
+/** Modelos com `effort` e pensamento adaptativo; os mais antigos recusam `effort`. */
+const ANTHROPIC_MODELO_ATUAL = /^claude-(?:(?:fable|mythos|opus|sonnet|haiku)-5|opus-4-[678]|sonnet-4-6)/;
 
 const parseArgs = (raw) => {
   try {
@@ -36,14 +39,16 @@ const parseArgs = (raw) => {
 
 const openai = {
   path: '/chat/completions',
-  buildRequest({ apiKey, model, messages, tools, maxTokens }) {
+  buildRequest({ apiKey, model, messages, tools, maxTokens, hostname = '' }) {
+    // A OpenAI de verdade (GPT-5, série "o") recusa `max_tokens` e `temperature`
+    // diferente do padrão; a z.ai e os compatíveis seguem com os dois.
+    const oficial = hostname === 'api.openai.com';
     return {
       headers: { Authorization: `Bearer ${apiKey}` },
       body: {
         model,
         messages,
-        temperature: 0.3,
-        max_tokens: maxTokens,
+        ...(oficial ? { max_completion_tokens: maxTokens } : { temperature: 0.3, max_tokens: maxTokens }),
         ...(tools?.length ? { tools, tool_choice: 'auto' } : {})
       }
     };
@@ -83,8 +88,13 @@ function pushTurn(turns, role, blocks) {
   else turns.push({ role, content: [...blocks] });
 }
 
-/** Mensagens no formato OpenAI → `{system, messages}` da Anthropic. */
-export function toAnthropicMessages(messages) {
+/**
+ * Mensagens no formato OpenAI → `{system, messages}` da Anthropic.
+ *
+ * Sem `tools` na chamada (a última volta do laço tira as ferramentas), blocos
+ * `tool_use`/`tool_result` no histórico seriam recusados: viram texto.
+ */
+export function toAnthropicMessages(messages, { comFerramentas = true } = {}) {
   const system = [];
   const turns = [];
   for (const m of messages || []) {
@@ -96,20 +106,22 @@ export function toAnthropicMessages(messages) {
       const t = textOf(m.content).trim();
       if (t) blocks.push({ type: 'text', text: t });
       for (const call of m.tool_calls || []) {
-        blocks.push({
-          type: 'tool_use',
-          id: String(call.id),
-          name: String(call.function?.name ?? ''),
-          input: parseArgs(call.function?.arguments)
-        });
+        if (comFerramentas) {
+          blocks.push({
+            type: 'tool_use',
+            id: String(call.id),
+            name: String(call.function?.name ?? ''),
+            input: parseArgs(call.function?.arguments)
+          });
+        } else {
+          blocks.push({ type: 'text', text: `[ferramenta ${call.function?.name ?? ''} chamada]` });
+        }
       }
       pushTurn(turns, 'assistant', blocks);
     } else if (m.role === 'tool') {
-      pushTurn(turns, 'user', [{
-        type: 'tool_result',
-        tool_use_id: String(m.tool_call_id),
-        content: textOf(m.content)
-      }]);
+      pushTurn(turns, 'user', [comFerramentas
+        ? { type: 'tool_result', tool_use_id: String(m.tool_call_id), content: textOf(m.content) }
+        : { type: 'text', text: `[resultado da ferramenta] ${textOf(m.content)}` }]);
     } else {
       const t = textOf(m.content).trim();
       if (t) pushTurn(turns, 'user', [{ type: 'text', text: t }]);
@@ -123,13 +135,18 @@ export function toAnthropicMessages(messages) {
 const anthropic = {
   path: '/v1/messages',
   buildRequest({ apiKey, model, messages, tools, maxTokens }) {
-    const { system, messages: turns } = toAnthropicMessages(messages);
+    const { system, messages: turns } = toAnthropicMessages(messages, { comFerramentas: Boolean(tools?.length) });
+    // Nos modelos atuais o pensamento vem ligado e gasta o mesmo `max_tokens`
+    // da resposta: esforço baixo e folga, para a resposta não sair vazia ou
+    // cortada. `temperature` nem é enviada: os modelos da família 5 recusam
+    // valor diferente do padrão (400).
+    const atual = ANTHROPIC_MODELO_ATUAL.test(model);
     return {
       headers: { 'x-api-key': apiKey, 'anthropic-version': ANTHROPIC_VERSION },
       body: {
         model,
-        max_tokens: maxTokens,
-        temperature: 0.3,
+        max_tokens: atual ? maxTokens + ANTHROPIC_FOLGA_PENSAMENTO : maxTokens,
+        ...(atual ? { output_config: { effort: 'low' } } : {}),
         ...(system ? { system } : {}),
         messages: turns,
         ...(tools?.length
