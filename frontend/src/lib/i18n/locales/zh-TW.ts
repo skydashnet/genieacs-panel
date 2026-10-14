@@ -2311,6 +2311,8 @@ const zhTW: Dictionary = {
   'whatsapp.inbox.filterNoReply': '未回覆',
   'whatsapp.inbox.filterClosed': '已結束',
   'whatsapp.inbox.filterAll': '全部',
+  'whatsapp.inbox.filters': "篩選",
+  'whatsapp.inbox.clearFilter': "移除篩選",
   'whatsapp.inbox.searchPlaceholder': '號碼、姓名或合約',
   'whatsapp.inbox.noMatch': '沒有符合條件的對話。',
   'whatsapp.source.bot': '自動回覆',

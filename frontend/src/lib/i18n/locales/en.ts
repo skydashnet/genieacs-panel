@@ -2313,6 +2313,8 @@ const en = {
   'whatsapp.inbox.filterNoReply': 'No reply',
   'whatsapp.inbox.filterClosed': 'Closed',
   'whatsapp.inbox.filterAll': 'All',
+  'whatsapp.inbox.filters': "Filters",
+  'whatsapp.inbox.clearFilter': "Remove filter",
   'whatsapp.inbox.searchPlaceholder': 'Number, name or contract',
   'whatsapp.inbox.noMatch': 'No conversation matches that.',
   'whatsapp.source.bot': 'Automatic reply',
