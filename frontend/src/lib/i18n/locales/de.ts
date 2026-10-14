@@ -2196,6 +2196,7 @@ const de: Dictionary = {
   'whatsapp.inbox.filterAll': 'Alle',
   'whatsapp.inbox.filters': "Filter",
   'whatsapp.inbox.clearFilter': "Filter entfernen",
+  'whatsapp.inbox.openUnread': "Nächste ungelesene Unterhaltung öffnen",
   'whatsapp.inbox.searchPlaceholder': 'Nummer, Name oder Vertrag',
   'whatsapp.inbox.noMatch': 'Keine Unterhaltung passt dazu.',
   'whatsapp.source.bot': 'Automatische Antwort',

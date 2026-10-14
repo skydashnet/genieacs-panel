@@ -40,8 +40,9 @@ export function useWaiting() {
 
 export function WaitingBanner({ report, onShow }: {
   report: WaitingReport | null
-  /** Mostra as conversas: as minhas, ou as sem atendente se nenhuma é minha. */
-  onShow: (filter: 'me' | 'unassigned') => void
+  /** Mostra as conversas: as minhas, ou as sem atendente se nenhuma é minha,
+   *  ou todas as abertas quando ninguém espera com você. */
+  onShow: (filter: 'me' | 'unassigned' | 'all') => void
 }) {
   const { t } = useTranslation()
   const { user } = useAuth()
@@ -51,9 +52,10 @@ export function WaitingBanner({ report, onShow }: {
   const maisAntiga = report.items[0]?.minutes ?? 0
 
   return (
-    <div
-      role="status"
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[hsl(var(--status-warning))]/40 bg-[hsl(var(--status-warning))]/10 px-3 py-2 text-xs text-foreground"
+    <button
+      type="button"
+      className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 border-b border-[hsl(var(--status-warning))]/40 bg-[hsl(var(--status-warning))]/10 px-3 py-2 text-start text-xs text-foreground transition-colors hover:bg-[hsl(var(--status-warning))]/20"
+      onClick={() => onShow(minhas > 0 ? 'me' : semDono > 0 ? 'unassigned' : 'all')}
     >
       <Icon name="warning" size={14} className="shrink-0 text-[hsl(var(--status-warning))]" />
       <span className="font-semibold">
@@ -63,15 +65,7 @@ export function WaitingBanner({ report, onShow }: {
         {t('whatsapp.waiting.oldest', { minutes: maisAntiga })}
         {minhas + semDono > 0 && ` · ${t('whatsapp.waiting.yours', { count: minhas + semDono })}`}
       </span>
-      {minhas + semDono > 0 && (
-        <button
-          type="button"
-          className="ml-auto font-semibold text-primary underline max-sm:-my-2 max-sm:-mr-2 max-sm:px-2 max-sm:py-2"
-          onClick={() => onShow(minhas > 0 ? 'me' : 'unassigned')}
-        >
-          {t('whatsapp.waiting.show')}
-        </button>
-      )}
-    </div>
+      <span className="ml-auto font-semibold text-primary underline">{t('whatsapp.waiting.show')}</span>
+    </button>
   )
 }

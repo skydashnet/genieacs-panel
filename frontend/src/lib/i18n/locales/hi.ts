@@ -2293,6 +2293,7 @@ const hi: Dictionary = {
   'whatsapp.inbox.filterAll': 'सभी',
   'whatsapp.inbox.filters': "फ़िल्टर",
   'whatsapp.inbox.clearFilter': "फ़िल्टर हटाएँ",
+  'whatsapp.inbox.openUnread': "अगली अपठित बातचीत खोलें",
   'whatsapp.inbox.searchPlaceholder': 'नंबर, नाम या अनुबंध',
   'whatsapp.inbox.noMatch': 'कोई बातचीत मेल नहीं खाती।',
   'whatsapp.source.bot': 'स्वचालित उत्तर',

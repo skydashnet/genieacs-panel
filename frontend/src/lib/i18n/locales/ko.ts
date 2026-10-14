@@ -2318,6 +2318,7 @@ const ko: Dictionary = {
   'whatsapp.inbox.filterAll': '전체',
   'whatsapp.inbox.filters': "필터",
   'whatsapp.inbox.clearFilter': "필터 해제",
+  'whatsapp.inbox.openUnread': "다음 읽지 않은 대화 열기",
   'whatsapp.inbox.searchPlaceholder': '번호, 이름 또는 계약',
   'whatsapp.inbox.noMatch': '조건에 맞는 대화가 없습니다.',
   'whatsapp.source.bot': '자동 응답',

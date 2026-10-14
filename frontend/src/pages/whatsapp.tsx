@@ -858,7 +858,17 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
                     ))}
                   </div>
                   {unreadTotal > 0 && (
-                    <span className="modern-badge-success shrink-0">{t('whatsapp.inbox.unread', { count: unreadTotal })}</span>
+                    <button
+                      type="button"
+                      className="modern-badge-success shrink-0 cursor-pointer hover:brightness-110"
+                      title={t('whatsapp.inbox.openUnread')}
+                      onClick={() => {
+                        const next = conversations.find((row) => row.unreadCount > 0)
+                        if (next) select(next)
+                      }}
+                    >
+                      {t('whatsapp.inbox.unread', { count: unreadTotal })}
+                    </button>
                   )}
                 </div>
                 <InboxFilterChips assignee={assignee} tagId={tagFilter} tags={tagOptions} onAssignee={setAssignee} onTag={setTagFilter} />
