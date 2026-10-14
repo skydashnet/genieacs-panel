@@ -625,6 +625,7 @@ export default {
   'whatsapp.ai.error.failed': 'AI 오류가 발생했습니다',
   'whatsapp.ai.suggested': '제안이 생성되었습니다',
   'whatsapp.ai.testOk': 'AI가 응답했습니다',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "독촉 단계가 올바르지 않습니다",
   'whatsapp.dunning.error.tooManySteps': "단계는 최대 {max}개까지 가능합니다",
   'whatsapp.dunning.error.invalidOffset': "단계의 일자는 {min}에서 {max} 사이여야 합니다",

@@ -627,6 +627,7 @@ export default {
   'whatsapp.ai.error.failed': 'The AI failed',
   'whatsapp.ai.suggested': 'Suggestion generated',
   'whatsapp.ai.testOk': 'The AI replied',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "The steps of the cadence are invalid",
   'whatsapp.dunning.error.tooManySteps': "The cadence accepts at most {max} steps",
   'whatsapp.dunning.error.invalidOffset': "The day of a step must be between {min} and {max}",

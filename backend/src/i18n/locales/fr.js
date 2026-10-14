@@ -644,6 +644,7 @@ export default {
   'whatsapp.ai.error.failed': 'L’IA a échoué',
   'whatsapp.ai.suggested': 'Suggestion générée',
   'whatsapp.ai.testOk': 'L’IA a répondu',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "Les étapes de la relance sont invalides",
   'whatsapp.dunning.error.tooManySteps': "La relance accepte au plus {max} étapes",
   'whatsapp.dunning.error.invalidOffset': "Le jour d'une étape doit être compris entre {min} et {max}",

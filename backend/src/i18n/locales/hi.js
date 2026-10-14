@@ -627,6 +627,7 @@ export default {
   'whatsapp.ai.error.failed': 'AI विफल रहा',
   'whatsapp.ai.suggested': 'सुझाव तैयार किया गया',
   'whatsapp.ai.testOk': 'AI ने जवाब दिया',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "अनुस्मारक के चरण अमान्य हैं",
   'whatsapp.dunning.error.tooManySteps': "अधिकतम {max} चरण की अनुमति है",
   'whatsapp.dunning.error.invalidOffset': "चरण का दिन {min} और {max} के बीच होना चाहिए",

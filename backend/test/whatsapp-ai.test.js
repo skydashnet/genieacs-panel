@@ -237,6 +237,24 @@ describe('a configuração da IA', () => {
     assert.equal(pedidosIa[0].url, '/api/paas/v4/chat/completions');
   });
 
+  it('melhorar um texto do bot: devolve o texto limpo, sem gravar nada', async () => {
+    roteiro = [{ content: '"Olá! Sou o atendimento da Tavares Fibra. Responda com o número:"' }];
+    const res = await api('/bot-config/ai-improve-message', { method: 'POST', body: { key: 'greeting', text: 'oi, responda com numero' } });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.text, 'Olá! Sou o atendimento da Tavares Fibra. Responda com o número:');
+    assert.equal(pedidosIa[0].auth, `Bearer ${AI_KEY}`);
+    const lido = await api('/bot-config');
+    assert.equal(lido.body.data.messages.greeting, '', 'nada foi gravado');
+  });
+
+  it('melhorar texto: chave de mensagem inválida e texto vazio são recusados', async () => {
+    const a = await api('/bot-config/ai-improve-message', { method: 'POST', body: { key: 'nada', text: 'x' } });
+    assert.equal(a.status, 400, JSON.stringify(a.body));
+    const b = await api('/bot-config/ai-improve-message', { method: 'POST', body: { key: 'greeting', text: '  ' } });
+    assert.equal(b.status, 400, JSON.stringify(b.body));
+    assert.equal(pedidosIa.length, 0, 'nenhum pedido saiu');
+  });
+
   it('testar outro endereço sem chave: 400, e nenhum pedido sai com a chave salva', async () => {
     const outro = aiUrl.replace('/api/paas/v4', '/outro');
     const res = await api('/bot-config/ai-test', { method: 'POST', body: { baseUrl: outro } });

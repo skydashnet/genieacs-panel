@@ -69,6 +69,7 @@ export function ChatbotTab() {
   const [aiKey, setAiKey] = useState('')
   const [aiKeyRemove, setAiKeyRemove] = useState(false)
   const [aiTesting, setAiTesting] = useState(false)
+  const [improving, setImproving] = useState<BotMessageKey | null>(null)
 
   // As etiquetas para os seletores da etiqueta automática.
   useEffect(() => {
@@ -119,17 +120,52 @@ export function ChatbotTab() {
     ...(config.unlockEnabled ? [`4 — ${t('settings.chatbot.option.unlock')}`] : [])
   ].join('\n')
 
+  const melhorarComIa = async (key: BotMessageKey) => {
+    setImproving(key)
+    try {
+      const res = await whatsappAPI.improveBotMessage({ key, text: config.messages[key] || config.defaults[key] })
+      if (res.success && res.data) {
+        setMessage(key, res.data.text)
+        toast.success(t('settings.chatbot.improveDone'))
+      } else {
+        toast.error(res.message || whatsappErrorMessage(t, res.code))
+      }
+    } finally {
+      setImproving(null)
+    }
+  }
+
+  const preencherComSugestoes = () => {
+    patch({
+      messages: Object.fromEntries(
+        (Object.keys(config.messages) as BotMessageKey[]).map((k) => [k, config.messages[k] || config.defaults[k]])
+      ) as BotConfig['messages'],
+    })
+    toast.success(t('settings.chatbot.filledSuggestions'))
+  }
+
   const campoDeTexto = (key: BotMessageKey, disabled = false) => (
     <div key={key}>
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <label htmlFor={`bot-msg-${key}`} className="text-sm font-medium">
           {t(`settings.chatbot.message.${key}` as TranslationKey)}
         </label>
-        {config.messages[key] && !disabled && (
-          <button type="button" className="text-sm underline" onClick={() => setMessage(key, '')}>
-            {t('settings.chatbot.restoreDefault')}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            className="text-sm underline disabled:no-underline disabled:opacity-50"
+            disabled={disabled || improving !== null || !config.ai.hasApiKey}
+            title={config.ai.hasApiKey ? undefined : t('settings.chatbot.improveNeedsKey')}
+            onClick={() => void melhorarComIa(key)}
+          >
+            {improving === key ? t('settings.chatbot.improving') : t('settings.chatbot.improveWithAi')}
           </button>
-        )}
+          {config.messages[key] && !disabled && (
+            <button type="button" className="text-sm underline" onClick={() => setMessage(key, '')}>
+              {t('settings.chatbot.restoreDefault')}
+            </button>
+          )}
+        </div>
       </div>
       <textarea
         id={`bot-msg-${key}`}
@@ -382,6 +418,12 @@ export function ChatbotTab() {
       <section className="modern-card p-5 sm:p-6">
         <h2 className="section-heading">{t('settings.chatbot.messagesTitle')}</h2>
         <p className="field-hint mt-1">{t('settings.chatbot.messagesHint')}</p>
+        <div className="mt-3">
+          <button type="button" className="modern-button-secondary" onClick={preencherComSugestoes}>
+            {t('settings.chatbot.fillSuggestions')}
+          </button>
+          <p className="field-hint mt-1">{t('settings.chatbot.fillSuggestionsHint')}</p>
+        </div>
         <div className="mt-4 grid gap-5">
           {MESSAGE_KEYS.map((key) => campoDeTexto(key))}
         </div>

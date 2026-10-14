@@ -626,6 +626,7 @@ export default {
   'whatsapp.ai.error.failed': 'AIが失敗しました',
   'whatsapp.ai.suggested': '提案を生成しました',
   'whatsapp.ai.testOk': 'AIが応答しました',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "督促のステップが無効です",
   'whatsapp.dunning.error.tooManySteps': "ステップは最大 {max} 件までです",
   'whatsapp.dunning.error.invalidOffset': "ステップの日は {min} から {max} の間で指定してください",

@@ -625,6 +625,7 @@ export default {
   'whatsapp.ai.error.failed': 'Errore dell’IA',
   'whatsapp.ai.suggested': 'Suggerimento generato',
   'whatsapp.ai.testOk': 'L’IA ha risposto',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "Le fasi del sollecito non sono valide",
   'whatsapp.dunning.error.tooManySteps': "Il sollecito accetta al massimo {max} fasi",
   'whatsapp.dunning.error.invalidOffset': "Il giorno di una fase deve essere tra {min} e {max}",

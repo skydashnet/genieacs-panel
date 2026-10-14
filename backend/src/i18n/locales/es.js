@@ -624,6 +624,7 @@ export default {
   'whatsapp.ai.error.failed': 'La IA falló',
   'whatsapp.ai.suggested': 'Sugerencia generada',
   'whatsapp.ai.testOk': 'La IA respondió',
+  'whatsapp.ai.improveOk': 'Texto mejorado por la IA',
   'whatsapp.dunning.error.invalidSteps': "Las etapas de la regla no son válidas",
   'whatsapp.dunning.error.tooManySteps': "La regla acepta como máximo {max} etapas",
   'whatsapp.dunning.error.invalidOffset': "El día de una etapa debe estar entre {min} y {max}",

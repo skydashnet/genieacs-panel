@@ -63,6 +63,17 @@ class WhatsAppController {
     }
   }
 
+  /** `POST /api/whatsapp/bot-config/ai-improve-message` — a IA melhora um texto do bot; nada é gravado. */
+  static async improveBotMessage(req, res) {
+    try {
+      const body = req.body ?? {};
+      const result = await WaAiService.improveMessage({ key: body.key, text: body.text });
+      return res.json(createResponse(req.t('whatsapp.ai.improveOk'), result));
+    } catch (error) {
+      return aiError(req, res, error);
+    }
+  }
+
   /** `GET /api/whatsapp/bot-report?days=7|30|90` — o que o bot resolveu no período. */
   static async getBotReport(req, res) {
     try {

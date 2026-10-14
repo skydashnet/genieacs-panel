@@ -628,6 +628,7 @@ export default {
   'whatsapp.ai.error.failed': 'Сбой ИИ',
   'whatsapp.ai.suggested': 'Подсказка создана',
   'whatsapp.ai.testOk': 'ИИ ответил',
+  'whatsapp.ai.improveOk': 'Text improved by the AI',
   'whatsapp.dunning.error.invalidSteps': "Этапы напоминаний неверны",
   'whatsapp.dunning.error.tooManySteps': "Допускается не более {max} этапов",
   'whatsapp.dunning.error.invalidOffset': "День этапа должен быть от {min} до {max}",

@@ -5518,6 +5518,10 @@ export const whatsappAPI = {
   testBotAi: (payload: { provider?: BotAiProvider; baseUrl?: string; model?: string; apiKey?: string }) =>
     apiClient.post<{ reply: string }>('/whatsapp/bot-config/ai-test', payload),
 
+  /** A IA melhora um texto do bot; nada é gravado, o texto volta para a caixa. */
+  improveBotMessage: (payload: { key: BotMessageKey; text: string }) =>
+    apiClient.post<{ text: string }>('/whatsapp/bot-config/ai-improve-message', payload),
+
   /** Se o botão "Sugerir (IA)" aparece para quem atende. */
   getAiStatus: () =>
     apiClient.get<{ suggest: boolean; templates?: boolean }>('/whatsapp/ai/status'),
