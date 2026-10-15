@@ -365,9 +365,10 @@ describe('a IA atendendo', () => {
     await limparFio(ASSINANTE);
     roteiro = [{ tool: 'consultar_fatura' }, { content: 'Encontrei sua fatura de R$ 99,90, os dados estão logo abaixo.' }];
     await receber(ASSINANTE, 'me manda a fatura');
-    const [resposta] = await respostas(ASSINANTE);
-    assert.match(resposta, /^Encontrei sua fatura/);
-    assert.ok(resposta.includes(PIX), 'o PIX sai exatamente como o SGP mandou');
+    const saidas = await respostas(ASSINANTE);
+    assert.match(saidas[0], /^Encontrei sua fatura/);
+    assert.ok(!saidas[0].includes(PIX), 'o PIX não vai dentro do texto da IA');
+    assert.ok(saidas.includes(PIX), 'o PIX sai sozinho, exatamente como o SGP mandou');
     // A segunda volta levou o resultado da ferramenta.
     assert.equal(pedidosIa[1].payload.messages.at(-1).role, 'tool');
   });

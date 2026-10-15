@@ -215,10 +215,16 @@ class WaAiService {
         return { replied: true, intent: 'atendente', from: 'ia' };
       }
 
-      const anexos = resultado.anexos.filter(Boolean);
-      const corpo = [resultado.texto, ...anexos].filter(Boolean).join('\n\n').trim();
+      // O primeiro anexo (valor, vencimento, link) vai junto da fala da IA; cada
+      // código de pagamento sai sozinho na sua mensagem, para copiar e colar.
+      const [primeiro, ...codigos] = resultado.anexos.filter(Boolean);
+      const corpo = [resultado.texto, primeiro].filter(Boolean).join('\n\n').trim();
       if (!corpo) throw new WaError('whatsapp.ai.error.badResponse', { code: 'ai_bad_response', status: 502 });
       await WaBotService.responderCom(conversation, corpo.slice(0, RESPOSTA_MAX + 2000));
+      for (const codigo of codigos) {
+        // eslint-disable-next-line no-await-in-loop
+        await WaBotService.responderCom(conversation, String(codigo).slice(0, RESPOSTA_MAX));
+      }
       return { replied: true, intent: resultado.intent || 'ia', from: 'ia' };
     } catch (error) {
       const code = error?.code && String(error.code).startsWith('ai_') ? error.code : 'ai_failed';
@@ -446,7 +452,7 @@ class WaAiService {
         // eslint-disable-next-line no-await-in-loop -- poucas chamadas por volta
         const saida = await this.executar(chamada, { conversation, link });
         if (saida.link) link = saida.link;
-        if (saida.anexo) anexos.push(saida.anexo);
+        if (saida.anexo) anexos.push(...[saida.anexo].flat());
         if (saida.intent) intent = saida.intent;
         if (saida.transferir) return { texto: saida.texto, anexos, intent: 'atendente', transferiu: true };
         mensagens.push({ role: 'tool', tool_call_id: chamada.id, content: saida.paraModelo });
@@ -460,12 +466,12 @@ class WaAiService {
     try {
       switch (chamada.name) {
         case 'consultar_fatura': {
-          const texto = await WaBotService.textoFatura(link);
-          const semFatura = texto === await WaBotConfigService.message('noOpenInvoice');
-          if (semFatura) return { paraModelo: `Sem fatura em aberto. Diga ao cliente: ${texto}`, intent: 'noOpenInvoice' };
+          const partes = await WaBotService.partesFatura(link);
+          const semFatura = partes[0] === await WaBotConfigService.message('noOpenInvoice');
+          if (semFatura) return { paraModelo: `Sem fatura em aberto. Diga ao cliente: ${partes[0]}`, intent: 'noOpenInvoice' };
           return {
-            paraModelo: `Fatura encontrada. Os dados abaixo serão anexados à sua resposta exatamente assim (não repita os códigos):\n${texto}`,
-            anexo: texto,
+            paraModelo: `Fatura encontrada. Os dados abaixo serão enviados logo depois da sua resposta, em mensagens separadas, exatamente assim (não repita os códigos):\n${partes.join('\n\n')}`,
+            anexo: partes,
             intent: 'fatura'
           };
         }

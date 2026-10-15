@@ -297,14 +297,20 @@ async function linkDoPortal() {
   return portalPublicUrl || null;
 }
 
-/** The oldest open invoice, spelled out. */
-async function responderFatura(link) {
+/** A fatura em aberto mais antiga, como o SGP a mandou (ou `null` sem nenhuma). */
+async function faturaAberta(link) {
   const { invoices } = await SgpService.listInvoices({ contract: link.contract, onlyOpen: true });
   await BillingStatusService.record(link.contract, invoices);
   // `true` for the reminder flag: the dunning rule refuses a not-yet-due
   // invoice because a dunning message has nothing to charge for. Here the
   // customer ASKED, and "you have one due on the 10th" is the answer.
   const { fatura } = maisAntigaEmAberto(invoices, new Date(), true);
+  return fatura || null;
+}
+
+/** The oldest open invoice, spelled out. */
+async function responderFatura(link) {
+  const fatura = await faturaAberta(link);
   if (!fatura) return WaBotConfigService.message('noOpenInvoice');
 
   const linhas = [t('whatsapp.bot.invoice', {
@@ -324,6 +330,38 @@ async function responderFatura(link) {
     if (valor) linhas.push('', t(chave, { value: valor }));
   }
   return linhas.join('\n');
+}
+
+/**
+ * A fatura em mensagens separadas, para o cliente copiar e colar.
+ *
+ * Quem pede os dados de pagamento vai colar o código no app do banco: com
+ * valor, vencimento, PIX e linha digitável na mesma bolha, tocar e segurar
+ * copia a mensagem inteira. Aqui o primeiro texto leva o valor, o vencimento,
+ * o link da segunda via e a ordem dos códigos; cada código vai SOZINHO na sua
+ * mensagem (PIX primeiro, linha digitável depois), sem rótulo que vá junto na
+ * cópia. Sem fatura, é a resposta de sempre, numa mensagem só.
+ *
+ * @returns {Promise<string[]>}
+ */
+async function faturaEmPartes(link) {
+  const fatura = await faturaAberta(link);
+  if (!fatura) return [await WaBotConfigService.message('noOpenInvoice')];
+
+  const codigos = [
+    ['whatsapp.bot.invoicePixName', fatura.pix],
+    ['whatsapp.bot.invoiceDigitableName', fatura.digitableLine]
+  ].filter(([, valor]) => valor);
+
+  const topo = [t('whatsapp.bot.invoice', {
+    amount: comoReal(fatura.amount),
+    dueDate: comoDataBr(fatura.dueDate)
+  })];
+  if (fatura.link) topo.push('', t('whatsapp.bot.invoiceLink', { value: fatura.link }));
+  if (codigos.length) {
+    topo.push('', t('whatsapp.bot.invoiceSplitIntro', { list: codigos.map(([chave]) => t(chave)).join(', ') }));
+  }
+  return [topo.join('\n'), ...codigos.map(([, valor]) => String(valor))];
 }
 
 /** Up or down, and the optical reading when the ONT gave one. */
@@ -442,7 +480,7 @@ async function textoDePassagem(chave) {
  */
 async function responderLiberacao(link, conversation) {
   const { botUnlockEnabled } = await WhatsAppConfigService.getConfig();
-  if (!botUnlockEnabled) return responderFatura(link);
+  if (!botUnlockEnabled) return faturaEmPartes(link);
   if (!(await contratoBloqueado(link.contract))) return t('whatsapp.bot.unlockNotBlocked');
   let resultado;
   try {
@@ -488,6 +526,7 @@ class WaBotService {
   // Os construtores de resposta, para o atendente IA (`waAiService.js`) usar
   // como ferramentas: o mesmo texto, as mesmas travas e a mesma auditoria.
   static textoFatura = responderFatura;
+  static partesFatura = faturaEmPartes;
   static textoSinal = responderSinal;
   static textoQueda = responderQueda;
   static textoManutencao = responderManutencao;
@@ -699,7 +738,7 @@ class WaBotService {
     let resposta = null;
     try {
       if (intencao === 'portal') resposta = await responderPortal();
-      else if (intencao === 'fatura') resposta = await responderFatura(link);
+      else if (intencao === 'fatura') resposta = await faturaEmPartes(link);
       else if (intencao === 'sinal') {
         const manutencao = link.device_id ? await responderManutencao(link, conversation) : null;
         if (manutencao) {
@@ -726,21 +765,25 @@ class WaBotService {
       return { replied: true, intent: 'handoff', from: intencao };
     }
 
-    await this.responderCom(conversation, resposta);
+    // A fatura sai em mais de uma mensagem (ver `faturaEmPartes`); o resto, numa só.
+    const mensagens = Array.isArray(resposta) ? resposta : [resposta];
+    for (const mensagem of mensagens) {
+      // eslint-disable-next-line no-await-in-loop
+      await this.responderCom(conversation, mensagem);
+    }
     // Para o relatório: "2ª via enviada" é a fatura que saiu, não o pedido
     // respondido com "você não tem fatura em aberto".
-    if (intencao === 'fatura' && resposta === await WaBotConfigService.message('noOpenInvoice')) {
+    if (intencao === 'fatura' && mensagens[0] === await WaBotConfigService.message('noOpenInvoice')) {
       return { replied: true, intent: 'noOpenInvoice' };
     }
     return { replied: true, intent: intencao };
   }
 
   /**
-   * One inbound message gets exactly ONE outbound message.
-   *
-   * Splitting an invoice into "here is the amount" plus "here is the code" is
-   * how a bot doubles its own volume on a number Meta is already watching, and
-   * it doubles what the rate limit above has to hold back.
+   * One inbound message gets ONE outbound answer — with one exception: the
+   * invoice, which goes out as up to three messages (see `faturaEmPartes`)
+   * so the customer can copy the PIX and the digitable line one at a time.
+   * It is the only answer that splits, and the ceiling above counts every row.
    *
    * The outbox worker delivers it. The bot never speaks to Evolution: enqueuing
    * is what keeps a slow provider server out of the webhook's response time.
