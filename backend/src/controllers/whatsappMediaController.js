@@ -33,7 +33,7 @@ class WhatsAppMediaController {
       // provider's message is not "forbidden" here — it does not exist, which
       // is both the safer answer and the true one.
       const message = await WaMessage.getById(id);
-      if (!message) return notFound();
+      if (!message || message.deleted_at) return notFound();
 
       const resolved = await resolveStoredAttachment(message);
       // A row with no attachment, a path that escapes DATA_DIR and a file that

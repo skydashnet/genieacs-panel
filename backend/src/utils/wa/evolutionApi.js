@@ -319,6 +319,42 @@ export function sendTextRequest(flavor, name, number, text, quotedId = null) {
 }
 
 /**
+ * Reação a uma mensagem. `reaction` vazio tira a reação. `remoteJid` é o
+ * endereço da conversa (`numero@s.whatsapp.net` ou `...@lid`) e `fromMe` diz de
+ * quem é a mensagem reagida. v2: `sendReaction` com a chave da mensagem; GO:
+ * `/message/react` com o número e o id.
+ */
+export function sendReactionRequest(flavor, name, { remoteJid, id, fromMe, reaction }) {
+  if (flavor === 'go') {
+    return {
+      path: '/message/react',
+      method: 'POST',
+      key: 'instance',
+      body: { number: remoteJid, id, fromMe: Boolean(fromMe), reaction }
+    };
+  }
+  return {
+    path: `/message/sendReaction/${enc(name)}`,
+    method: 'POST',
+    key: 'instance',
+    body: { key: { remoteJid, fromMe: Boolean(fromMe), id }, reaction }
+  };
+}
+
+/** Apagar para todos uma mensagem NOSSA já enviada (revoga no WhatsApp). */
+export function deleteMessageRequest(flavor, name, { remoteJid, id }) {
+  if (flavor === 'go') {
+    return { path: '/message/delete', method: 'POST', key: 'instance', body: { chat: remoteJid, messageId: id } };
+  }
+  return {
+    path: `/chat/deleteMessageForEveryone/${enc(name)}`,
+    method: 'DELETE',
+    key: 'instance',
+    body: { id, remoteJid, fromMe: true }
+  };
+}
+
+/**
  * Áudio de VOZ (PTT) — o balão com onda que toca sozinho no WhatsApp.
  *
  * Existe separado de `sendMediaRequest` porque são coisas diferentes do lado do

@@ -36,6 +36,8 @@ interface ConversationThreadProps {
   resendingId: number | null
   onReply?: (message: WhatsAppMessage) => void
   onForward?: (message: WhatsAppMessage) => void
+  onReact?: (message: WhatsAppMessage, emoji: string) => void
+  onDelete?: (message: WhatsAppMessage) => void
   /** A close or reopen is in flight; the button must not be pressed twice. */
   filing: boolean
   onFile: (status: 'open' | 'closed') => void
@@ -72,6 +74,8 @@ export function ConversationThread({
   onResend,
   onReply,
   onForward,
+  onReact,
+  onDelete,
   resendingId,
   filing,
   onFile,
@@ -373,6 +377,8 @@ export function ConversationThread({
                 resending={resendingId === message.id}
                 onReply={onReply}
                 onForward={onForward}
+                onReact={onReact}
+                onDelete={onDelete}
                 accountTinted={numero !== null}
               />
             ))}

@@ -295,12 +295,12 @@ class WaSendService {
       id: row.id,
       conversationId: row.conversation_id,
       direction: row.direction,
-      body: row.body ?? null,
+      body: row.deleted_at ? null : (row.body ?? null),
       // No `url`. The stored value is a path on the panel's disk, which is
       // useless to a browser — it fetches by message id now — and is a shape of
       // the server's filesystem that nothing outside needs to know. What the
       // screen actually draws from is `type` and `name`.
-      attachment: row.attachment_path
+      attachment: row.attachment_path && !row.deleted_at
         ? {
           type: row.attachment_type || null,
           name: row.attachment_name || null
@@ -308,6 +308,8 @@ class WaSendService {
         : null,
       isNote: Boolean(row.is_note),
       replyToId: row.reply_to_id ?? null,
+      myReaction: row.my_reaction || null,
+      deletedAt: row.deleted_at || null,
       externalId: row.external_id || null,
       deliveryStatus: row.delivery_status || null,
       deliveryError: row.delivery_error || null,

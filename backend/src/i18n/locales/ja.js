@@ -847,6 +847,11 @@ export default {
   'whatsapp.alerts.noDevices': 'ネットワークを読み取れなかったため、何も確認されませんでした',
 
   'whatsapp.messageRequeued': 'メッセージを送信待ちに戻しました',
+  'whatsapp.messageReacted': "リアクションを送信しました",
+  'whatsapp.messageDeleted': "メッセージを削除しました",
+  'whatsapp.messageActionFailed': "メッセージの操作を完了できませんでした",
+  'whatsapp.error.messageNotActionable': "このメッセージには現在この操作を行えません（社内メモ、送信待ち、削除済み、またはWhatsApp IDなし）",
+  'whatsapp.error.deleteUnsupported': "Meta公式APIでは送信済みメッセージを削除できません",
   'whatsapp.messageNotRequeueable': '再送できるのは送信に失敗したメッセージだけです。',
   'whatsapp.messagesRequeued': '{count} 件のメッセージを送信待ちに戻しました',
   'vendor.nameTaken': 'この名称のベンダーはすでに存在します',

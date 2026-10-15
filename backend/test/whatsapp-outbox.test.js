@@ -106,6 +106,9 @@ function startEvolutionStub() {
           ? send(200, accepted())
           : send(stub.mediaStatus, { message: 'media recusada' });
       }
+      if (path.startsWith('/message/sendReaction/') || path.startsWith('/chat/deleteMessageForEveryone/')) {
+        return send(200, { status: 'SUCCESS' });
+      }
       return send(404, { message: 'unknown route' });
     });
   });
@@ -308,6 +311,70 @@ describe('the outbox worker despatches', () => {
     const citada = lista.body.data.messages.find((m) => m.id === resposta.id);
     assert.equal(citada.replyTo.id, primeira.id);
     assert.equal(citada.replyTo.body, 'qual o contrato?');
+  });
+
+  it('reage a uma mensagem e guarda o emoji; vazio tira a reação', async () => {
+    await clearOutbox();
+    const conversation = await newConversation();
+    const enviada = (await post(conversation.id, { body: 'recebeu?' })).body.data;
+    await WaOutboxWorker.tick();
+    const row = await asTenant(() => WaMessage.getById(enviada.id));
+    requests.length = 0;
+
+    const url = `${panelUrl}/api/whatsapp/messages/${enviada.id}/reaction`;
+    const res = await call(url, { method: 'POST', headers: authHeaders(token), body: { emoji: '👍' } });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.data.myReaction, '👍');
+    const chamada = requests.find((r) => r.path.startsWith('/message/sendReaction/'));
+    assert.equal(chamada.payload.reaction, '👍');
+    assert.equal(chamada.payload.key.id, row.external_id);
+    assert.equal(chamada.payload.key.fromMe, true);
+    assert.match(chamada.payload.key.remoteJid, /@s\.whatsapp\.net$/);
+
+    const tirar = await call(url, { method: 'POST', headers: authHeaders(token), body: { emoji: '' } });
+    assert.equal(tirar.body.data.myReaction, null);
+
+    const texto = await call(url, { method: 'POST', headers: authHeaders(token), body: { emoji: 'oi' } });
+    assert.equal(texto.status, 400, 'só emoji vira reação');
+  });
+
+  it('apaga para todos a mensagem enviada e esconde o conteúdo', async () => {
+    await clearOutbox();
+    const conversation = await newConversation();
+    const enviada = (await post(conversation.id, { body: 'mensagem errada' })).body.data;
+    const pendente = (await post(conversation.id, { body: 'ainda na fila' })).body.data;
+    // Só a primeira sai: a segunda fica na fila para provar a recusa.
+    await getDb()('wa_messages').where({ id: pendente.id }).update({ delivery_status: 'queued', next_attempt_at: new Date(Date.now() + 3600_000) });
+    await WaOutboxWorker.tick();
+    const row = await asTenant(() => WaMessage.getById(enviada.id));
+    requests.length = 0;
+
+    const res = await call(`${panelUrl}/api/whatsapp/messages/${enviada.id}/delete`, { method: 'POST', headers: authHeaders(token) });
+    assert.equal(res.status, 200);
+    assert.ok(res.body.data.deletedAt);
+    assert.equal(res.body.data.body, null);
+    const chamada = requests.find((r) => r.path.startsWith('/chat/deleteMessageForEveryone/'));
+    assert.equal(chamada.payload.id, row.external_id);
+    assert.equal(chamada.payload.fromMe, true);
+
+    const repetida = await call(`${panelUrl}/api/whatsapp/messages/${enviada.id}/delete`, { method: 'POST', headers: authHeaders(token) });
+    assert.equal(repetida.status, 409);
+    const fila = await call(`${panelUrl}/api/whatsapp/messages/${pendente.id}/delete`, { method: 'POST', headers: authHeaders(token) });
+    assert.equal(fila.status, 409, 'na fila: apagar deixaria a fila mandar assim mesmo');
+  });
+
+  it('apagar mensagem do cliente só some do painel, sem falar com o servidor', async () => {
+    await clearOutbox();
+    const conversation = await newConversation();
+    const recebida = await asTenant(() => WaMessage.create({
+      conversation_id: conversation.id, direction: 'in', external_id: `IN-${Date.now()}`, body: 'oi'
+    }));
+    const id = typeof recebida === 'object' ? recebida.id : recebida;
+    requests.length = 0;
+    const res = await call(`${panelUrl}/api/whatsapp/messages/${id}/delete`, { method: 'POST', headers: authHeaders(token) });
+    assert.equal(res.status, 200);
+    assert.ok(res.body.data.deletedAt);
+    assert.equal(requests.filter((r) => r.path.startsWith('/chat/')).length, 0);
   });
 
   it('sends a message exactly once when two passes overlap', async () => {

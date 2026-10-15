@@ -287,6 +287,8 @@ interface MessageBubbleProps {
   resending: boolean
   onReply?: (message: WhatsAppMessage) => void
   onForward?: (message: WhatsAppMessage) => void
+  onReact?: (message: WhatsAppMessage, emoji: string) => void
+  onDelete?: (message: WhatsAppMessage) => void
   /**
    * O balão recebido na cor do número que o recebeu. A cor vem de
    * `--wa-account`, definida pela lista em volta; sem número conhecido, o
@@ -295,7 +297,7 @@ interface MessageBubbleProps {
   accountTinted?: boolean
 }
 
-export function MessageBubble({ message, onResend, resending, onReply, onForward, accountTinted = false }: MessageBubbleProps) {
+export function MessageBubble({ message, onResend, resending, onReply, onForward, onReact, onDelete, accountTinted = false }: MessageBubbleProps) {
   const { t, intlLocale } = useTranslation()
   const stamp = clock(message.createdAt, intlLocale)
 
@@ -308,7 +310,9 @@ export function MessageBubble({ message, onResend, resending, onReply, onForward
 
   const attachment = message.attachment && <Attachment message={message} />
 
-  const body = message.body
+  const body = message.deletedAt
+    ? <p className="text-sm italic text-muted-foreground">{t('whatsapp.msg.deleted')}</p>
+    : message.body
     ? <p className="whitespace-pre-wrap text-sm leading-6 wrap-anywhere">
         {linkify(message.body).map((part, i) => part.href
           ? <a key={i} href={part.href} target="_blank" rel="noopener noreferrer" className="text-primary underline">{part.text}</a>
@@ -353,7 +357,7 @@ export function MessageBubble({ message, onResend, resending, onReply, onForward
       <p className="line-clamp-2 whitespace-pre-wrap wrap-anywhere">{message.replyTo.body || t('whatsapp.msg.attachment')}</p>
     </div>
   )
-  const menu = <MessageMenu message={message} onReply={onReply} onForward={onForward} />
+  const menu = message.deletedAt ? null : <MessageMenu message={message} onReply={onReply} onForward={onForward} onReact={onReact} onDelete={onDelete} />
 
   return (
     <li className={`group/msg flex w-full items-start gap-1 ${inbound ? 'justify-start' : 'flex-row-reverse justify-start'}`}>
@@ -368,9 +372,12 @@ export function MessageBubble({ message, onResend, resending, onReply, onForward
               : 'border-primary/30 bg-primary/10 text-foreground'
         }`}
       >
-        {quote}
+        {!message.deletedAt && quote}
         {body}
         {attachment}
+        {message.myReaction && (
+          <span className="mt-1 inline-flex rounded-full border border-border bg-background/70 px-1.5 text-sm leading-6" title={t('whatsapp.msg.yourReaction')}>{message.myReaction}</span>
+        )}
 
         <div className="mt-1.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
           {message.sentAs === 'template' && (

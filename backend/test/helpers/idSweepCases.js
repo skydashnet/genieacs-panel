@@ -768,6 +768,27 @@ export const casos = [
     controleSoNaoAchou: true,
     codigoDeNaoAchou: 'conversation_not_found'
   },
+  // Reagir e apagar: a mensagem do vizinho não pode ser achada (404), e a
+  // leitura por baixo é escopada. Com o id do próprio beta a rota passa dela:
+  // a reação chega ao cliente Evolution e a política recusa o servidor sem
+  // https (400, sem rede), e a exclusão marca só a linha do beta.
+  {
+    chave: 'failedMessage',
+    label: 'POST /api/whatsapp/messages/:id/reaction',
+    method: 'POST',
+    path: (id) => `/api/whatsapp/messages/${id}/reaction`,
+    // Vazio (tirar a reação): sem emoji no corpo, que o auxiliar de chamada
+    // mede em caracteres e não em bytes.
+    body: { emoji: '' },
+    tabela: 'wa_messages'
+  },
+  {
+    chave: 'failedMessage',
+    label: 'POST /api/whatsapp/messages/:id/delete',
+    method: 'POST',
+    path: (id) => `/api/whatsapp/messages/${id}/delete`,
+    tabela: 'wa_messages'
+  },
   {
     chave: 'failedMessage',
     label: 'POST /api/whatsapp/messages/:id/requeue',

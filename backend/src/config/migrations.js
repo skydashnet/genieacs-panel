@@ -1735,6 +1735,16 @@ const WA_MESSAGE_REPLY_COLUMNS = [
   ['reply_to_id', (t) => t.integer('reply_to_id').unsigned().nullable()]
 ];
 
+/**
+ * Reação e exclusão de uma mensagem (0114): `my_reaction` é o emoji que o
+ * painel pôs nela; `deleted_at` marca a mensagem apagada (para todos no
+ * WhatsApp, quando é nossa, ou só da tela do painel, quando é do cliente).
+ */
+const WA_MESSAGE_ACTION_COLUMNS = [
+  ['my_reaction', (t) => t.string('my_reaction', 16).nullable()],
+  ['deleted_at', (t) => t.timestamp('deleted_at').nullable()]
+];
+
 const WA_CLOUD_TABLES = [
   ['whatsapp_accounts', WA_ACCOUNT_CLOUD_COLUMNS],
   ['wa_messages', WA_MESSAGE_CLOUD_COLUMNS]
@@ -6360,6 +6370,22 @@ export const migrations = [
     async up(db) {
       if (!(await db.schema.hasTable('wa_messages'))) return;
       const missing = await missingColumns(db, 'wa_messages', WA_MESSAGE_REPLY_COLUMNS);
+      if (!missing.length) return;
+      await db.schema.alterTable('wa_messages', (t) => {
+        for (const add of missing) add(t);
+      });
+    }
+  },
+  {
+    /** Reagir e apagar mensagens — ver `WA_MESSAGE_ACTION_COLUMNS`. */
+    id: '0114_wa_message_actions',
+    async isApplied(db) {
+      if (!(await db.schema.hasTable('wa_messages'))) return true;
+      return (await missingColumns(db, 'wa_messages', WA_MESSAGE_ACTION_COLUMNS)).length === 0;
+    },
+    async up(db) {
+      if (!(await db.schema.hasTable('wa_messages'))) return;
+      const missing = await missingColumns(db, 'wa_messages', WA_MESSAGE_ACTION_COLUMNS);
       if (!missing.length) return;
       await db.schema.alterTable('wa_messages', (t) => {
         for (const add of missing) add(t);
