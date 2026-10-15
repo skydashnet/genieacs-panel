@@ -5,7 +5,7 @@ import { Icon } from '@/components/ui/icon'
 import { useToast } from '@/components/ui/toast'
 import { whatsappErrorMessage } from '@/components/whatsapp-connection'
 import { useTranslation } from '@/contexts/language-context'
-import { whatsappAPI, type MetaTemplatePayload, type WhatsAppMetaTemplate } from '@/lib/api'
+import { whatsappAPI, type MetaTemplatePayload, type WhatsAppMessage, type WhatsAppMetaTemplate } from '@/lib/api'
 import { formatFileSize } from '@/lib/firmware'
 import {
   MAX_ATTACHMENT_MB,
@@ -42,6 +42,9 @@ interface ThreadComposerProps {
   optedOut: boolean
   sending: boolean
   onSend: (body: string, isNote: boolean, attachment?: ComposerAttachment) => Promise<boolean>
+  /** A mensagem que a próxima resposta cita; o chip acima da caixa a mostra. */
+  replyTo?: WhatsAppMessage | null
+  onCancelReply?: () => void
   /**
    * Text handed in from outside — the SGP module's second copy. It REPLACES
    * what is in the box and goes nowhere by itself: the operator reads it and
@@ -134,7 +137,7 @@ const carriesFiles = (event: DragEvent) => Array.from(event.dataTransfer.types).
  * modo nota continua ligado, porque o resto do lote ainda é nota e virar
  * resposta no meio do caminho é justamente a direção perigosa.
  */
-export function ThreadComposer({ optedOut, sending, onSend, draft = null, quickReplies = null, quickReplyVars = {}, metaWindow = null, metaTemplates = [], onSendTemplate, onSuggest, templates = null, onPickTemplate, compact = false }: ThreadComposerProps) {
+export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCancelReply, draft = null, quickReplies = null, quickReplyVars = {}, metaWindow = null, metaTemplates = [], onSendTemplate, onSuggest, templates = null, onPickTemplate, compact = false }: ThreadComposerProps) {
   const { t } = useTranslation()
   const toast = useToast()
   const [body, setBody] = useState('')
@@ -430,6 +433,24 @@ export function ThreadComposer({ optedOut, sending, onSend, draft = null, quickR
             {t('whatsapp.inbox.optedOutHint')}
           </span>
         </p>
+      )}
+
+      {replyTo && !isNote && (
+        <div className="mb-1.5 flex items-start gap-2 rounded border-s-2 border-primary/60 bg-[hsl(var(--surface-subtle))] px-2 py-1 text-xs">
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-muted-foreground">{t('whatsapp.msg.replyingTo')}</p>
+            <p className="line-clamp-2 whitespace-pre-wrap wrap-anywhere text-foreground">{replyTo.body || t('whatsapp.msg.attachment')}</p>
+          </div>
+          <button
+            type="button"
+            className="icon-button size-6 shrink-0"
+            aria-label={t('whatsapp.msg.cancelReply')}
+            title={t('whatsapp.msg.cancelReply')}
+            onClick={onCancelReply}
+          >
+            <Icon name="x" size={14} />
+          </button>
+        </div>
       )}
 
       <textarea

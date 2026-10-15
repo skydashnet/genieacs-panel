@@ -85,7 +85,8 @@ class WaSendService {
     isNote = false,
     userId = null,
     source = 'operator',
-    metaTemplate = null
+    metaTemplate = null,
+    replyToId = null
   } = {}) {
     // Defaulting to 'operator' rather than to the caller's intent: a sender
     // that forgets to say must never end up claiming to be the bot, because
@@ -136,10 +137,17 @@ class WaSendService {
       if (cloudDecision(account, conversation, modelo) === 'refuse') throw windowClosed();
     }
 
+    // A resposta só cita uma mensagem desta mesma conversa; qualquer outro id
+    // é ignorado, não um erro: a citação é um enfeite e não deve perder o texto.
+    const citada = !note && Number.isInteger(Number(replyToId)) && Number(replyToId) > 0
+      ? await WaMessage.getById(Number(replyToId))
+      : null;
+
     const now = new Date();
     const message = await WaMessage.create({
       conversation_id: conversation.id,
       direction: 'out',
+      reply_to_id: citada && Number(citada.conversation_id) === Number(conversation.id) ? citada.id : null,
       body: text || textoDoModelo || (modelo ? modelo.name : null),
       meta_template: modelo ? JSON.stringify(modelo) : null,
       attachment_path: anexo?.path ?? null,
@@ -299,6 +307,7 @@ class WaSendService {
         }
         : null,
       isNote: Boolean(row.is_note),
+      replyToId: row.reply_to_id ?? null,
       externalId: row.external_id || null,
       deliveryStatus: row.delivery_status || null,
       deliveryError: row.delivery_error || null,
@@ -565,7 +574,10 @@ async function sendThrough(client, account, message, number, config) {
   const caption = String(message.body || '');
 
   if (!message.attachment_path) {
-    const { data } = await client.sendOrThrow(sendTextRequest(flavor, name, number, caption));
+    const citada = message.reply_to_id ? await WaMessage.getById(message.reply_to_id) : null;
+    const { data } = await client.sendOrThrow(
+      sendTextRequest(flavor, name, number, caption, citada?.external_id || null)
+    );
     return readSentId(data);
   }
 

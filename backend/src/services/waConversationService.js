@@ -590,9 +590,29 @@ class WaConversationService {
     });
     if (conversation.unread_count > 0) await WaConversation.update(conversation.id, { unread_count: 0 });
 
+    // A citação de cada resposta: o recorte da mensagem original, buscada de
+    // uma vez (a original pode estar numa página mais antiga da conversa).
+    const ids = [...new Set(rows.map((row) => row.reply_to_id).filter(Boolean))];
+    const citadas = new Map();
+    if (ids.length) {
+      const found = await tdb('wa_messages').whereIn('id', ids).where({ conversation_id: conversation.id });
+      for (const row of found) citadas.set(row.id, row);
+    }
     return {
       conversation: await this.decorate(conversation),
-      messages: rows.map((row) => WaSendService.publicMessage(row))
+      messages: rows.map((row) => {
+        const message = WaSendService.publicMessage(row);
+        const original = row.reply_to_id ? citadas.get(row.reply_to_id) : null;
+        message.replyTo = original
+          ? {
+            id: original.id,
+            direction: original.direction,
+            body: original.body ? String(original.body).slice(0, 200) : null,
+            attachmentType: original.attachment_type || null
+          }
+          : null;
+        return message;
+      })
     };
   }
 }

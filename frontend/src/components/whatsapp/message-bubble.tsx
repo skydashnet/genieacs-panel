@@ -1,6 +1,7 @@
 'use client'
 
 import { linkify } from '@/lib/linkify'
+import { MessageMenu } from '@/components/whatsapp/message-menu'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/icon'
 import { useTranslation } from '@/contexts/language-context'
@@ -284,6 +285,8 @@ interface MessageBubbleProps {
    */
   onResend: (message: WhatsAppMessage) => void
   resending: boolean
+  onReply?: (message: WhatsAppMessage) => void
+  onForward?: (message: WhatsAppMessage) => void
   /**
    * O balão recebido na cor do número que o recebeu. A cor vem de
    * `--wa-account`, definida pela lista em volta; sem número conhecido, o
@@ -292,7 +295,7 @@ interface MessageBubbleProps {
   accountTinted?: boolean
 }
 
-export function MessageBubble({ message, onResend, resending, accountTinted = false }: MessageBubbleProps) {
+export function MessageBubble({ message, onResend, resending, onReply, onForward, accountTinted = false }: MessageBubbleProps) {
   const { t, intlLocale } = useTranslation()
   const stamp = clock(message.createdAt, intlLocale)
 
@@ -344,8 +347,16 @@ export function MessageBubble({ message, onResend, resending, accountTinted = fa
   const inbound = message.direction === 'in'
   const failed = message.deliveryStatus === 'failed'
 
+  const quote = message.replyTo && (
+    <div className="mb-1.5 rounded border-s-2 border-primary/60 bg-black/10 px-2 py-1 text-xs text-muted-foreground">
+      <p className="font-semibold">{message.replyTo.direction === 'in' ? t('whatsapp.msg.theirs') : t('whatsapp.msg.yours')}</p>
+      <p className="line-clamp-2 whitespace-pre-wrap wrap-anywhere">{message.replyTo.body || t('whatsapp.msg.attachment')}</p>
+    </div>
+  )
+  const menu = <MessageMenu message={message} onReply={onReply} onForward={onForward} />
+
   return (
-    <li className={`flex w-full ${inbound ? 'justify-start' : 'justify-end'}`}>
+    <li className={`group/msg flex w-full items-start gap-1 ${inbound ? 'justify-start' : 'flex-row-reverse justify-start'}`}>
       <div
         className={`min-w-0 max-w-[min(38rem,85%)] rounded-(--radius) border px-3 py-2 ${
           inbound
@@ -357,6 +368,7 @@ export function MessageBubble({ message, onResend, resending, accountTinted = fa
               : 'border-primary/30 bg-primary/10 text-foreground'
         }`}
       >
+        {quote}
         {body}
         {attachment}
 
@@ -427,6 +439,7 @@ export function MessageBubble({ message, onResend, resending, accountTinted = fa
           </div>
         )}
       </div>
+      {menu}
     </li>
   )
 }

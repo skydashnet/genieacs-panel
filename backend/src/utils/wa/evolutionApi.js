@@ -297,10 +297,25 @@ export function fetchProfilePicRequest(flavor, name, number) {
   };
 }
 
-export function sendTextRequest(flavor, name, number, text) {
-  return flavor === 'go'
-    ? { path: '/send/text', method: 'POST', key: 'instance', body: { number, text } }
-    : { path: `/message/sendText/${enc(name)}`, method: 'POST', key: 'instance', body: { number, text } };
+/**
+ * `quotedId` é o id do WhatsApp da mensagem respondida: o cliente vê a resposta
+ * ligada à citação. v2 cita por `quoted.key.id`; o GO, por `quoted.messageId`.
+ */
+export function sendTextRequest(flavor, name, number, text, quotedId = null) {
+  if (flavor === 'go') {
+    return {
+      path: '/send/text',
+      method: 'POST',
+      key: 'instance',
+      body: { number, text, ...(quotedId ? { quoted: { messageId: quotedId } } : {}) }
+    };
+  }
+  return {
+    path: `/message/sendText/${enc(name)}`,
+    method: 'POST',
+    key: 'instance',
+    body: { number, text, ...(quotedId ? { quoted: { key: { id: quotedId } } } : {}) }
+  };
 }
 
 /**

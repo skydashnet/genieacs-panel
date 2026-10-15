@@ -5351,6 +5351,9 @@ export interface WhatsAppMessage {
    */
   source: 'operator' | 'bot' | 'campaign' | 'alert'
   externalId: string | null
+  /** O id local da mensagem que esta responde, e um recorte dela (só na lista). */
+  replyToId?: number | null
+  replyTo?: { id: number; direction: 'in' | 'out'; body: string | null; attachmentType: string | null } | null
   deliveryStatus: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | null
   deliveryError: string | null
   attempts: number
@@ -6084,7 +6087,7 @@ export const whatsappAPI = {
 
   // Enqueues and returns; the outbox worker delivers. An internal note is
   // stored and never sent.
-  sendMessage: (conversationId: number, payload: { body?: string; attachment?: { url: string; type?: string; name?: string }; isNote?: boolean; metaTemplate?: MetaTemplatePayload }) =>
+  sendMessage: (conversationId: number, payload: { body?: string; attachment?: { url: string; type?: string; name?: string }; isNote?: boolean; metaTemplate?: MetaTemplatePayload; replyToId?: number }) =>
     apiClient.post<WhatsAppMessage>(`/whatsapp/conversations/${conversationId}/messages`, payload),
 
   // ── Subscriber phone ─────────────────────────────────────────────────
