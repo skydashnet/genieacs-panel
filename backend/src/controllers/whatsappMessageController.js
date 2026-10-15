@@ -1,3 +1,4 @@
+import WaMessageActionService from '../services/waMessageActionService.js';
 import WaSendService from '../services/waSendService.js';
 import WaConversationService from '../services/waConversationService.js';
 import WaContactService from '../services/waContactService.js';
@@ -375,6 +376,26 @@ class WhatsAppMessageController {
       ));
     } catch (error) {
       return handleError(req, res, error, 'whatsapp.messageSendFailed');
+    }
+  }
+
+  /** `POST /messages/:id/reaction` — `{ emoji }`; vazio tira a reação. */
+  static async react(req, res) {
+    try {
+      const message = await WaMessageActionService.react(req.params?.id, req.body?.emoji);
+      return res.json(createResponse(req.t('whatsapp.messageReacted'), WaSendService.publicMessage(message)));
+    } catch (error) {
+      return handleError(req, res, error, 'whatsapp.messageActionFailed');
+    }
+  }
+
+  /** `POST /messages/:id/delete` — apaga para todos (nossa) ou some do painel (do cliente). */
+  static async remove(req, res) {
+    try {
+      const message = await WaMessageActionService.remove(req.params?.id);
+      return res.json(createResponse(req.t('whatsapp.messageDeleted'), WaSendService.publicMessage(message)));
+    } catch (error) {
+      return handleError(req, res, error, 'whatsapp.messageActionFailed');
     }
   }
 

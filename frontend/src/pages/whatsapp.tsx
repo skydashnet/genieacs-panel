@@ -670,6 +670,37 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
     }
   }, [submit])
 
+  /** Troca a mensagem na lista pelo que o servidor devolveu (reação, exclusão). */
+  const patchMessage = useCallback((updated: WhatsAppMessage) => {
+    setMessages((rows) => rows.map((row) => (row.id === updated.id ? { ...row, ...updated, replyTo: row.replyTo } : row)))
+  }, [])
+
+  const reactTo = useCallback(async (message: WhatsAppMessage, emoji: string) => {
+    try {
+      const res = await whatsappAPI.reactToMessage(message.id, emoji)
+      if (!res.success || !res.data) {
+        toast.error(whatsappErrorMessage(t, res.code), { title: t('whatsapp.msg.reactFailed') })
+        return
+      }
+      patchMessage(res.data)
+    } catch {
+      toast.error(t('api.requestFailed'), { title: t('whatsapp.msg.reactFailed') })
+    }
+  }, [patchMessage, t, toast])
+
+  const deleteMessage = useCallback(async (message: WhatsAppMessage) => {
+    try {
+      const res = await whatsappAPI.deleteMessage(message.id)
+      if (!res.success || !res.data) {
+        toast.error(res.message || whatsappErrorMessage(t, res.code), { title: t('whatsapp.msg.deleteFailed') })
+        return
+      }
+      patchMessage(res.data)
+    } catch {
+      toast.error(t('api.requestFailed'), { title: t('whatsapp.msg.deleteFailed') })
+    }
+  }, [patchMessage, t, toast])
+
   /** Encaminha o texto de uma mensagem para outra conversa; o que sai é uma mensagem nova. */
   const forwardTo = useCallback(async (message: WhatsAppMessage, target: WhatsAppConversation): Promise<boolean> => {
     try {
@@ -945,6 +976,8 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
                     resendingId={resendingId}
                     onReply={(message) => setReplyTo(message)}
                     onForward={(message) => setForwarding(message)}
+                    onReact={(message, emoji) => void reactTo(message, emoji)}
+                    onDelete={(message) => void deleteMessage(message)}
                     filing={filing}
                     onFile={(next) => void file(next)}
                     sgpPanelOpen={canSeeSgp ? showSgpPanel : undefined}

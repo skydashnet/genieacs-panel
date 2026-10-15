@@ -5353,6 +5353,9 @@ export interface WhatsAppMessage {
   externalId: string | null
   /** O id local da mensagem que esta responde, e um recorte dela (só na lista). */
   replyToId?: number | null
+  /** O emoji que o painel pôs nesta mensagem, e quando ela foi apagada. */
+  myReaction?: string | null
+  deletedAt?: string | null
   replyTo?: { id: number; direction: 'in' | 'out'; body: string | null; attachmentType: string | null } | null
   deliveryStatus: 'queued' | 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | null
   deliveryError: string | null
@@ -6089,6 +6092,13 @@ export const whatsappAPI = {
   // stored and never sent.
   sendMessage: (conversationId: number, payload: { body?: string; attachment?: { url: string; type?: string; name?: string }; isNote?: boolean; metaTemplate?: MetaTemplatePayload; replyToId?: number }) =>
     apiClient.post<WhatsAppMessage>(`/whatsapp/conversations/${conversationId}/messages`, payload),
+
+  /** Reage a uma mensagem; `emoji` vazio tira a reação. */
+  reactToMessage: (messageId: number, emoji: string) =>
+    apiClient.post<WhatsAppMessage>(`/whatsapp/messages/${messageId}/reaction`, { emoji }),
+  /** Apaga para todos no WhatsApp (mensagem nossa) ou só do painel (do cliente). */
+  deleteMessage: (messageId: number) =>
+    apiClient.post<WhatsAppMessage>(`/whatsapp/messages/${messageId}/delete`, {}),
 
   // ── Subscriber phone ─────────────────────────────────────────────────
   // Overrides what SGP returned. An empty string clears the override and falls

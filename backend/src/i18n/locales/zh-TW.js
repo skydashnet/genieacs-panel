@@ -847,6 +847,11 @@ export default {
   'whatsapp.bot.signalOkNoReading': '您的寬頻在線。',
 
   'whatsapp.messageRequeued': '訊息已重新排入佇列',
+  'whatsapp.messageReacted': "已傳送回應",
+  'whatsapp.messageDeleted': "訊息已刪除",
+  'whatsapp.messageActionFailed': "無法完成對訊息的操作",
+  'whatsapp.error.messageNotActionable': "此訊息目前不支援該操作（內部備註、仍在佇列中、已刪除或沒有 WhatsApp ID）",
+  'whatsapp.error.deleteUnsupported': "Meta 官方 API 不支援刪除已傳送的訊息",
   'whatsapp.messageNotRequeueable': '只有傳送失敗的訊息才能重新傳送。',
   'whatsapp.messagesRequeued': '已將 {count} 則訊息重新排入佇列',
   'vendor.nameTaken': '同名廠商已存在',

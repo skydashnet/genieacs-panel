@@ -8,6 +8,10 @@ import { sgpAdminLimiter, whatsappBulkRequeueLimiter, whatsappSendLimiter } from
 
 const router = express.Router();
 
+// Reagir a uma mensagem e apagá-la: falar COMO o provedor, então `whatsapp.send`.
+router.post('/messages/:id/reaction', authenticateToken, requirePermission('whatsapp.send'), whatsappSendLimiter, WhatsAppMessageController.react);
+router.post('/messages/:id/delete', authenticateToken, requirePermission('whatsapp.send'), whatsappSendLimiter, WhatsAppMessageController.remove);
+
 // Ler a caixa é `whatsapp.read` e responder é `whatsapp.send`: atender
 // assinante é justamente o trabalho do plantão. A linha entre as duas é que
 // mandar mensagem do número do provedor é falar COMO o provedor.

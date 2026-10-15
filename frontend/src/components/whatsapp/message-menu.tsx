@@ -28,19 +28,24 @@ async function copyText(text: string): Promise<boolean> {
 }
 
 /** O menu "⋯" de uma mensagem: Responder, Copiar e Encaminhar. */
-export function MessageMenu({ message, onReply, onForward }: {
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏']
+
+export function MessageMenu({ message, onReply, onForward, onReact, onDelete }: {
   message: WhatsAppMessage
   onReply?: (message: WhatsAppMessage) => void
   onForward?: (message: WhatsAppMessage) => void
+  onReact?: (message: WhatsAppMessage, emoji: string) => void
+  onDelete?: (message: WhatsAppMessage) => void
 }) {
   const { t } = useTranslation()
   const toast = useToast()
   const [open, setOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const box = useRef<HTMLDivElement>(null)
   const hasText = Boolean(message.body)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) { setConfirmDelete(false); return }
     const away = (event: MouseEvent) => {
       if (box.current && !box.current.contains(event.target as Node)) setOpen(false)
     }
@@ -69,7 +74,11 @@ export function MessageMenu({ message, onReply, onForward }: {
     })
   }
   if (onForward && hasText) items.push({ key: 'forward', icon: 'forward', label: t('whatsapp.msg.forward'), run: () => onForward(message) })
-  if (items.length === 0) return null
+  // Reagir precisa do id que o WhatsApp deu à mensagem; apagar, de uma que já saiu (ou do cliente).
+  const canReact = Boolean(onReact && message.externalId && !message.isNote)
+  const pending = message.direction === 'out' && (message.deliveryStatus === 'queued' || message.deliveryStatus === 'sending')
+  const canDelete = Boolean(onDelete && !message.isNote && !pending)
+  if (items.length === 0 && !canReact && !canDelete) return null
 
   return (
     <div ref={box} className="relative shrink-0 self-start">
@@ -84,7 +93,23 @@ export function MessageMenu({ message, onReply, onForward }: {
         <Icon name="more" size={16} />
       </button>
       {open && (
-        <div role="menu" className="absolute z-20 mt-1 min-w-36 rounded-md border border-border bg-background py-1 shadow-lg data-[side=out]:start-0 data-[side=in]:end-0" data-side={message.direction}>
+        <div role="menu" className="absolute z-20 mt-1 min-w-40 rounded-md border border-border bg-background py-1 shadow-lg data-[side=out]:start-0 data-[side=in]:end-0" data-side={message.direction}>
+          {canReact && (
+            <div className="flex items-center gap-0.5 border-b border-border px-2 pb-1.5 pt-1" role="group" aria-label={t('whatsapp.msg.react')}>
+              {QUICK_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  className={`inline-flex size-7 items-center justify-center rounded text-base hover:bg-[hsl(var(--surface-subtle))] ${message.myReaction === emoji ? 'bg-primary/15' : ''}`}
+                  aria-label={emoji}
+                  aria-pressed={message.myReaction === emoji}
+                  onClick={() => { setOpen(false); onReact?.(message, message.myReaction === emoji ? '' : emoji) }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
           {items.map((item) => (
             <button
               key={item.key}
@@ -97,6 +122,23 @@ export function MessageMenu({ message, onReply, onForward }: {
               {item.label}
             </button>
           ))}
+          {canDelete && (
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-start text-xs text-[hsl(var(--status-danger))] hover:bg-[hsl(var(--surface-subtle))]"
+              onClick={() => {
+                if (!confirmDelete) { setConfirmDelete(true); return }
+                setOpen(false)
+                onDelete?.(message)
+              }}
+            >
+              <Icon name="trash" size={14} className="shrink-0" />
+              {confirmDelete
+                ? t('whatsapp.msg.deleteConfirm')
+                : t(message.direction === 'out' ? 'whatsapp.msg.deleteAll' : 'whatsapp.msg.deleteMine')}
+            </button>
+          )}
         </div>
       )}
     </div>
