@@ -12,6 +12,8 @@ import {
 } from '@/lib/api'
 import { Icon } from '@/components/ui/icon'
 import { InboxFilterButton, InboxFilterChips } from '@/components/whatsapp/inbox-filters'
+import { ForwardDialog } from '@/components/whatsapp/forward-dialog'
+import { conversationTitle } from '@/components/whatsapp/conversation-list'
 import type { AssigneeFilter } from '@/lib/inbox-filters'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/contexts/language-context'
@@ -235,6 +237,11 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
   const [status, setStatus] = useState<ConversationStatus>('open')
   const [assignee, setAssignee] = useState<AssigneeFilter>('all')
   const [tagFilter, setTagFilter] = useState<number | null>(null)
+  // A mensagem que a próxima resposta cita, e a que está sendo encaminhada.
+  const [replyTo, setReplyTo] = useState<WhatsAppMessage | null>(null)
+  const replyToRef = useRef<WhatsAppMessage | null>(null)
+  useEffect(() => { replyToRef.current = replyTo }, [replyTo])
+  const [forwarding, setForwarding] = useState<WhatsAppMessage | null>(null)
   const [tagOptions, setTagOptions] = useState<WhatsAppTag[]>([])
   // Quem espera gente além do limite: o selo das linhas e a faixa da lista.
   const waitingReport = useWaiting()
@@ -494,6 +501,7 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
     setConversation(next)
     setMessages([])
     setHasOlder(false)
+    setReplyTo(null)
     setSelectedId(next.id)
   }, [])
 
@@ -622,7 +630,8 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
       // The composer uploads the file first and hands back what the upload
       // route stored; this call is what puts it on a row. A caption is
       // optional, so `body` can be empty as long as there is a file.
-      const res = await whatsappAPI.sendMessage(id, { body, attachment, isNote, metaTemplate })
+      const citada = !isNote && !metaTemplate ? replyToRef.current : null
+      const res = await whatsappAPI.sendMessage(id, { body, attachment, isNote, metaTemplate, ...(citada ? { replyToId: citada.id } : {}) })
       if (!alive.current) return false
       if (!res.success || !res.data) {
         // Only the machine `code` is ever translated. The `message` beside it
@@ -631,7 +640,13 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
         toast.error(whatsappErrorMessage(t, res.code), { title: t('whatsapp.inbox.sendFailed') })
         return false
       }
-      const created = res.data
+      const created = citada
+        ? {
+          ...res.data,
+          replyTo: { id: citada.id, direction: citada.direction, body: citada.body ? citada.body.slice(0, 200) : null, attachmentType: citada.attachment?.type ?? null }
+        }
+        : res.data
+      if (citada) setReplyTo(null)
       // The route answers with the row it wrote, so this is the real message,
       // not an optimistic stand-in — nothing here can disagree with the server.
       if (selectedIdRef.current === id) setMessages((rows) => [created, ...rows])
@@ -654,6 +669,22 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
       if (alive.current) setSending(false)
     }
   }, [submit])
+
+  /** Encaminha o texto de uma mensagem para outra conversa; o que sai é uma mensagem nova. */
+  const forwardTo = useCallback(async (message: WhatsAppMessage, target: WhatsAppConversation): Promise<boolean> => {
+    try {
+      const res = await whatsappAPI.sendMessage(target.id, { body: message.body ?? '' })
+      if (!res.success) {
+        toast.error(whatsappErrorMessage(t, res.code), { title: t('whatsapp.inbox.sendFailed') })
+        return false
+      }
+      toast.success(t('whatsapp.msg.forwarded', { name: conversationTitle(target) }))
+      return true
+    } catch {
+      toast.error(t('api.requestFailed'), { title: t('whatsapp.inbox.sendFailed') })
+      return false
+    }
+  }, [t, toast])
 
   /** Fora da janela de 24 h num número oficial: um modelo aprovado da Meta. */
   const sendTemplate = useCallback(async (metaTemplate: MetaTemplatePayload) => {
@@ -912,6 +943,8 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
                     onLoadMore={() => void loadOlder()}
                     onResend={(message) => void resend(message)}
                     resendingId={resendingId}
+                    onReply={(message) => setReplyTo(message)}
+                    onForward={(message) => setForwarding(message)}
                     filing={filing}
                     onFile={(next) => void file(next)}
                     sgpPanelOpen={canSeeSgp ? showSgpPanel : undefined}
@@ -925,6 +958,8 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
                     optedOut={conversation.optedOut}
                     sending={sending}
                     onSend={send}
+                    replyTo={replyTo}
+                    onCancelReply={() => setReplyTo(null)}
                     draft={draft}
                     quickReplies={canQuickReply ? quickReplies ?? [] : null}
                     metaWindow={metaWindowFor(accounts.get(conversation.accountId), conversation)}
@@ -990,6 +1025,15 @@ function InboxTab({ initialConversation = null, backToList = 0 }: InboxTabProps)
           </section>
         )}
       </div>
+      {forwarding && (
+        <ForwardDialog
+          message={forwarding}
+          conversations={conversations}
+          currentId={selectedId}
+          onClose={() => setForwarding(null)}
+          onForward={(target) => forwardTo(forwarding, target)}
+        />
+      )}
     </section>
   )
 }

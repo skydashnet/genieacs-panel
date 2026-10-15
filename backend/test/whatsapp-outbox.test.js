@@ -284,6 +284,32 @@ describe('the outbox worker despatches', () => {
     assert.equal(sendTextCalls()[0].payload.text, 'a caixa chegou?');
   });
 
+  it('cita a mensagem respondida e a lista traz o recorte', async () => {
+    await clearOutbox();
+    const conversation = await newConversation();
+    const outra = await newConversation();
+    const primeira = (await post(conversation.id, { body: 'qual o contrato?' })).body.data;
+    const alheia = (await post(outra.id, { body: 'de outra conversa' })).body.data;
+    await WaOutboxWorker.tick();
+    const enviada = await asTenant(() => WaMessage.getById(primeira.id));
+    requests.length = 0;
+
+    const resposta = (await post(conversation.id, { body: 'é o 608', replyToId: primeira.id })).body.data;
+    const ignorada = (await post(conversation.id, { body: 'sem citar', replyToId: alheia.id })).body.data;
+    assert.equal(resposta.replyToId, primeira.id);
+    assert.equal(ignorada.replyToId, null, 'uma mensagem de outra conversa não é citada');
+    await WaOutboxWorker.tick();
+
+    const chamada = sendTextCalls().find((c) => c.payload.text === 'é o 608');
+    assert.deepEqual(chamada.payload.quoted, { key: { id: enviada.external_id } });
+    assert.equal(sendTextCalls().find((c) => c.payload.text === 'sem citar').payload.quoted, undefined);
+
+    const lista = await call(`${panelUrl}/api/whatsapp/conversations/${conversation.id}/messages`, { headers: authHeaders(token) });
+    const citada = lista.body.data.messages.find((m) => m.id === resposta.id);
+    assert.equal(citada.replyTo.id, primeira.id);
+    assert.equal(citada.replyTo.body, 'qual o contrato?');
+  });
+
   it('sends a message exactly once when two passes overlap', async () => {
     await clearOutbox();
     const conversation = await newConversation();

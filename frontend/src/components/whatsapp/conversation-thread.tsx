@@ -34,6 +34,8 @@ interface ConversationThreadProps {
   onLoadMore: () => void
   onResend: (message: WhatsAppMessage) => void
   resendingId: number | null
+  onReply?: (message: WhatsAppMessage) => void
+  onForward?: (message: WhatsAppMessage) => void
   /** A close or reopen is in flight; the button must not be pressed twice. */
   filing: boolean
   onFile: (status: 'open' | 'closed') => void
@@ -68,6 +70,8 @@ export function ConversationThread({
   canLoadMore,
   onLoadMore,
   onResend,
+  onReply,
+  onForward,
   resendingId,
   filing,
   onFile,
@@ -367,6 +371,8 @@ export function ConversationThread({
                 message={message}
                 onResend={onResend}
                 resending={resendingId === message.id}
+                onReply={onReply}
+                onForward={onForward}
                 accountTinted={numero !== null}
               />
             ))}

@@ -1727,6 +1727,14 @@ const WA_MESSAGE_CLOUD_COLUMNS = [
   ['sent_as', (t) => t.string('sent_as', 8)]
 ];
 
+/**
+ * A mensagem a que esta responde (0113): o id local da linha citada, na mesma
+ * conversa. O envio busca o id do WhatsApp dela para citar de verdade.
+ */
+const WA_MESSAGE_REPLY_COLUMNS = [
+  ['reply_to_id', (t) => t.integer('reply_to_id').unsigned().nullable()]
+];
+
 const WA_CLOUD_TABLES = [
   ['whatsapp_accounts', WA_ACCOUNT_CLOUD_COLUMNS],
   ['wa_messages', WA_MESSAGE_CLOUD_COLUMNS]
@@ -6340,6 +6348,22 @@ export const migrations = [
     async up(db) {
       if (!(await db.schema.hasTable('tenants'))) return;
       await createTableIfMissing(db, 'platform_alerts', platformAlertsTable(db));
+    }
+  },
+  {
+    /** A citação de uma resposta — ver `WA_MESSAGE_REPLY_COLUMNS`. */
+    id: '0113_wa_message_reply',
+    async isApplied(db) {
+      if (!(await db.schema.hasTable('wa_messages'))) return true;
+      return (await missingColumns(db, 'wa_messages', WA_MESSAGE_REPLY_COLUMNS)).length === 0;
+    },
+    async up(db) {
+      if (!(await db.schema.hasTable('wa_messages'))) return;
+      const missing = await missingColumns(db, 'wa_messages', WA_MESSAGE_REPLY_COLUMNS);
+      if (!missing.length) return;
+      await db.schema.alterTable('wa_messages', (t) => {
+        for (const add of missing) add(t);
+      });
     }
   }
 ];
