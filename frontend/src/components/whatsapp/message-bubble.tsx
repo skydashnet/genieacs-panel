@@ -1,5 +1,6 @@
 'use client'
 
+import { linkify } from '@/lib/linkify'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from '@/components/ui/icon'
 import { useTranslation } from '@/contexts/language-context'
@@ -305,7 +306,11 @@ export function MessageBubble({ message, onResend, resending, accountTinted = fa
   const attachment = message.attachment && <Attachment message={message} />
 
   const body = message.body
-    ? <p className="whitespace-pre-wrap text-sm leading-6 wrap-anywhere">{message.body}</p>
+    ? <p className="whitespace-pre-wrap text-sm leading-6 wrap-anywhere">
+        {linkify(message.body).map((part, i) => part.href
+          ? <a key={i} href={part.href} target="_blank" rel="noopener noreferrer" className="text-primary underline">{part.text}</a>
+          : part.text)}
+      </p>
     : !message.attachment
       // Um tipo que o painel não sabe mostrar (o servidor já descreve reação,
       // localização, contato, enquete e mídia que não baixou).
