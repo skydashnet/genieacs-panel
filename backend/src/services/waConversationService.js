@@ -278,6 +278,44 @@ class WaConversationService {
     return ids;
   }
 
+  /**
+   * O operador trocou o número do WhatsApp na ficha: a conversa que ficou no
+   * número anterior sai do cliente (continua no histórico) e "Abrir conversa"
+   * passa a abrir a do número novo. Vale para o cliente com contrato e para o
+   * sem contrato, preso pela linha de contatos.
+   */
+  static async retireAfterPhoneEdit({ contract = null, contactId = null, oldPhone = null }) {
+    const old = normalizarTelefoneBr(oldPhone);
+    if (!old) return [];
+    const grafias = variantesTelefoneBr(old);
+    if (contract) {
+      // O número do SGP continua no cadastro, mas o corrigido à mão manda:
+      // vale o que o painel usa para escrever (`current`), não qualquer um.
+      const { current } = await this.contractPhones(contract);
+      const atuais = new Set(current ? variantesTelefoneBr(current) : []);
+      if (atuais.size === 0 || grafias.some((v) => atuais.has(v))) return [];
+      const rows = await tdb('wa_conversations')
+        .where({ contract: String(contract) })
+        .whereIn('wa_phone_e164', grafias)
+        .select('id');
+      if (rows.length === 0) return [];
+      const ids = rows.map((row) => row.id);
+      await tdb('wa_conversations')
+        .whereIn('id', ids)
+        .update({ contract: null, device_id: null, customer_account_id: null, updated_at: new Date() });
+      return ids;
+    }
+    if (!contactId) return [];
+    const rows = await tdb('wa_conversations')
+      .where({ sgp_contact_id: contactId })
+      .whereIn('wa_phone_e164', grafias)
+      .select('id');
+    if (rows.length === 0) return [];
+    const ids = rows.map((row) => row.id);
+    await tdb('wa_conversations').whereIn('id', ids).update({ sgp_contact_id: null, updated_at: new Date() });
+    return ids;
+  }
+
   static async linkSubscriber(id, { contract, savePhone = false } = {}) {
     const conversation = await this.get(id);
     const key = String(contract ?? '').trim();

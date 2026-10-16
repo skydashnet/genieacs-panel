@@ -8,6 +8,9 @@ import { normalizarTelefoneBr } from '../utils/wa/waDestino.js';
 
 const CONTACT_KEY = /^c:(\d+)$/;
 
+// Loaded on demand: the conversation service reaches back to this one.
+const waConversations = async () => (await import('./waConversationService.js')).default;
+
 /**
  * The fields of a client record an operator may edit, and where the SGP's own
  * value lives. What an operator typed is kept per field in `overrides` and
@@ -328,12 +331,22 @@ class ContactProfileService {
     }
 
     if (whatsappPhone !== undefined) {
+      const before = row.contract
+        ? (await (await waConversations()).contractPhones(row.contract)).current
+        : whatsappPhoneOf(null, row).phone;
       if (row.fromLink) {
         await SgpLink.setManualPhone(row.contract, whatsappPhone);
       } else {
         await SgpContact.setManualPhoneById(row.id, whatsappPhone);
       }
       changed.push('whatsappPhone');
+      // A conversa presa ao número anterior sai do cliente: abrir a conversa
+      // da ficha vai ao número novo.
+      if (before && before !== whatsappPhone) {
+        await (await waConversations()).retireAfterPhoneEdit({
+          contract: row.contract ?? null, contactId: row.id ?? null, oldPhone: before
+        });
+      }
     }
 
     return { profile: await this.get(key), changed };
