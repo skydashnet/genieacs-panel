@@ -6,6 +6,7 @@ const { default: SgpContact } = await import('../src/models/SgpContact.js');
 const { default: WhatsAppConfigService } = await import('../src/services/whatsappConfigService.js');
 const { default: WhatsAppAccount } = await import('../src/models/WhatsAppAccount.js');
 const { default: WaConversation } = await import('../src/models/WaConversation.js');
+const { default: ContactProfileService } = await import('../src/services/contactProfileService.js');
 const { default: WaConversationService } = await import('../src/services/waConversationService.js');
 
 /**
@@ -82,5 +83,20 @@ describe('troca de número no cadastro', () => {
     const velha = await conversa(VELHO, 'N-4');
     assert.deepEqual(await asTenant(() => WaConversationService.retireStaleBindings('N-4', { oldPhones: [VELHO] })), []);
     assert.equal(await contratoDe(velha), 'N-4');
+  });
+  it('trocar o WhatsApp na ficha solta a conversa do número anterior', async () => {
+    await asTenant(() => SgpContact.upsertFromSgp({ contract: 'N-5', client_name: 'Cliente', phone_e164: '5593988887777' }));
+    const velha = await conversa('5593988887777', 'N-5');
+    await asTenant(() => ContactProfileService.update('N-5', { whatsappPhone: '(93) 98122-2220' }, null));
+    assert.equal(await contratoDe(velha), null);
+    const { conversation } = await asTenant(async () => (await import('../src/services/waContactService.js')).default.openConversation('N-5'));
+    assert.equal(conversation.waPhoneE164, '5593981222220');
+  });
+
+  it('trocar o WhatsApp na ficha não mexe na conversa de outro número do contrato', async () => {
+    await asTenant(() => SgpContact.upsertFromSgp({ contract: 'N-6', client_name: 'Cliente', phone_e164: NOVO }));
+    const outra = await conversa(OUTRO, 'N-6');
+    await asTenant(() => ContactProfileService.update('N-6', { whatsappPhone: '(93) 98122-2221' }, null));
+    assert.equal(await contratoDe(outra), 'N-6');
   });
 });
