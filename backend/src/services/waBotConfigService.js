@@ -44,6 +44,8 @@ const DEFAULT_KEYS = Object.freeze({
 });
 
 const MESSAGE_MAX = 1000;
+/** O id de workspace da Anthropic (cabeçalho `anthropic-workspace-id`): só letras, números, `_` e `-`. */
+const WORKSPACE_ID = /^[A-Za-z0-9_-]{1,100}$/;
 const OPTION_KEYS = Object.freeze(['invoice', 'signal', 'human', 'document']);
 const HORA = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -79,6 +81,7 @@ function padroes() {
       baseUrl: AI_DEFAULT_BASE_URL,
       model: AI_DEFAULT_MODEL,
       apiKey: null,
+      workspaceId: '',
       instructions: ''
     }
   };
@@ -128,6 +131,8 @@ function lerIa(raw, atual) {
     ? (trocouProvedor ? modeloPadrao : atual.model)
     : String(raw.model ?? '').trim() || modeloPadrao;
   if (model.length > AI_MODEL_MAX) throw invalido('whatsapp.error.invalidBotConfig', 'invalid_bot_ai');
+  const workspaceId = raw.workspaceId === undefined ? String(atual.workspaceId ?? '') : String(raw.workspaceId ?? '').trim();
+  if (!WORKSPACE_ID.test(workspaceId) && workspaceId !== '') throw invalido('whatsapp.error.invalidBotConfig', 'invalid_bot_ai_workspace');
   const instructions = raw.instructions === undefined ? atual.instructions : String(raw.instructions ?? '').trim();
   if (instructions.length > AI_INSTRUCTIONS_MAX) throw invalido('whatsapp.error.invalidBotConfig', 'bot_message_too_long');
   const proximo = {
@@ -137,6 +142,7 @@ function lerIa(raw, atual) {
     baseUrl,
     model,
     apiKey,
+    workspaceId,
     instructions
   };
   // Ligar sem chave seria uma IA que falha a cada mensagem.

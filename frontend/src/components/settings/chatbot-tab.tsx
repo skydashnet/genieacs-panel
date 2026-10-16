@@ -200,6 +200,7 @@ export function ChatbotTab() {
           enabled: config.ai.enabled,
           suggest: config.ai.suggest,
           provider: config.ai.provider,
+          workspaceId: config.ai.workspaceId,
           baseUrl: config.ai.baseUrl,
           model: config.ai.model,
           instructions: config.ai.instructions,
@@ -224,6 +225,7 @@ export function ChatbotTab() {
     try {
       const res = await whatsappAPI.testBotAi({
         provider: config.ai.provider,
+        workspaceId: config.ai.workspaceId,
         baseUrl: config.ai.baseUrl,
         model: config.ai.model,
         ...(aiKey.trim() ? { apiKey: aiKey.trim() } : {})
@@ -364,6 +366,20 @@ export function ChatbotTab() {
               onChange={(event) => { const v = event.target.value.trim(); setAiKey(v); if (v) setAiKeyRemove(false) }}
             />
           </div>
+          {config.ai.provider === 'anthropic' && (
+            <div>
+              <label htmlFor="bot-ai-workspace" className="field-label">{t('settings.chatbot.aiWorkspaceId')}</label>
+              <input
+                id="bot-ai-workspace"
+                className="modern-input w-full font-mono text-sm"
+                maxLength={100}
+                autoComplete="off"
+                value={config.ai.workspaceId}
+                onChange={(event) => patchAi({ workspaceId: event.target.value })}
+              />
+              <p className="field-hint">{t('settings.chatbot.aiWorkspaceIdHint')}</p>
+            </div>
+          )}
           <div>
             <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
               <label htmlFor="bot-ai-instructions" className="field-label mb-0">{t('settings.chatbot.aiInstructions')}</label>

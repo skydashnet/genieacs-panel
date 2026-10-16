@@ -1061,6 +1061,8 @@ const hi: Dictionary = {
   'settings.chatbot.aiBaseUrlHintAnthropic': 'Fixed Anthropic address; change it only if you use your own proxy.',
   'settings.chatbot.aiModelHintAnthropic': 'E.g. claude-sonnet-5-5, claude-haiku-5-5 (cheaper), claude-opus-5-5.',
   'settings.chatbot.aiBuyCredits': 'Buy credits',
+  'settings.chatbot.aiWorkspaceId': 'Workspace ID (Anthropic)',
+  'settings.chatbot.aiWorkspaceIdHint': 'Leave empty unless Anthropic rejects the key with “not scoped to a workspace”. Then paste the workspace ID, or create the API key inside a workspace.',
   'settings.chatbot.aiProvider': 'AI provider',
   'settings.chatbot.aiProviderOpenai': 'OpenAI-compatible (z.ai, OpenAI…)',
   'settings.chatbot.aiProviderAnthropic': 'Claude (Anthropic)',
