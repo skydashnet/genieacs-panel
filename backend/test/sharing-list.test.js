@@ -63,7 +63,10 @@ const NAO_E_DESTINO = {
   'maps.google.com': 'link montado numa mensagem; só a pessoa que o abre fala com o Google',
   'www.youtube.com': 'link para o canal da plataforma montado a partir do perfil',
   'developers.facebook.com': 'link de documentação que o usuário abre',
-  'business.facebook.com': 'link de configuração que o usuário abre'
+  'business.facebook.com': 'link de configuração que o usuário abre',
+  'platform.claude.com': 'link "Comprar créditos" que o usuário abre; o painel não envia nada',
+  'platform.openai.com': 'link "Comprar créditos" que o usuário abre; o painel não envia nada',
+  'open.bigmodel.cn': 'link "Comprar créditos" que o usuário abre; o painel não envia nada'
 };
 
 function arquivosDe(dir, pular) {

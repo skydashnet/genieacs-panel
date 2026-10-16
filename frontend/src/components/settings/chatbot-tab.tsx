@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { whatsappAPI, BOT_AI_PROVIDERS, type BotAiProvider, type BotConfig, type BotHoursDay, type BotMessageKey, type WhatsAppTag } from '@/lib/api'
+import { whatsappAPI, aiCreditsUrl, BOT_AI_PROVIDERS, type BotAiProvider, type BotConfig, type BotHoursDay, type BotMessageKey, type WhatsAppTag } from '@/lib/api'
 import { useToast } from '@/components/ui/toast'
 import { useTranslation } from '@/contexts/language-context'
 import type { TranslationKey } from '@/lib/i18n'
@@ -110,6 +110,8 @@ export function ChatbotTab() {
   const setDay = (day: number, next: Partial<BotHoursDay>) => patch({
     hours: { ...config.hours, week: config.hours.week.map((d) => (d.day === day ? { ...d, ...next } : d)) }
   })
+
+  const creditsUrl = aiCreditsUrl(config.ai.provider, config.ai.baseUrl)
 
   const preview = [
     config.messages.greeting || config.defaults.greeting,
@@ -297,7 +299,21 @@ export function ChatbotTab() {
                 value={config.ai.baseUrl}
                 onChange={(event) => patchAi({ baseUrl: event.target.value })}
               />
-              <p className="field-hint">{t('settings.chatbot.aiBaseUrlHint')}</p>
+              <p className="field-hint">
+                {config.ai.provider === 'anthropic'
+                  ? t('settings.chatbot.aiBaseUrlHintAnthropic')
+                  : t('settings.chatbot.aiBaseUrlHint')}
+              </p>
+              {creditsUrl && (
+                <a
+                  href={creditsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block text-sm underline"
+                >
+                  {t('settings.chatbot.aiBuyCredits')} ↗
+                </a>
+              )}
             </div>
             <div>
               <label htmlFor="bot-ai-model" className="field-label">{t('settings.chatbot.aiModel')}</label>
@@ -308,7 +324,11 @@ export function ChatbotTab() {
                 value={config.ai.model}
                 onChange={(event) => patchAi({ model: event.target.value })}
               />
-              <p className="field-hint">{t('settings.chatbot.aiModelHint')}</p>
+              <p className="field-hint">
+                {config.ai.provider === 'anthropic'
+                  ? t('settings.chatbot.aiModelHintAnthropic')
+                  : t('settings.chatbot.aiModelHint')}
+              </p>
             </div>
           </div>
           <div>
