@@ -232,6 +232,9 @@ export async function alcanceDoAssinante(account) {
     vinculos,
     contatos,
     clientes,
+    // Os documentos da pessoa, também pelo cadastro: o que a TeiaH respondeu
+    // sobre eles (`teiah_consultations`) é dela.
+    documentos: [...new Set([...documentosCliente, ...clientes.map((c) => c.document)].filter(Boolean))],
     conversas,
     conversaIds: conversas.map((c) => c.id),
     eventos,
@@ -373,7 +376,7 @@ class CustomerDataExportService {
 
     const {
       deviceIds, naPosse, emPosseAgora, contratos, telefones: todosTelefones, vinculos, contatos,
-      clientes, conversas, conversaIds, eventos, amostras, horas, quedas, manutencoes, trocas, nos, noIds
+      clientes, documentos, conversas, conversaIds, eventos, amostras, horas, quedas, manutencoes, trocas, nos, noIds
     } = await alcanceDoAssinante(account);
 
     const dados = {};
@@ -395,6 +398,11 @@ class CustomerDataExportService {
     // quando foi mandado. O endereço enviado é o de `sgp_contacts`, acima.
     guardar('teiah_exports', contratos.length
       ? await tdb('teiah_exports').whereIn('contract', contratos).orderBy('id')
+      : []);
+    // O que a TeiaH respondeu sobre o documento desta pessoa, guardado para não
+    // consultar (e pagar) de novo.
+    guardar('teiah_consultations', documentos.length
+      ? await tdb('teiah_consultations').whereIn('document', documentos).orderBy('id')
       : []);
     guardar('device_swaps', trocas);
 

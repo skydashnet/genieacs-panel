@@ -103,7 +103,7 @@ class CustomerErasureService {
    */
   static async survey(account) {
     const alcance = await alcanceDoAssinante(account);
-    const { contratos, telefones, vinculos, contatos, conversaIds, eventos, amostras, horas, quedas, manutencoes, trocas, nos } = alcance;
+    const { contratos, documentos, telefones, vinculos, contatos, conversaIds, eventos, amostras, horas, quedas, manutencoes, trocas, nos } = alcance;
 
     const contar = async (tabela, montar) => {
       const [linha] = await montar(tdb(tabela)).count({ n: '*' });
@@ -120,6 +120,9 @@ class CustomerErasureService {
       sgp_clients: alcance.clientes.length,
       teiah_exports: contratos.length
         ? await contar('teiah_exports', (q) => q.whereIn('contract', contratos))
+        : 0,
+      teiah_consultations: documentos.length
+        ? await contar('teiah_consultations', (q) => q.whereIn('document', documentos))
         : 0,
       // As linhas do aparelho já vêm recortadas pelo período em que ele foi
       // desta conta: o que veio antes ou depois é de outro assinante.
@@ -269,6 +272,9 @@ class CustomerErasureService {
       // pessoa. O que já está na base da TeiaH tem que ser pedido lá.
       if (contratos.length) {
         await tdb('teiah_exports', trx).whereIn('contract', contratos).del();
+      }
+      if (alcance.documentos.length) {
+        await tdb('teiah_consultations', trx).whereIn('document', alcance.documentos).del();
       }
 
       // A ficha completa é a pessoa inteira — endereço, nascimento, todos os

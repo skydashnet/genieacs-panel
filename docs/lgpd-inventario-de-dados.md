@@ -62,6 +62,7 @@ São as que o dossiê percorre quando um assinante exerce o direito de acesso
 | **Indicações e situação financeira** | `customer_referrals`, `sgp_billing_status` | nome e telefone de quem foi indicado (ainda não é cliente), contrato e fatura em aberto mais antiga |
 | **Trilha** | `audit_log` | quem fez o quê sobre aquele assinante |
 | **Exportação** | `teiah_exports` | o que já saiu do painel sobre ele |
+| **Consulta à TeiaH** | `teiah_consultations` | o que a TeiaH respondeu sobre o documento dele (nome, telefones, e-mails, endereços, score), guardado 30 dias para não consultar de novo |
 
 **O dado de um titular não se junta por uma coluna só.** O código explica por quê
 (`customerDataExportService.js`, docblock do topo): liga-se por `account_id` em quatro
@@ -155,7 +156,7 @@ diz isso; escolher um número para elas é decisão de negócio que ainda não f
 
 Onde a coluna "Quem muda" diz que o teto do plano pode encurtar, a janela que **vale** é o menor dos dois, e "para sempre" vira o próprio teto (`SubscriptionService.effectiveRetention`). É a única janela que o provedor não escolheu: a tela mostra o número dele, não o que vale.
 
-### 4.2 O que nenhuma rotina apaga por idade — 22 tabelas com dado de assinante
+### 4.2 O que nenhuma rotina apaga por idade — 23 tabelas com dado de assinante
 
 "Sem prazo" não é "nunca sai": várias têm saída pelo ciclo de vida, e todas as do assinante saem pela exclusão do art. 18. O que não existe é uma rotina que as apague porque ficaram velhas.
 
@@ -183,6 +184,7 @@ Onde a coluna "Quem muda" diz que o teto do plano pode encurtar, a janela que **
 | `outage_incident_devices` | que aparelhos foram atingidos por uma queda; nenhuma rotina o apaga |
 | `maintenance_window_devices` | que aparelhos foram avisados de uma manutenção; nenhuma rotina o apaga |
 | `teiah_exports` | o registro do que já saiu do painel sobre o assinante; sai só pela exclusão do art. 18 |
+| `teiah_consultations` | a resposta da TeiaH sobre um CPF/CNPJ, guardada 30 dias para não consultar de novo; as vencidas saem a cada nova consulta e tudo sai pela exclusão do art. 18 |
 
 ### 4.3 O mesmo, nas 7 tabelas globais com dado pessoal e sem janela (somos o controlador)
 

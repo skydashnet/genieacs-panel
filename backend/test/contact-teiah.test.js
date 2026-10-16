@@ -1,10 +1,11 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import { asTenant, authHeaders, call, getDb, startTestServers, stopTestServers } from './helpers/harness.js';
+import { asTenant, authHeaders, call, getDb, runInTenant, startTestServers, stopTestServers } from './helpers/harness.js';
 
 const { default: TeiahService, normalizeConsult } = await import('../src/services/teiahService.js');
 const { tinsert } = await import('../src/config/database.js');
+const { default: TeiahConsultation } = await import('../src/models/TeiahConsultation.js');
 
 /**
  * A TeiaH para quem já é cliente: a consulta grava um instantâneo na ficha,
@@ -18,6 +19,10 @@ const CPF_A = '81373563044';
 const CPF_B = '52998224725';
 const CPF_C = '11144477735';
 const CPF_D = '39053344705';
+// Para o cache: um achado, um que a TeiaH não conhece e um que dá erro.
+const CPF_E = '12345678909';
+const CPF_NAO_ACHADO = '98765432100';
+const CPF_ERRO = '45317828791';
 
 const RESPOSTAS = {
   [CPF_A]: {
@@ -41,6 +46,15 @@ const RESPOSTAS = {
   [CPF_C]: {
     resultado: { mix: { pessoa: { data: { nome: 'CARLOS' } }, telefones: { data: [{ ddd: '93', numero: '988887777' }] } } }
   },
+  [CPF_E]: {
+    resultado: {
+      mix: {
+        pessoa: { data: { nome: 'EVA DO CACHE' } },
+        telefones: { data: [{ ddd: '93', numero: '966665555' }] },
+        enderecos: { data: [{ logradouro: 'RUA DO CACHE', numero: '1', bairro: 'CENTRO', cidade: 'ITAITUBA', uf: 'pa', cep: '68180-000' }] }
+      }
+    }
+  },
   [CPF_D]: { resultado: { mix: { pessoa: { data: { nome: 'DIOGO' } }, telefones: { data: [{ ddd: '93', numero: '977776666' }] } } } }
 };
 
@@ -48,6 +62,8 @@ let panelUrl;
 let token;
 let teiahServer;
 const consultas = [];
+// Para o teste do erro: a TeiaH fora do ar não deixa nada guardado.
+let teiahFora = false;
 const auth = () => ({ headers: authHeaders(token) });
 
 function startTeiahStub() {
@@ -62,6 +78,7 @@ function startTeiahStub() {
       if (req.headers['x-api-key'] !== TEIAH_KEY) return send(401, { message: 'API Key inválida' });
       const { cpf } = JSON.parse(raw || '{}');
       consultas.push(cpf);
+      if (teiahFora) return send(503, { message: 'indisponível' });
       return RESPOSTAS[cpf] ? send(201, RESPOSTAS[cpf]) : send(404, {});
     });
   });
@@ -206,5 +223,93 @@ describe('a busca em lote dos clientes sem telefone', () => {
     assert.deepEqual(depois.body.data.rows, [], 'quem recebeu o número sai da lista de sem telefone');
     const ficha = await call(`${panelUrl}/api/contacts/L-2`, auth());
     assert.equal(ficha.body.data.whatsappPhone, '5593988887777');
+  });
+});
+
+describe('não consultar de novo o que foi consultado há pouco', () => {
+  const lookup = (document, fresh = false) => call(`${panelUrl}/api/contacts/lookup/document?document=${document}${fresh ? '&fresh=1' : ''}`, auth());
+  const saved = (document) => asTenant(() => getDb()('teiah_consultations').where({ document }).first());
+  const age = (document, days) => asTenant(() => getDb()('teiah_consultations').where({ document })
+    .update({ consulted_at: new Date(Date.now() - days * 86_400_000) }));
+  const count = (cpf) => consultas.filter((c) => c === cpf).length;
+
+  it('abrir o Novo cliente duas vezes para o mesmo CPF paga uma consulta só', async () => {
+    consultas.length = 0;
+    const first = await lookup(CPF_E);
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.equal(first.body.data.prefill.name, 'EVA DO CACHE');
+    assert.equal(first.body.data.teiahCached, false);
+    const second = await lookup(CPF_E);
+    assert.equal(second.body.data.prefill.name, 'EVA DO CACHE');
+    assert.equal(second.body.data.prefill.address.city, 'ITAITUBA');
+    assert.equal(second.body.data.teiahCached, true);
+    assert.ok(second.body.data.teiahConsultedAt);
+    assert.equal(count(CPF_E), 1);
+  });
+
+  it('pedir uma consulta nova (fresh) paga e substitui o que estava guardado', async () => {
+    const before = count(CPF_E);
+    const res = await lookup(CPF_E, true);
+    assert.equal(res.body.data.teiahCached, false);
+    assert.equal(count(CPF_E), before + 1);
+  });
+
+  it('a ficha reaproveita a consulta do Novo cliente', async () => {
+    await addContract('T-200', 'Eva Cliente', CPF_E);
+    const before = count(CPF_E);
+    const res = await call(`${panelUrl}/api/contacts/T-200/teiah`, { method: 'POST', ...auth() });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.equal(res.body.data.cached, true);
+    assert.deepEqual(res.body.data.teiah.phones, ['5593966665555']);
+    assert.equal(count(CPF_E), before, 'nenhuma chamada à TeiaH');
+
+    const forcada = await call(`${panelUrl}/api/contacts/T-200/teiah`, { method: 'POST', ...auth(), body: { fresh: true } });
+    assert.equal(forcada.body.data.cached, false);
+    assert.equal(count(CPF_E), before + 1);
+  });
+
+  it('o achado vale 30 dias e o não achado, 7', async () => {
+    consultas.length = 0;
+    await lookup(CPF_NAO_ACHADO);
+    await lookup(CPF_NAO_ACHADO);
+    assert.equal(count(CPF_NAO_ACHADO), 1, 'o "não achado" também é guardado');
+
+    await age(CPF_NAO_ACHADO, 6);
+    await lookup(CPF_NAO_ACHADO);
+    assert.equal(count(CPF_NAO_ACHADO), 1, 'com 6 dias ainda vale');
+    await age(CPF_NAO_ACHADO, 8);
+    await lookup(CPF_NAO_ACHADO);
+    assert.equal(count(CPF_NAO_ACHADO), 2, 'com 8 dias, pergunta de novo');
+
+    await age(CPF_E, 29);
+    const before = count(CPF_E);
+    await lookup(CPF_E);
+    assert.equal(count(CPF_E), before, 'o achado com 29 dias ainda vale');
+    await age(CPF_E, 31);
+    await lookup(CPF_E);
+    assert.equal(count(CPF_E), before + 1, 'com 31 dias, pergunta de novo');
+  });
+
+  it('a TeiaH com erro não deixa nada guardado', async () => {
+    teiahFora = true;
+    try {
+      const res = await lookup(CPF_ERRO);
+      assert.equal(res.status, 200);
+      assert.equal(res.body.data.prefillError, true);
+      assert.equal(await saved(CPF_ERRO), undefined);
+    } finally {
+      teiahFora = false;
+    }
+  });
+
+  it('o cache é de um provedor só, e a trilha leva só se veio do cache', async () => {
+    await asTenant(() => getDb()('tenants').where({ slug: 'beta' }).first())
+      || await getDb()('tenants').insert({ slug: 'beta', name: 'Provedor Beta', status: 'active' });
+    const beta = (await getDb()('tenants').where({ slug: 'beta' }).first()).id;
+    assert.equal(await runInTenant(beta, () => TeiahConsultation.get(CPF_E)), null);
+
+    const rows = await asTenant(() => getDb()('audit_log').where({ action: 'contact.teiah_lookup' }));
+    assert.ok(rows.some((row) => JSON.parse(row.detail).cached === true));
+    for (const row of rows) assert.equal(row.detail.includes(CPF_E), false);
   });
 });

@@ -249,7 +249,8 @@ export const SEM_PRAZO = Object.freeze({
   outage_incident_devices: 'que aparelhos foram atingidos por uma queda; nenhuma rotina o apaga',
   maintenance_window_devices: 'que aparelhos foram avisados de uma manutenção; nenhuma rotina o apaga',
   // Exportação
-  teiah_exports: 'o registro do que já saiu do painel sobre o assinante; sai só pela exclusão do art. 18'
+  teiah_exports: 'o registro do que já saiu do painel sobre o assinante; sai só pela exclusão do art. 18',
+  teiah_consultations: 'a resposta da TeiaH sobre um CPF/CNPJ, guardada 30 dias para não consultar de novo; as vencidas saem a cada nova consulta e tudo sai pela exclusão do art. 18'
 });
 
 /**

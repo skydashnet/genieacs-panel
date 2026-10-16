@@ -47,7 +47,7 @@ class ContactOnboardingService {
    * A CPF has no public source — the Receita does not open it — so a person
    * not in the SGP is typed by hand.
    */
-  static async lookupDocument(document) {
+  static async lookupDocument(document, { fresh = false } = {}) {
     const digits = String(document ?? '').replace(/\D/g, '');
     const personType = personTypeOf(digits);
     if (!personType) {
@@ -80,6 +80,8 @@ class ContactOnboardingService {
     let prefillError = false;
     let teiahScore = null;
     let teiahConsulted = false;
+    let teiahCached = false;
+    let teiahConsultedAt = null;
     let deceased = false;
     const known = inSgp.length > 0 || Boolean(inPanel);
 
@@ -88,7 +90,11 @@ class ContactOnboardingService {
     if (!known && TeiahService.isReady(await TeiahService.getConfig())) {
       teiahConsulted = true;
       try {
-        const found = await TeiahService.consultDocument(digits);
+        // A consultation younger than 30 days is not paid for twice.
+        const consulted = await TeiahService.consultCached(digits, { fresh });
+        const found = consulted.result;
+        teiahCached = consulted.cached;
+        teiahConsultedAt = consulted.consultedAt;
         teiahScore = found.score ?? null;
         deceased = found.deceased === true;
         if (found.found) {
@@ -152,6 +158,8 @@ class ContactOnboardingService {
       prefill,
       prefillError,
       teiahConsulted,
+      teiahCached,
+      teiahConsultedAt,
       teiahScore,
       deceased
     };

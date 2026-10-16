@@ -426,7 +426,8 @@ describe('preencher pela TeiaH', () => {
 
   it('a TeiaH recusando a chave vira formulário em branco, não erro', async () => {
     teiahModo = '401';
-    const res = await lookup('111.444.777-35');
+    // Outro CPF: o '111.444.777-35' já foi consultado acima e o painel não consulta de novo.
+    const res = await lookup('123.456.789-09');
     assert.equal(res.status, 200, JSON.stringify(res.body));
     assert.equal(res.body.data.prefill, null);
     assert.equal(res.body.data.prefillError, true);

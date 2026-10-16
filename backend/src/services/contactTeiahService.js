@@ -22,9 +22,9 @@ function digitsOf(value) {
 }
 
 /** The consultation as the record keeps it: what the TeiaH said, with the day it said it. */
-function snapshotOf(found) {
+function snapshotOf(found, consultedAt) {
   return {
-    consultedAt: new Date().toISOString(),
+    consultedAt: consultedAt ?? new Date().toISOString(),
     found: found.found === true,
     score: found.score ?? null,
     motherName: found.motherName ?? null,
@@ -67,7 +67,7 @@ async function pool(items, size, task) {
  */
 class ContactTeiahService {
   /** The TeiaH of one client: the CPF/CNPJ the record shows, and the record it lands on. */
-  static async consult(key) {
+  static async consult(key, { fresh = false } = {}) {
     const row = await ContactProfileService.rowFor(key);
     if (!row) throw new ContactProfileError('contacts.error.notFound', { code: 'not_found', status: 404 });
     const existing = await ContactProfileService.clientFor(row);
@@ -76,11 +76,13 @@ class ContactTeiahService {
       throw new ContactProfileError('contacts.error.invalidDocument', { code: 'invalid_document' });
     }
     TeiahService.requireReady(await TeiahService.getConfig());
-    const found = await TeiahService.consultDocument(document);
+    // The panel's memory first: a consultation younger than 30 days is not paid
+    // for twice, whoever made it (this record, "Novo cliente" or the bulk run).
+    const consulted = await TeiahService.consultCached(document, { fresh });
     const client = await ContactProfileService.ensureClient(row);
-    const teiah = snapshotOf(found);
+    const teiah = snapshotOf(consulted.result, consulted.consultedAt);
     await SgpClient.setTeiah(client.id, teiah);
-    return { teiah };
+    return { teiah, cached: consulted.cached };
   }
 
   /**
@@ -167,9 +169,11 @@ class ContactTeiahService {
     if (batch.length > 0) TeiahService.requireReady(await TeiahService.getConfig());
 
     let failed = 0;
+    let fromCache = 0;
     await pool(batch, SCAN_CONCURRENCY, async (entry) => {
       try {
-        await this.consult(entry.key);
+        const done = await this.consult(entry.key);
+        if (done.cached) fromCache += 1;
       } catch (error) {
         // A refused key or an integration turned off ends the run for everyone;
         // one client the TeiaH could not answer is only counted.
@@ -181,6 +185,8 @@ class ContactTeiahService {
       eligible: candidates.length,
       processed: batch.length,
       failed,
+      // Answered from what the panel already held: no call to the TeiaH, no credits.
+      fromCache,
       remaining: todo.length - batch.length
     };
   }

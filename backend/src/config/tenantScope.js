@@ -65,6 +65,9 @@ export const SCOPED_TABLES = new Set([
   // O que foi enviado à TeiaH Valid: contrato e valor em aberto de quem
   // cancelou devendo. Dado de assinante, e de um provedor só.
   'teiah_exports',
+  // O que a TeiaH respondeu sobre um documento, guardado para não consultar de
+  // novo. Dado de titular, e de um provedor só.
+  'teiah_consultations',
   // A régua de cobrança automática: contrato, telefone e valor devido de cada
   // assinante cobrado, e quando pagou. Dado de assinante, de um provedor só.
   'wa_dunning_sends',
