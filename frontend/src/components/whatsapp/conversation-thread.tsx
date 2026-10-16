@@ -139,11 +139,37 @@ export function ConversationThread({
   // the viewport out from under them — the poll below runs on its own clock,
   // and scrolling someone away mid-sentence is how a screen loses trust.
   // Loading older messages never trips this: it does not change the last id.
+  //
+  // Duas exceções que levam ao fim de qualquer jeito: a mensagem que o próprio
+  // atendente acabou de mandar (ele quer vê-la saindo) e a que chegou com o
+  // operador a menos de uma tela do fim — antes só valia 120 px, e com um
+  // áudio ou uma imagem no meio o recém-chegado ficava fora da vista.
+  const lastOutbound = ordered.length > 0 ? ordered[ordered.length - 1].direction === 'out' : false
   useEffect(() => {
     const box = scrollRef.current
-    if (!box || lastId === null || !stick.current) return
+    if (!box || lastId === null) return
+    const distance = box.scrollHeight - box.scrollTop - box.clientHeight
+    if (!stick.current && !lastOutbound && distance > box.clientHeight) return
+    stick.current = true
     box.scrollTop = box.scrollHeight
-  }, [lastId])
+  }, [lastId, lastOutbound])
+
+  // Imagem, áudio e mídia mudam de altura DEPOIS de pintados, e o fim sai de
+  // baixo do operador; o campo de resposta que cresce (citação, vários
+  // anexos) encolhe a janela. Enquanto ele está no fim, o fim o acompanha.
+  const listRef = useRef<HTMLUListElement>(null)
+  const hasMessages = ordered.length > 0
+  useEffect(() => {
+    const box = scrollRef.current
+    const list = listRef.current
+    if (!box || !list || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => {
+      if (stick.current) box.scrollTop = box.scrollHeight
+    })
+    observer.observe(list)
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [hasMessages, conversation.id])
 
   return (
     <>
@@ -386,7 +412,7 @@ export function ConversationThread({
           // A classe do número fica na lista, e o balão RECEBIDO lê a cor dela:
           // é a mensagem que chegou por aquele número. O que o provedor mandou
           // continua na cor do painel.
-          <ul className={`flex flex-col gap-2 ${numero?.className ?? ''}`} role="list">
+          <ul ref={listRef} className={`flex flex-col gap-2 ${numero?.className ?? ''}`} role="list">
             {ordered.map((message) => (
               <MessageBubble
                 key={message.id}
