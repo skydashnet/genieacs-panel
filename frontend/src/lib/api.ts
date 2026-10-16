@@ -5417,6 +5417,24 @@ export const BOT_AI_PROVIDERS: Record<BotAiProvider, { baseUrl: string; model: s
   anthropic: { baseUrl: 'https://api.anthropic.com', model: 'claude-sonnet-5-5' },
 }
 
+/**
+ * A página onde se compra crédito de API do provedor escolhido; `null` quando
+ * o endereço não é de um serviço conhecido (um proxy próprio, por exemplo).
+ */
+export function aiCreditsUrl(provider: BotAiProvider, baseUrl: string): string | null {
+  if (provider === 'anthropic') return 'https://platform.claude.com/settings/billing'
+  let host: string
+  try {
+    host = new URL(baseUrl.includes('://') ? baseUrl : `https://${baseUrl}`).hostname.toLowerCase()
+  } catch {
+    return null
+  }
+  if (host === 'api.z.ai') return 'https://z.ai/manage-apikey/billing'
+  if (host === 'open.bigmodel.cn') return 'https://open.bigmodel.cn/finance-center/finance/overview'
+  if (host === 'api.openai.com') return 'https://platform.openai.com/settings/organization/billing/overview'
+  return null
+}
+
 export interface BotAiConfig {
   enabled: boolean
   suggest: boolean
