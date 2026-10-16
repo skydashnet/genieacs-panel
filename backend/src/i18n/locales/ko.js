@@ -843,6 +843,9 @@ export default {
   'whatsapp.bot.invoiceDigitableLine': '바코드 번호: {value}',
   'whatsapp.bot.invoicePix': 'PIX 복사 코드: {value}',
   'whatsapp.bot.invoiceLink': '재발행: {value}',
+  'whatsapp.bot.invoiceSplitIntro': "이어서 복사해 붙여넣을 수 있도록 별도 메시지로 보내드립니다: {list}.",
+  'whatsapp.bot.invoicePixName': "PIX 복사 후 붙여넣기",
+  'whatsapp.bot.invoiceDigitableName': "숫자 입력줄",
   'whatsapp.bot.signalOkNoReading': '인터넷이 정상 연결되어 있습니다.',
 
   'whatsapp.mediaSwept': '파일 {files}개를 삭제하여 {mb} MB를 확보했습니다',

@@ -844,6 +844,9 @@ export default {
   'whatsapp.bot.invoiceDigitableLine': '條碼號：{value}',
   'whatsapp.bot.invoicePix': 'PIX 複製貼上碼：{value}',
   'whatsapp.bot.invoiceLink': '帳單副本：{value}',
+  'whatsapp.bot.invoiceSplitIntro': "接下來將分則傳送，方便複製貼上：{list}。",
+  'whatsapp.bot.invoicePixName': "PIX 複製貼上碼",
+  'whatsapp.bot.invoiceDigitableName': "數字行",
   'whatsapp.bot.signalOkNoReading': '您的寬頻在線。',
 
   'whatsapp.messageRequeued': '訊息已重新排入佇列',

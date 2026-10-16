@@ -269,6 +269,15 @@ async function unicaResposta(telefone, texto) {
   return saidas[0];
 }
 
+/** A fatura sai em três mensagens: o resumo, o PIX e a linha digitável. */
+async function faturaEmMensagens(telefone, texto) {
+  await limparFio(telefone);
+  await receber(telefone, texto);
+  const saidas = await respostas(telefone);
+  assert.equal(saidas.length, 3, `resumo + PIX + linha digitável, recebi ${saidas.length}`);
+  return saidas;
+}
+
 before(async () => {
   ({ panelUrl } = await startTestServers());
   genie = await startGenieAcsStub({ devices: [ontDoTeste()] });
@@ -332,19 +341,21 @@ after(async () => {
 });
 
 describe('intent routing for a resolved subscriber', () => {
-  it('answers a second-copy request with the oldest open invoice and its codes', async () => {
-    const texto = await unicaResposta(ASSINANTE, 'boa tarde, queria a segunda via do boleto');
-    assert.match(texto, /R\$ 129,90/);
-    assert.match(texto, /10\/10\/2026/);
-    assert.ok(texto.includes(LINHA_DIGITAVEL), 'the digitable line should be there');
-    assert.ok(texto.includes(PIX), 'the PIX code should be there');
-    assert.ok(texto.includes(LINK_BOLETO), 'the second-copy link should be there');
-    // Labelled, not three bare walls of digits: a PIX string pasted into a
-    // bank's barcode field simply fails, so the customer has to be able to tell
-    // which is which.
-    assert.match(texto, /Linha digitável:/);
-    assert.match(texto, /PIX copia e cola:/);
-    assert.match(texto, /Segunda via:/);
+  it('answers a second-copy request with the invoice, then each code alone in its own message', async () => {
+    await limparFio(ASSINANTE);
+    await receber(ASSINANTE, 'boa tarde, queria a segunda via do boleto');
+    const saidas = await respostas(ASSINANTE);
+    assert.equal(saidas.length, 3, `resumo + PIX + linha digitável, recebi ${saidas.length}`);
+    const [resumo, pix, linha] = saidas;
+    assert.match(resumo, /R\$ 129,90/);
+    assert.match(resumo, /10\/10\/2026/);
+    assert.ok(resumo.includes(LINK_BOLETO), 'the second-copy link rides the first message');
+    assert.match(resumo, /Segunda via:/);
+    assert.match(resumo, /PIX copia e cola, linha digitável/, 'the first message says the order of the codes');
+    // Cada código SOZINHO: tocar e segurar copia só ele, sem rótulo na frente.
+    assert.equal(pix, PIX);
+    assert.equal(linha, LINHA_DIGITAVEL);
+    assert.ok(!resumo.includes(PIX) && !resumo.includes(LINHA_DIGITAVEL), 'no code inside the summary');
   });
 
   it('answers "sem internet" with the connection state and the optical signal', async () => {
@@ -401,7 +412,7 @@ describe('intent routing for a resolved subscriber', () => {
   });
 
   it('answers the menu numbers with the invoice and the connection', async () => {
-    const fatura = await unicaResposta(ASSINANTE, '1');
+    const fatura = (await faturaEmMensagens(ASSINANTE, '1')).join('\n');
     assert.ok(fatura.includes(LINHA_DIGITAVEL), 'option 1 is the invoice');
     const sinal = await unicaResposta(ASSINANTE, 'opção 2');
     assert.match(sinal, /online/i);
@@ -554,7 +565,7 @@ describe('when the bot stays quiet', () => {
     const externalId = 'BOT-REDELIVERY-1';
     await receber(telefone, 'quero a segunda via', { id: externalId });
     const primeira = await respostas(telefone);
-    assert.equal(primeira.length, 1);
+    assert.equal(primeira.length, 3, 'a fatura sai em resumo, PIX e linha digitável');
 
     // The same event again, byte for byte, which is what both servers do.
     const repetido = await receber(telefone, 'quero a segunda via', { id: externalId });
@@ -608,7 +619,7 @@ describe('the ceiling counts the bot and nothing else', () => {
     await receber(telefone, 'quero a segunda via do boleto');
 
     const depois = await respostas(telefone);
-    assert.equal(depois.length, antes.length + 1, 'a campaign must not spend the bot budget');
+    assert.equal(depois.length, antes.length + 3, 'a campaign must not spend the bot budget');
     assert.ok(
       depois.at(-1).includes(LINHA_DIGITAVEL),
       'and the answer is the real one, not a hand-off'
@@ -673,7 +684,7 @@ describe('the ceiling counts the bot and nothing else', () => {
     await receber(telefone, 'quero a segunda via do boleto');
 
     const depois = await respostas(telefone);
-    assert.equal(depois.length, WaBotService.TETO_POR_HORA + 1);
+    assert.equal(depois.length, WaBotService.TETO_POR_HORA + 3);
     assert.ok(depois.at(-1).includes(LINHA_DIGITAVEL));
   });
 
@@ -686,7 +697,7 @@ describe('the ceiling counts the bot and nothing else', () => {
     await receber(telefone, 'quero a segunda via do boleto');
 
     const depois = await respostas(telefone);
-    assert.equal(depois.length, WaBotService.TETO_POR_HORA + 1);
+    assert.equal(depois.length, WaBotService.TETO_POR_HORA + 3);
     assert.ok(depois.at(-1).includes(LINHA_DIGITAVEL));
   });
 
@@ -713,7 +724,7 @@ describe('the ceiling counts the bot and nothing else', () => {
     await limparFio(telefone);
     await receber(telefone, 'quero a segunda via do boleto');
 
-    assert.deepEqual(await origens(telefone), ['bot']);
+    assert.deepEqual(await origens(telefone), ['bot', 'bot', 'bot']);
     const conversa = await conversaDe(telefone);
     const entrada = await getDb()('wa_messages')
       .where({ conversation_id: conversa.id, direction: 'in' })
@@ -1088,7 +1099,7 @@ describe('o relatório do chatbot', () => {
   const ultimoEvento = async () => getDb()('wa_bot_events').orderBy('id', 'desc').first();
 
   it('cada resposta do bot deixa um evento com a intenção', async () => {
-    await unicaResposta(ASSINANTE, 'segunda via do boleto');
+    await faturaEmMensagens(ASSINANTE, 'segunda via do boleto');
     assert.equal((await ultimoEvento()).intent, 'fatura');
     await unicaResposta(ASSINANTE, 'oi');
     assert.equal((await ultimoEvento()).intent, 'menu');
@@ -1099,7 +1110,7 @@ describe('o relatório do chatbot', () => {
   it('conta as conversas, e só as sem humano depois como resolvidas pelo bot', async () => {
     await getDb()('wa_bot_events').del();
     await getDb()('audit_log').where({ action: 'whatsapp.bot_trust_unlock' }).del();
-    await unicaResposta(ASSINANTE, 'segunda via do boleto');
+    await faturaEmMensagens(ASSINANTE, 'segunda via do boleto');
     await unicaResposta(DESCONHECIDO, 'boa noite');
 
     // Um operador responde a conversa do desconhecido depois do bot.

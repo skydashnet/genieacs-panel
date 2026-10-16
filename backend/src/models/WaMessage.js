@@ -243,8 +243,11 @@ class WaMessage {
       .where((q) => sendable(q, now));
     if (bulk === true) query.where('source', 'campaign');
     else if (bulk === false) query.whereNot('source', 'campaign');
+    // `id` desempata: as mensagens de uma mesma resposta (a fatura em partes)
+    // nascem no mesmo instante e têm que sair na ordem em que foram escritas.
     return query
       .orderBy('created_at')
+      .orderBy('id')
       .limit(limit)
       .pluck('id');
   }
