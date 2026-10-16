@@ -1097,6 +1097,7 @@ export default {
   'contacts.cepNotFound': 'Postleitzahl nicht gefunden',
   'contacts.createdInSgp': 'Kunde im SGP angelegt',
   'contacts.error.invalidDocument': 'Ungültige CPF oder CNPJ',
+  'contacts.error.teiahNotConsulted': 'Den Kunden zuerst in TeiaH abfragen, dann übernehmen',
   'contacts.error.invalidCep': 'Ungültige Postleitzahl',
   'contacts.error.alreadyInSgp': 'Diese CPF/CNPJ ist bereits im SGP registriert ({name})',
   'sgp.error.clientCreateFailed': 'Das SGP hat die Kundenanlage nicht bestätigt',

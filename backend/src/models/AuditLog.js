@@ -116,6 +116,7 @@ class AuditLog {
     // birô de dados pessoais. O `detail` diz se achou, nunca o documento nem
     // o que veio.
     CONTACT_TEIAH_LOOKUP: 'contact.teiah_lookup',
+    CONTACT_TEIAH_APPLIED: 'contact.teiah_applied',
     // Um título em aberto foi mandado ao cliente pelo WhatsApp, pela ficha. O
     // `detail` diz qual título e qual conversa, nunca o texto (tem o PIX).
     CONTACT_INVOICE_SENT: 'contact.invoice_sent',

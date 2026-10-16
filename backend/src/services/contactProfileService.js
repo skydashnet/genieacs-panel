@@ -3,6 +3,7 @@ import SgpClient from '../models/SgpClient.js';
 import SgpContact from '../models/SgpContact.js';
 import SgpLink from '../models/SgpLink.js';
 import SgpService from './sgpService.js';
+import TeiahService from './teiahService.js';
 import { normalizarTelefoneBr } from '../utils/wa/waDestino.js';
 
 const CONTACT_KEY = /^c:(\d+)$/;
@@ -235,6 +236,9 @@ class ContactProfileService {
       // payment methods the operator picks from.
       settle: config && SgpService.canSettle(config) ? { methods: [...config.settlePaymentMethods] } : null,
       fields,
+      // What the TeiaH said the last time it was asked, and whether it can be asked.
+      teiah: client?.teiah ?? null,
+      teiahReady: TeiahService.isReady(await TeiahService.getConfig().catch(() => null)),
       notes: client?.notes ?? null,
       registeredAt: client?.registered_at ?? null,
       lastSeenAt: client?.last_seen_at ?? row.last_seen_at ?? null,

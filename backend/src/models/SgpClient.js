@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { tdb, tinsert } from '../config/database.js';
 
 /** The columns that hold JSON as text — see `sgpClientsTable` in `config/migrations.js`. */
-const JSON_COLUMNS = ['address', 'phones', 'emails', 'overrides'];
+const JSON_COLUMNS = ['address', 'phones', 'emails', 'overrides', 'teiah'];
 
 function readJson(value, fallback) {
   if (value === null || value === undefined || value === '') return fallback;
@@ -32,6 +32,7 @@ class SgpClient {
     parsed.phones = readJson(row.phones, []);
     parsed.emails = readJson(row.emails, []);
     parsed.overrides = readJson(row.overrides, {});
+    parsed.teiah = readJson(row.teiah, null);
     return parsed;
   }
 
@@ -110,6 +111,12 @@ class SgpClient {
     if (overrides !== undefined) patch.overrides = writeJson(overrides);
     if (notes !== undefined) patch.notes = notes;
     await tdb('sgp_clients').where({ id }).update(patch);
+    return this.getById(id);
+  }
+
+  /** The TeiaH's answer about this client, as the last consultation left it. */
+  static async setTeiah(id, teiah) {
+    await tdb('sgp_clients').where({ id }).update({ teiah: writeJson(teiah), updated_at: new Date() });
     return this.getById(id);
   }
 

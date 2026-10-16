@@ -720,6 +720,24 @@ export const casos = [
     tabela: 'sgp_links',
     coluna: 'contract'
   },
+  // A TeiaH da ficha: a chave do vizinho não acha ficha (404), então nada é
+  // consultado nem aplicado.
+  {
+    chave: 'sgpContract',
+    label: 'POST /api/contacts/:key/teiah',
+    method: 'POST',
+    path: (contract) => `/api/contacts/${encodeURIComponent(contract)}/teiah`,
+    tabela: 'sgp_links',
+    coluna: 'contract'
+  },
+  {
+    chave: 'sgpContract',
+    label: 'POST /api/contacts/:key/teiah/apply',
+    method: 'POST',
+    path: (contract) => `/api/contacts/${encodeURIComponent(contract)}/teiah/apply`,
+    tabela: 'sgp_links',
+    coluna: 'contract'
+  },
   {
     chave: 'sgpContract',
     label: 'PATCH /api/contacts/:key',

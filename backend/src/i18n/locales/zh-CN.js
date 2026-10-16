@@ -1096,6 +1096,7 @@ export default {
   'contacts.cepNotFound': '未找到邮编',
   'contacts.createdInSgp': '已在 SGP 中登记客户',
   'contacts.error.invalidDocument': 'CPF 或 CNPJ 无效',
+  'contacts.error.teiahNotConsulted': '请先在 TeiaH 查询再应用',
   'contacts.error.invalidCep': '邮编无效',
   'contacts.error.alreadyInSgp': '此 CPF/CNPJ 已在 SGP 中登记（{name}）',
   'sgp.error.clientCreateFailed': 'SGP 未确认客户登记',

@@ -1096,6 +1096,7 @@ export default {
   'contacts.cepNotFound': 'पिन कोड नहीं मिला',
   'contacts.createdInSgp': 'ग्राहक SGP में पंजीकृत हुआ',
   'contacts.error.invalidDocument': 'अमान्य CPF या CNPJ',
+  'contacts.error.teiahNotConsulted': 'लागू करने से पहले TeiaH में खोजें',
   'contacts.error.invalidCep': 'अमान्य पिन कोड',
   'contacts.error.alreadyInSgp': 'यह CPF/CNPJ पहले से SGP में पंजीकृत है ({name})',
   'sgp.error.clientCreateFailed': 'SGP ने ग्राहक पंजीकरण की पुष्टि नहीं की',
