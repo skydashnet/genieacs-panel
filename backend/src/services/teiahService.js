@@ -150,31 +150,61 @@ function addressFrom(entry) {
 const ADDRESS_KEYS = ['cep', 'zip', 'logradouro', 'bairro', 'cidade', 'municipio', 'uf'];
 
 /**
- * An address the named sections did not carry: any object in the answer that
- * has address-looking fields (CEP, logradouro, bairro…), found by walking it.
- * The sections' names were guessed from a partial sample, and a company's
- * record keeps its address elsewhere than a person's, so this is the net under
- * the lookups by name. Bounded in depth and width: the answer is 25 KB at most.
- */
-function findAddress(node, depth = 0) {
-  if (!node || typeof node !== 'object' || depth > 5) return null;
-  if (Array.isArray(node)) {
-    for (const item of node.slice(0, 20)) {
-      const found = findAddress(item, depth + 1);
-      if (found) return found;
+ * Every address-looking object of an answer (max 5): the net under the lookups
+ * by name. The sections' names were guessed from a partial sample, and a
+ * company's record keeps its address elsewhere than a person's. Bounded in
+ * depth and width: the answer is 25 KB at most. Every object of an answer (max 5), in the order the answer holds them. */
+function findAddresses(root) {
+  const found = [];
+  walk(root, (node) => {
+    if (Array.isArray(node) || found.length >= 5) return;
+    const keys = new Set(Object.keys(node).map(normalizeKey));
+    if (keys.has('cep') || keys.has('logradouro') || ADDRESS_KEYS.filter((key) => keys.has(key)).length >= 2) {
+      const address = addressFrom(node);
+      if (address) found.push(address);
     }
-    return null;
+  });
+  return found;
+}
+
+/** Every object and array in an answer, depth-first, bounded like `findAddresses`. */
+function walk(node, visit, depth = 0, budget = { left: 2000 }) {
+  if (!node || typeof node !== 'object' || depth > 6 || budget.left <= 0) return;
+  budget.left -= 1;
+  visit(node);
+  for (const value of Array.isArray(node) ? node.slice(0, 50) : Object.values(node).slice(0, 60)) {
+    walk(value, visit, depth + 1, budget);
   }
-  const keys = new Set(Object.keys(node).map(normalizeKey));
-  if (keys.has('cep') || keys.has('logradouro') || ADDRESS_KEYS.filter((key) => keys.has(key)).length >= 2) {
-    const address = addressFrom(node);
-    if (address) return address;
-  }
-  for (const value of Object.values(node).slice(0, 40)) {
-    const found = findAddress(value, depth + 1);
-    if (found) return found;
-  }
-  return null;
+}
+
+/** Phones the named sections did not carry: entries with `ddd`+number or a phone-named field. */
+function scanPhones(root) {
+  const found = [];
+  walk(root, (node) => {
+    if (Array.isArray(node)) return;
+    const keys = new Set(Object.keys(node).map(normalizeKey));
+    const looksLikePhone = (keys.has('ddd') && (keys.has('numero') || keys.has('telefone')))
+      || keys.has('telefone') || keys.has('celular') || keys.has('fone');
+    if (looksLikePhone) {
+      const phone = phoneFrom(node);
+      if (phone) found.push(phone);
+    }
+  });
+  return found;
+}
+
+/** E-mails the named sections did not carry: any string under an `email`-named key. */
+function scanEmails(root) {
+  const found = [];
+  walk(root, (node) => {
+    if (Array.isArray(node)) return;
+    for (const [key, value] of Object.entries(node)) {
+      if (!normalizeKey(key).includes('email')) continue;
+      const email = text(value)?.toLowerCase();
+      if (email && /^[^\s@]+@[^\s@]+$/.test(email)) found.push(email);
+    }
+  });
+  return found;
 }
 
 function phoneFrom(entry) {
@@ -206,23 +236,26 @@ export function normalizeConsult(payload) {
     ?? text(pick(company, ['razaoSocial', 'razao_social', 'nome']));
   const tradeName = text(pick(company, ['nomeFantasia', 'nome_fantasia', 'fantasia']));
 
-  const emails = [...new Set(asList(section(mix, ['emails', 'email']))
+  const namedEmails = asList(section(mix, ['emails', 'email']))
     .map((entry) => text(typeof entry === 'object' ? pick(entry, ['email', 'endereco', 'valor']) : entry)?.toLowerCase())
-    .filter((email) => email && /^[^\s@]+@[^\s@]+$/.test(email)))];
+    .filter((email) => email && /^[^\s@]+@[^\s@]+$/.test(email));
+  const emails = [...new Set(namedEmails.length ? namedEmails : scanEmails(mix))];
 
   // Mobiles first: the form's number is the one WhatsApp reaches.
-  const phones = [...new Set(asList(section(mix, ['telefones', 'celulares', 'telefone', 'phones']))
-    .map(phoneFrom)
-    .filter(Boolean))]
+  const namedPhones = asList(section(mix, ['telefones', 'celulares', 'telefone', 'phones'])).map(phoneFrom).filter(Boolean);
+  const phones = [...new Set(namedPhones.length ? namedPhones : scanPhones(mix))]
     .sort((a, b) => Number(b.length === 13) - Number(a.length === 13));
 
-  const addresses = asList(section(mix, ['enderecos', 'endereco', 'addresses']))
+  const namedAddresses = asList(section(mix, ['enderecos', 'endereco', 'addresses']))
     .map(addressFrom)
     .filter(Boolean);
-  if (addresses.length === 0) {
-    const found = findAddress(mix);
-    if (found) addresses.push(found);
-  }
+  const seenAddress = new Set();
+  const addresses = (namedAddresses.length ? namedAddresses : findAddresses(mix)).filter((address) => {
+    const key = [address.zip, address.street, address.number].join('|').toLowerCase();
+    if (seenAddress.has(key)) return false;
+    seenAddress.add(key);
+    return true;
+  }).slice(0, 5);
 
   const scoreValue = Number(pick(scoreData, ['score', 'pontuacao']));
   const score = Number.isFinite(scoreValue) || text(pick(scoreData, ['risco', 'descricaoPagamento']))
@@ -245,6 +278,7 @@ export function normalizeConsult(payload) {
     emails,
     phones,
     address: addresses[0] ?? null,
+    addresses,
     score
   };
   return result;

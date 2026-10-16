@@ -24,6 +24,31 @@ router.get(
   ContactController.lookupDocument
 );
 router.get('/lookup/cep', authenticateToken, requirePermission('contacts.edit'), sgpAdminLimiter, ContactController.lookupCep);
+// The TeiaH for clients already in the panel — a paid call that sends a CPF/CNPJ
+// out, so the integration's own `act` capability on top of editing. The static
+// paths come before `/:key`.
+router.get(
+  '/teiah/phones',
+  authenticateToken,
+  requirePermission('contacts.edit'),
+  requirePermission('teiah.act'),
+  ContactController.teiahPending
+);
+router.post(
+  '/teiah/phones/scan',
+  authenticateToken,
+  requirePermission('contacts.edit'),
+  requirePermission('teiah.act'),
+  sgpAdminLimiter,
+  ContactController.teiahScan
+);
+router.post(
+  '/teiah/phones/apply',
+  authenticateToken,
+  requirePermission('contacts.edit'),
+  requirePermission('teiah.act'),
+  ContactController.teiahApplyMany
+);
 // Writes to the ERP: the contact permission AND the SGP one.
 router.post(
   '/sgp',
@@ -63,6 +88,21 @@ router.post(
   ContactController.importFocusChat
 );
 router.get('/:key', authenticateToken, requirePermission('contacts.read'), ContactController.get);
+router.post(
+  '/:key/teiah',
+  authenticateToken,
+  requirePermission('contacts.edit'),
+  requirePermission('teiah.act'),
+  sgpAdminLimiter,
+  ContactController.teiahConsult
+);
+router.post(
+  '/:key/teiah/apply',
+  authenticateToken,
+  requirePermission('contacts.edit'),
+  requirePermission('teiah.act'),
+  ContactController.teiahApply
+);
 // Asks the SGP, once per contract: the same limiter as every other SGP read an
 // operator can trigger by hand.
 router.get(

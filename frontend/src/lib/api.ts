@@ -3623,6 +3623,44 @@ export interface ContactProfile {
   contracts: ContactProfileContract[]
   /** Set when "Receber" can settle on the SGP: the payment methods to pick from. */
   settle?: { methods: string[] } | null
+  /** What the TeiaH said the last time it was asked about this client; null if never. */
+  teiah?: ContactTeiah | null
+  /** Whether the TeiaH integration is on, so the record can offer to ask it. */
+  teiahReady?: boolean
+}
+
+/** The TeiaH's answer about one client, as the last consultation kept it. */
+export interface ContactTeiah {
+  consultedAt: string
+  found: boolean
+  score: { score: number | null; risk: string | null; paymentDescription: string | null; paymentProbability: string | null } | null
+  motherName: string | null
+  deceased: boolean
+  addresses: ContactAddress[]
+  phones: string[]
+  emails: string[]
+}
+
+/** A client with no phone that the TeiaH has a phone for, to show before applying. */
+export interface ContactTeiahPending {
+  key: string
+  name: string | null
+  phones: string[]
+  emails: string[]
+  consultedAt: string | null
+}
+
+export interface ContactTeiahScan {
+  eligible: number
+  processed: number
+  failed: number
+  remaining: number
+}
+
+export interface ContactTeiahApplied {
+  phonesAdded: number
+  emailsAdded: number
+  whatsappSet: number
 }
 
 export type ContactProfileField = keyof ContactProfile['fields']
@@ -3738,6 +3776,24 @@ export const contactsAPI = {
   /** This client asked of the SGP again, and its ONTs asked to report now. */
   sync: (key: string) =>
     apiClient.post<ContactSyncResult>(`/contacts/${encodeURIComponent(key)}/sync`, {}),
+
+  /** Asks the TeiaH about this client and keeps the answer on the record. */
+  teiahConsult: (key: string) =>
+    apiClient.post<{ teiah: ContactTeiah }>(`/contacts/${encodeURIComponent(key)}/teiah`, {}),
+
+  /** Merges the phones and e-mails the TeiaH found into the record. */
+  teiahApply: (key: string) =>
+    apiClient.post<ContactTeiahApplied & { profile: ContactProfile }>(`/contacts/${encodeURIComponent(key)}/teiah/apply`, {}),
+
+  /** The clients with no phone that the TeiaH has a phone for. */
+  teiahPending: () => apiClient.get<{ rows: ContactTeiahPending[] }>('/contacts/teiah/phones'),
+
+  /** Asks the TeiaH about the next clients with no phone (a block at a time). */
+  teiahScan: () => apiClient.post<ContactTeiahScan>('/contacts/teiah/phones/scan', {}),
+
+  /** Merges the ticked clients' snapshots. */
+  teiahApplyMany: (keys: string[]) =>
+    apiClient.post<ContactTeiahApplied & { clients: number; skipped: number }>('/contacts/teiah/phones/apply', { keys }),
 
   /** Before the form: the SGP by document and, for a new company, the Receita. */
   lookupDocument: (document: string) =>

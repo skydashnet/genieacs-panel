@@ -10,13 +10,15 @@ import ContactFocusChatImportService from '../services/contactFocusChatImportSer
 import { FocusChatError } from '../services/focusChatService.js';
 import ContactInvoiceService from '../services/contactInvoiceService.js';
 import ContactOnboardingService from '../services/contactOnboardingService.js';
+import ContactTeiahService from '../services/contactTeiahService.js';
+import { TeiahError } from '../services/teiahService.js';
 import { WaError } from '../services/whatsappConfigService.js';
 import { SgpError } from '../services/sgpService.js';
 import { translateError } from '../i18n/index.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
 function handleError(req, res, error, fallbackKey) {
-  if (error instanceof ContactProfileError || error instanceof SgpError || error instanceof WaError || error instanceof FocusChatError) {
+  if (error instanceof ContactProfileError || error instanceof SgpError || error instanceof WaError || error instanceof FocusChatError || error instanceof TeiahError) {
     return res.status(error.status).json({
       ...createErrorResponse(translateError(req.t, error), error.code),
       code: error.code
@@ -173,6 +175,79 @@ class ContactController {
         detail: { fields: Object.keys(profile.fields).filter((field) => profile.fields[field].edited) }
       });
       return res.status(201).json(createResponse(req.t('contacts.created'), profile));
+    } catch (error) {
+      return handleError(req, res, error, 'contacts.saveFailed');
+    }
+  }
+
+  /** `POST /api/contacts/:key/teiah` — asks the TeiaH about this client and files the answer on the record. */
+  static async teiahConsult(req, res) {
+    try {
+      const result = await ContactTeiahService.consult(req.params.key);
+      await AuditLog.fromRequest(req, {
+        action: AuditLog.ACTIONS.CONTACT_TEIAH_LOOKUP,
+        subjectType: 'contact',
+        subjectId: req.params.key,
+        detail: { found: result.teiah.found, origin: 'profile' }
+      });
+      return res.json(createResponse(req.t('contacts.lookupDone'), result));
+    } catch (error) {
+      return handleError(req, res, error, 'contacts.lookupFailed');
+    }
+  }
+
+  /** `POST /api/contacts/:key/teiah/apply` — merges what the TeiaH found into the record. */
+  static async teiahApply(req, res) {
+    try {
+      const result = await ContactTeiahService.apply(req.params.key, actorOf(req));
+      await AuditLog.fromRequest(req, {
+        action: AuditLog.ACTIONS.CONTACT_TEIAH_APPLIED,
+        subjectType: 'contact',
+        subjectId: req.params.key,
+        detail: { clients: 1, phones: result.phonesAdded, emails: result.emailsAdded, whatsapp: result.whatsappSet }
+      });
+      return res.json(createResponse(req.t('contacts.updated'), { ...result, profile: await ContactProfileService.get(req.params.key) }));
+    } catch (error) {
+      return handleError(req, res, error, 'contacts.saveFailed');
+    }
+  }
+
+  /** `POST /api/contacts/teiah/phones/scan` — the next clients with no phone, asked of the TeiaH. */
+  static async teiahScan(req, res) {
+    try {
+      const result = await ContactTeiahService.scan();
+      await AuditLog.fromRequest(req, {
+        action: AuditLog.ACTIONS.CONTACT_TEIAH_LOOKUP,
+        subjectType: 'contact',
+        subjectId: null,
+        detail: { origin: 'bulk', processed: result.processed, failed: result.failed }
+      });
+      return res.json(createResponse(req.t('contacts.lookupDone'), result));
+    } catch (error) {
+      return handleError(req, res, error, 'contacts.lookupFailed');
+    }
+  }
+
+  /** `GET /api/contacts/teiah/phones` — the clients with no phone that the TeiaH has a phone for. */
+  static async teiahPending(req, res) {
+    try {
+      return res.json(createResponse(req.t('contacts.loaded'), { rows: await ContactTeiahService.pending() }));
+    } catch (error) {
+      return handleError(req, res, error, 'contacts.loadFailed');
+    }
+  }
+
+  /** `POST /api/contacts/teiah/phones/apply` — `{ keys }`: merges the ticked clients. */
+  static async teiahApplyMany(req, res) {
+    try {
+      const result = await ContactTeiahService.applyMany(req.body?.keys, actorOf(req));
+      await AuditLog.fromRequest(req, {
+        action: AuditLog.ACTIONS.CONTACT_TEIAH_APPLIED,
+        subjectType: 'contact',
+        subjectId: null,
+        detail: { clients: result.clients, phones: result.phonesAdded, emails: result.emailsAdded, whatsapp: result.whatsappSet, skipped: result.skipped }
+      });
+      return res.json(createResponse(req.t('contacts.updated'), result));
     } catch (error) {
       return handleError(req, res, error, 'contacts.saveFailed');
     }

@@ -1093,6 +1093,7 @@ export default {
   'contacts.cepNotFound': 'Código postal no encontrado',
   'contacts.createdInSgp': 'Cliente registrado en el SGP',
   'contacts.error.invalidDocument': 'CPF o CNPJ no válido',
+  'contacts.error.teiahNotConsulted': 'Consulta a TeiaH antes de aplicar',
   'contacts.error.invalidCep': 'Código postal no válido',
   'contacts.error.alreadyInSgp': 'Este CPF/CNPJ ya está registrado en el SGP ({name})',
   'sgp.error.clientCreateFailed': 'El SGP no confirmó el registro del cliente',

@@ -1630,6 +1630,15 @@ const SGP_CONTACT_TEIAH_COLUMNS = [
  * conectado) ou `sheet` (a planilha). Nulo é o que o SGP trouxe ou a equipe
  * digitou — é o que o filtro "Importados" da tela de Contatos separa.
  */
+/**
+ * O que a TeiaH respondeu sobre o cliente na última consulta (score, mãe,
+ * endereços, telefones e e-mails achados), em JSON. Vem da consulta, não do
+ * SGP: nenhuma sincronização o toca.
+ */
+const SGP_CLIENT_TEIAH_COLUMNS = [
+  ['teiah', (t) => t.text('teiah')]
+];
+
 const SGP_CONTACT_IMPORT_COLUMNS = [
   ['import_source', (t) => t.string('import_source', 16).nullable()]
 ];
@@ -1813,6 +1822,7 @@ const sgpClientsTable = (db) => (t) => {
   t.text('emails');
   t.text('overrides');
   t.text('notes');
+  t.text('teiah');
   t.timestamp('last_seen_at');
   t.timestamp('created_at').defaultTo(db.fn.now());
   t.timestamp('updated_at').defaultTo(db.fn.now());
@@ -6388,6 +6398,22 @@ export const migrations = [
       const missing = await missingColumns(db, 'wa_messages', WA_MESSAGE_ACTION_COLUMNS);
       if (!missing.length) return;
       await db.schema.alterTable('wa_messages', (t) => {
+        for (const add of missing) add(t);
+      });
+    }
+  },
+  {
+    /** O instantâneo da consulta à TeiaH na ficha — ver `SGP_CLIENT_TEIAH_COLUMNS`. */
+    id: '0115_sgp_client_teiah',
+    async isApplied(db) {
+      if (!(await db.schema.hasTable('sgp_clients'))) return true;
+      return (await missingColumns(db, 'sgp_clients', SGP_CLIENT_TEIAH_COLUMNS)).length === 0;
+    },
+    async up(db) {
+      if (!(await db.schema.hasTable('sgp_clients'))) return;
+      const missing = await missingColumns(db, 'sgp_clients', SGP_CLIENT_TEIAH_COLUMNS);
+      if (!missing.length) return;
+      await db.schema.alterTable('sgp_clients', (t) => {
         for (const add of missing) add(t);
       });
     }

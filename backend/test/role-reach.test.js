@@ -409,6 +409,47 @@ const CASOS = [
     codigoAceito: 'not_found'
   },
   {
+    // A TeiaH da ficha manda um CPF/CNPJ para fora: é do `teiah.act`, que o
+    // plantão não tem. A chave que não existe dá 404 antes de qualquer consulta.
+    cap: 'teiah.act',
+    label: 'POST /api/contacts/:key/teiah',
+    method: 'POST',
+    path: () => '/api/contacts/CONTRATO-QUE-NAO-EXISTE/teiah',
+    aceito: [404],
+    codigoAceito: 'not_found'
+  },
+  {
+    cap: 'teiah.act',
+    label: 'POST /api/contacts/:key/teiah/apply',
+    method: 'POST',
+    path: () => '/api/contacts/CONTRATO-QUE-NAO-EXISTE/teiah/apply',
+    aceito: [404],
+    codigoAceito: 'not_found'
+  },
+  {
+    // Sem a TeiaH ligada e sem cliente a consultar, a passada acaba vazia.
+    cap: 'teiah.act',
+    label: 'POST /api/contacts/teiah/phones/scan',
+    method: 'POST',
+    path: () => '/api/contacts/teiah/phones/scan',
+    aceito: [200]
+  },
+  {
+    cap: 'teiah.act',
+    label: 'GET /api/contacts/teiah/phones',
+    method: 'GET',
+    path: () => '/api/contacts/teiah/phones',
+    aceito: [200]
+  },
+  {
+    cap: 'teiah.act',
+    label: 'POST /api/contacts/teiah/phones/apply',
+    method: 'POST',
+    path: () => '/api/contacts/teiah/phones/apply',
+    body: { keys: [] },
+    aceito: [200]
+  },
+  {
     // Sincronizar grava a ficha: só quem edita. A chave que não existe dá 404.
     cap: 'contacts.edit',
     label: 'POST /api/contacts/:key/sync',
@@ -890,7 +931,7 @@ describe('a matriz e a expectativa deste arquivo', () => {
     // deixaria a promessa valendo sobre menos coisa, calada.
     // Eram 54; as três da conexão com o GenieACS (modo agente) entraram juntas,
     // e depois as três da TeiaH Valid, e a importação da agenda do WhatsApp.
-    assert.equal(CASOS.length, 65);
+    assert.equal(CASOS.length, 70);
   });
 });
 

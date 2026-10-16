@@ -1095,6 +1095,7 @@ export default {
   'contacts.cepNotFound': 'CEP não encontrado',
   'contacts.createdInSgp': 'Cliente cadastrado no SGP',
   'contacts.error.invalidDocument': 'CPF ou CNPJ inválido',
+  'contacts.error.teiahNotConsulted': 'Consulte a TeiaH antes de aplicar',
   'contacts.error.invalidCep': 'CEP inválido',
   'contacts.error.alreadyInSgp': 'Este CPF/CNPJ já está cadastrado no SGP ({name})',
   'sgp.error.clientCreateFailed': 'O SGP não confirmou o cadastro do cliente',

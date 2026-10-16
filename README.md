@@ -399,6 +399,16 @@ discarded rather than shown.
   client id, so the contacts sync does not duplicate it. This needs both `contacts.edit` and
   `sgp.act`.
 
+### TeiaH on the client record
+
+On a client's record (needs `contacts.edit` and `teiah.act`), the **TeiaH Valid** card asks the TeiaH
+about the client's CPF/CNPJ and keeps the answer on the record: score and risk, the mother's name,
+the other addresses, and every phone and e-mail it has. Nothing is merged on its own. **Add to the
+record** puts the phones and e-mails the record lacks into the client's fields (as an edit the
+operator can restore) and gives a contract with no WhatsApp number the first mobile; nothing already
+there is removed or replaced. The answer is personal data: it is part of the client's data export and
+is deleted with the client.
+
 ## TeiaH Valid Integration
 
 Open **Settings → TeiaH Valid** to send the addresses of contracts that were

@@ -23,6 +23,7 @@ import { copyToClipboard, formatBrl, formatSgpDate, isSafeExternalUrl } from '@/
 import { isoDay } from '@/lib/date-format'
 import { formatBrPhone } from '@/lib/phone'
 import { ServiceStatusCard } from '@/components/contacts/service-status-card'
+import { TeiahCard } from '@/components/contacts/teiah-card'
 import { parseAmountToCents } from '@/lib/utils'
 
 const ADDRESS_PARTS = ['street', 'number', 'complement', 'district', 'city', 'state', 'zip', 'reference'] as const
@@ -329,6 +330,9 @@ export default function ContactDetailPage() {
         </div>
 
         {can('devices.inspect') && <ServiceStatusCard contactKey={profile.key} hasContracts={profile.contracts.length > 0} />}
+        {can('teiah.act') && canEdit && profile.teiahReady && (
+          <TeiahCard profile={profile} onProfile={setProfile} onReload={load} />
+        )}
 
         <Card title={t('contacts.profile.contracts')} className="mt-5">
           {profile.contracts.length === 0 ? (

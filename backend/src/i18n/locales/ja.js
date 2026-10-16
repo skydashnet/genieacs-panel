@@ -1096,6 +1096,7 @@ export default {
   'contacts.cepNotFound': '郵便番号が見つかりません',
   'contacts.createdInSgp': '顧客を SGP に登録しました',
   'contacts.error.invalidDocument': 'CPF または CNPJ が無効です',
+  'contacts.error.teiahNotConsulted': '適用する前に TeiaH で照会してください',
   'contacts.error.invalidCep': '郵便番号が無効です',
   'contacts.error.alreadyInSgp': 'この CPF/CNPJ はすでに SGP に登録されています（{name}）',
   'sgp.error.clientCreateFailed': 'SGP が顧客登録を確認しませんでした',

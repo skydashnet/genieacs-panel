@@ -1088,6 +1088,7 @@ export default {
   'contacts.cepNotFound': 'الرمز البريدي غير موجود',
   'contacts.createdInSgp': 'تم تسجيل العميل في SGP',
   'contacts.error.invalidDocument': 'رقم CPF أو CNPJ غير صالح',
+  'contacts.error.teiahNotConsulted': 'استعلم من TeiaH قبل التطبيق',
   'contacts.error.invalidCep': 'رمز بريدي غير صالح',
   'contacts.error.alreadyInSgp': 'رقم CPF/CNPJ هذا مسجل بالفعل في SGP ({name})',
   'sgp.error.clientCreateFailed': 'لم يؤكد SGP تسجيل العميل',

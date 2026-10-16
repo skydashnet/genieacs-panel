@@ -1097,6 +1097,7 @@ export default {
   'contacts.cepNotFound': 'Индекс не найден',
   'contacts.createdInSgp': 'Клиент зарегистрирован в SGP',
   'contacts.error.invalidDocument': 'Неверный CPF или CNPJ',
+  'contacts.error.teiahNotConsulted': 'Сначала запросите данные в TeiaH',
   'contacts.error.invalidCep': 'Неверный индекс',
   'contacts.error.alreadyInSgp': 'Этот CPF/CNPJ уже зарегистрирован в SGP ({name})',
   'sgp.error.clientCreateFailed': 'SGP не подтвердила регистрацию клиента',
