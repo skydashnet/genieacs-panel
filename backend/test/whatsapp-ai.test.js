@@ -255,6 +255,17 @@ describe('a configuração da IA', () => {
     assert.equal(pedidosIa.length, 0, 'nenhum pedido saiu');
   });
 
+  it('workspaceId: aceita um id válido, recusa lixo e não vaza a chave', async () => {
+    const ok = await salvarIa({ workspaceId: 'wrkspc_abc-123' });
+    assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal((await api('/bot-config')).body.data.ai.workspaceId, 'wrkspc_abc-123');
+    const ruim = await salvarIa({ workspaceId: 'x y;<z>' });
+    assert.equal(ruim.status, 400, JSON.stringify(ruim.body));
+    const limpa = await salvarIa({ workspaceId: '' });
+    assert.equal(limpa.status, 200, JSON.stringify(limpa.body));
+    assert.equal((await api('/bot-config')).body.data.ai.workspaceId, '');
+  });
+
   it('testar outro endereço sem chave: 400, e nenhum pedido sai com a chave salva', async () => {
     const outro = aiUrl.replace('/api/paas/v4', '/outro');
     const res = await api('/bot-config/ai-test', { method: 'POST', body: { baseUrl: outro } });

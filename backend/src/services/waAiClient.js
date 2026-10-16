@@ -73,14 +73,14 @@ class WaAiClient {
    *
    * @returns {Promise<{content: string|null, toolCalls: {id: string, name: string, arguments: object}[], message: object}>}
    */
-  static async chat({ provider, baseUrl, apiKey, model, messages, tools = null, maxTokens = 600 }) {
+  static async chat({ provider, baseUrl, apiKey, workspaceId = '', model, messages, tools = null, maxTokens = 600 }) {
     if (!apiKey) throw erro('ai_key_required', 400);
     const id = aiProviderOrDefault(provider);
     const adapter = AI_ADAPTERS[id];
     const url = new URL(`${normalizeAiBaseUrl(baseUrl, id)}${adapter.path}`);
     const hostname = url.hostname.replace(/^\[|\]$/g, '');
     const { headers, body } = adapter.buildRequest({
-      apiKey, model: model || AI_PROVIDERS[id].defaultModel, messages, tools, maxTokens, hostname
+      apiKey, model: model || AI_PROVIDERS[id].defaultModel, messages, tools, maxTokens, hostname, workspaceId
     });
 
     const controller = new AbortController();

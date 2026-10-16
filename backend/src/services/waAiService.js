@@ -283,7 +283,7 @@ class WaAiService {
     ];
     const chamar = async () => {
       const { content } = await WaAiClient.chat({
-        provider: ai.provider, baseUrl: ai.baseUrl, apiKey: ai.apiKey, model: ai.model, messages: mensagens, maxTokens: 700
+        provider: ai.provider, baseUrl: ai.baseUrl, apiKey: ai.apiKey, workspaceId: ai.workspaceId, model: ai.model, messages: mensagens, maxTokens: 700
       });
       if (!content) throw new WaError('whatsapp.ai.error.badResponse', { code: 'ai_bad_response', status: 502 });
       return content;
@@ -329,6 +329,7 @@ class WaAiService {
         provider: ai.provider,
         baseUrl: ai.baseUrl,
         apiKey: ai.apiKey,
+        workspaceId: ai.workspaceId,
         model: ai.model,
         messages: [
           { role: 'system', content: promptDeMensagem({ empresa: await nomeDaEmpresa(), key }) },
@@ -352,7 +353,7 @@ class WaAiService {
    * chave é recusado antes de qualquer pedido sair: senão a tela mandaria a
    * chave do provedor para um host qualquer.
    */
-  static async test({ provider, baseUrl, apiKey, model } = {}) {
+  static async test({ provider, baseUrl, apiKey, workspaceId, model } = {}) {
     const salva = await WaBotConfigService.aiSettings();
     const chave = String(apiKey ?? '').trim();
     if (provider !== undefined && !isAiProvider(provider)) {
@@ -365,6 +366,7 @@ class WaAiService {
       provider: usado,
       baseUrl: baseUrl || salva.baseUrl,
       apiKey: chave || salva.apiKey,
+      workspaceId: workspaceId === undefined ? salva.workspaceId : String(workspaceId ?? '').trim(),
       model: model || salva.model,
       messages: [{ role: 'user', content: 'Responda apenas: OK' }],
       maxTokens: 20
@@ -429,6 +431,7 @@ class WaAiService {
         provider: ai.provider,
         baseUrl: ai.baseUrl,
         apiKey: ai.apiKey,
+        workspaceId: ai.workspaceId,
         model: ai.model,
         messages: mensagens,
         tools: disponiveis.map(ferramenta)

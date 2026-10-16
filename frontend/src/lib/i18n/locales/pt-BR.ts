@@ -1048,6 +1048,8 @@ const ptBR: Dictionary = {
   'settings.chatbot.aiBaseUrlHintAnthropic': 'Endereço fixo da Anthropic; só mude se usar um proxy próprio.',
   'settings.chatbot.aiModelHintAnthropic': 'Ex.: claude-sonnet-5-5, claude-haiku-5-5 (mais barato), claude-opus-5-5.',
   'settings.chatbot.aiBuyCredits': 'Comprar créditos',
+  'settings.chatbot.aiWorkspaceId': 'ID do workspace (Anthropic)',
+  'settings.chatbot.aiWorkspaceIdHint': 'Deixe em branco, a menos que a Anthropic recuse com “not scoped to a workspace”. Nesse caso cole o ID do workspace, ou crie a chave de API dentro de um workspace.',
   'settings.chatbot.aiProvider': 'Provedor de IA',
   'settings.chatbot.aiProviderOpenai': 'OpenAI-compatível (z.ai, OpenAI…)',
   'settings.chatbot.aiProviderAnthropic': 'Claude (Anthropic)',

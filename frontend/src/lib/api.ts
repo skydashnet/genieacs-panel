@@ -5443,6 +5443,8 @@ export interface BotAiConfig {
   model: string
   instructions: string
   hasApiKey: boolean
+  /** O id de workspace enviado à Anthropic quando a chave não pertence a um; vazio na maioria dos casos. */
+  workspaceId: string
   /** Os 4 últimos caracteres da chave salva, para conferir; null se curta demais. */
   keyHint: string | null
   /** A última falha da IA, para dizer por que o cliente recebeu o menu. */
@@ -5458,6 +5460,7 @@ export interface BotAiInput {
   model?: string
   instructions?: string
   apiKey?: string
+  workspaceId?: string
 }
 
 /** Quanto o cliente espera por gente: `GET /whatsapp/response-time-report`. Tempos em segundos. */
@@ -5539,7 +5542,7 @@ export const whatsappAPI = {
     apiClient.put<BotConfig>('/whatsapp/bot-config', config),
 
   /** Uma pergunta curta à IA, com a chave digitada ou a salva. */
-  testBotAi: (payload: { provider?: BotAiProvider; baseUrl?: string; model?: string; apiKey?: string }) =>
+  testBotAi: (payload: { provider?: BotAiProvider; workspaceId?: string; baseUrl?: string; model?: string; apiKey?: string }) =>
     apiClient.post<{ reply: string }>('/whatsapp/bot-config/ai-test', payload),
 
   /** A IA melhora um texto do bot; nada é gravado, o texto volta para a caixa. */

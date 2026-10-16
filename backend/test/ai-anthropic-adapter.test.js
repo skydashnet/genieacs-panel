@@ -159,3 +159,15 @@ describe('IA melhora textos do bot', () => {
     assert.equal(limparMensagem('x'.repeat(2000)).length, 1000);
   });
 });
+
+describe('Claude (Anthropic): workspace', () => {
+  const cab = (workspaceId) => AI_ADAPTERS.anthropic.buildRequest({
+    apiKey: 'k', model: 'claude-sonnet-5-5', maxTokens: 50, messages: [{ role: 'user', content: 'oi' }], workspaceId
+  }).headers;
+
+  it('envia anthropic-workspace-id só quando configurado', () => {
+    assert.equal(cab('wrkspc_123')['anthropic-workspace-id'], 'wrkspc_123');
+    assert.equal('anthropic-workspace-id' in cab(''), false);
+    assert.equal('anthropic-workspace-id' in cab(undefined), false);
+  });
+});

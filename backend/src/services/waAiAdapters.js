@@ -134,7 +134,7 @@ export function toAnthropicMessages(messages, { comFerramentas = true } = {}) {
 
 const anthropic = {
   path: '/v1/messages',
-  buildRequest({ apiKey, model, messages, tools, maxTokens }) {
+  buildRequest({ apiKey, model, messages, tools, maxTokens, workspaceId = '' }) {
     const { system, messages: turns } = toAnthropicMessages(messages, { comFerramentas: Boolean(tools?.length) });
     // Nos modelos atuais o pensamento vem ligado e gasta o mesmo `max_tokens`
     // da resposta: esforço baixo e folga, para a resposta não sair vazia ou
@@ -142,7 +142,12 @@ const anthropic = {
     // valor diferente do padrão (400).
     const atual = ANTHROPIC_MODELO_ATUAL.test(model);
     return {
-      headers: { 'x-api-key': apiKey, 'anthropic-version': ANTHROPIC_VERSION },
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': ANTHROPIC_VERSION,
+        // Chave que não pertence a um workspace pede o id dele neste cabeçalho.
+        ...(workspaceId ? { 'anthropic-workspace-id': workspaceId } : {})
+      },
       body: {
         model,
         max_tokens: atual ? maxTokens + ANTHROPIC_FOLGA_PENSAMENTO : maxTokens,
