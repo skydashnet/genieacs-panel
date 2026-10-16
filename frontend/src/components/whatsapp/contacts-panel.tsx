@@ -14,6 +14,7 @@ import { loadContactFilters, saveContactFilters } from '@/lib/contact-filters'
 import { whatsappErrorMessage } from '@/components/whatsapp-connection'
 import { SGP_CONTACTS_HREF } from '@/components/settings/sgp-contacts-sync-panel'
 import { NewContactModal } from '@/components/whatsapp/new-contact-modal'
+import { TeiahPhonesModal } from '@/components/contacts/teiah-phones-modal'
 
 /** Same pause as the inbox search: one request per word, not per letter. */
 const SEARCH_DEBOUNCE_MS = 350
@@ -207,9 +208,12 @@ export function ContactsPanel({ onOpenConversation, defaultState = '', persistKe
   const canCreate = can('contacts.edit')
   const [creating, setCreating] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [teiahPhones, setTeiahPhones] = useState(false)
   const [exporting, setExporting] = useState(false)
   const canExport = can('contacts.export')
   const canImport = can('contacts.import')
+  // Asking the TeiaH sends a CPF/CNPJ out and costs a call, so it is its own capability.
+  const canTeiahPhones = can('teiah.act') && canCreate && stateFilter === 'active' && noPhone
 
   const exportSheet = async () => {
     setExporting(true)
@@ -363,6 +367,12 @@ export function ContactsPanel({ onOpenConversation, defaultState = '', persistKe
               {t('contacts.sheet.import')}
             </button>
           )}
+          {canTeiahPhones && (
+            <button type="button" className="modern-button-secondary" onClick={() => setTeiahPhones(true)}>
+              <Icon name="search" size={16} />
+              {t('contacts.teiahPhones.title')}
+            </button>
+          )}
           {canCreate && (
             <button type="button" className="modern-button" onClick={() => setCreating(true)}>
               <Icon name="contacts" size={16} />
@@ -381,6 +391,15 @@ export function ContactsPanel({ onOpenConversation, defaultState = '', persistKe
         </div>
       </header>
       {creating && <NewContactModal onClose={() => setCreating(false)} />}
+      {teiahPhones && (
+        <TeiahPhonesModal
+          onClose={() => setTeiahPhones(false)}
+          onApplied={() => {
+            setTeiahPhones(false)
+            void load(debounced, stateFilter, noPhone, imported, device)
+          }}
+        />
+      )}
       {importing && (
         <ImportSheetModal
           onClose={() => setImporting(false)}
