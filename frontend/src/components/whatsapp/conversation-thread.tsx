@@ -122,7 +122,7 @@ export function ConversationThread({
     return () => observer.disconnect()
   }, [])
   const withLabels = showActionLabels(headerWidth)
-  const actionClass = withLabels ? 'modern-button-secondary' : 'modern-button-secondary px-3'
+  const actionClass = `${withLabels ? 'modern-button-secondary' : 'modern-button-secondary px-3'} max-lg:min-h-9 max-lg:px-2.5`
   const labelClass = withLabels ? 'inline' : 'hidden'
 
   // A new thread always opens at its foot: the newest message is the one the
@@ -149,11 +149,13 @@ export function ConversationThread({
     <>
       <header
         ref={headerRef}
-        className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-border bg-card px-3 sm:px-4 lg:items-start lg:gap-3 lg:py-3 ${compact ? 'flex-nowrap py-1.5' : 'py-2.5'}`}
+        className={`flex flex-wrap items-center justify-between gap-x-3 gap-y-2 max-lg:gap-y-1.5 border-b border-border bg-card px-3 sm:px-4 lg:items-start lg:gap-3 lg:py-3 ${compact ? 'flex-nowrap py-1.5' : 'py-2.5'}`}
       >
-        {/* No celular o voltar e as ações dividem a primeira linha, e o nome
-            desce para a de baixo (`order-last`): numa linha própria cada, as
-            três comiam a altura que as mensagens tinham. */}
+        {/* No celular o cabeçalho tem duas linhas: voltar (só a seta), o nome e as
+            ações na primeira; o telefone e os selos, numa faixa que rola de lado,
+            na segunda. O bloco do título vira `contents` ali para o nome e a faixa
+            serem filhos diretos do cabeçalho; do `lg` para cima ele é o bloco de
+            sempre. */}
         {onBack && (
           <button
             type="button"
@@ -162,15 +164,15 @@ export function ConversationThread({
             onClick={onBack}
           >
             <Icon name="back" size={16} />
-            {t('whatsapp.inbox.title')}
+            <span className="max-lg:sr-only">{t('whatsapp.inbox.title')}</span>
           </button>
         )}
-        <div className={compact ? 'min-w-0 flex-1' : 'order-last w-full min-w-0 lg:order-0 lg:w-auto'}>
-          <h2 className="truncate text-base font-semibold text-foreground">
+        <div className={compact ? 'min-w-0 flex-1' : 'min-w-0 max-lg:contents lg:order-0 lg:w-auto'}>
+          <h2 className="truncate text-base font-semibold text-foreground max-lg:order-1 max-lg:min-w-0 max-lg:flex-1">
             <ContactLink contract={conversation.contract} name={conversationTitle(conversation)} className="" />
           </h2>
           {!compact && address && (
-            <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <p className="flex items-center gap-1.5 text-xs text-muted-foreground max-lg:hidden">
               <span className="truncate font-mono">{address}</span>
               {conversation.waPhoneE164 && (
                 <button
@@ -188,7 +190,23 @@ export function ConversationThread({
 
           {/* Com o teclado aberto os selos e as ações saem: a altura vai para as mensagens. */}
           {!compact && (
-            <div className={`mt-2 flex flex-wrap items-center gap-1.5 ${numero?.className ?? ''}`}>
+            <div className={`mt-2 flex flex-wrap items-center gap-1.5 max-lg:order-3 max-lg:mt-0 max-lg:w-full max-lg:flex-nowrap max-lg:overflow-x-auto max-lg:[scrollbar-width:none] max-lg:[&::-webkit-scrollbar]:hidden max-lg:[&>*]:shrink-0 max-lg:[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)] ${numero?.className ?? ''}`}>
+              {address && (
+                <span className="modern-badge font-mono lg:hidden">
+                  {address}
+                  {conversation.waPhoneE164 && (
+                    <button
+                      type="button"
+                      className="inline-flex size-5 items-center justify-center rounded hover:bg-muted"
+                      aria-label={t('common.copy')}
+                      title={t('common.copy')}
+                      onClick={() => void copyNumber()}
+                    >
+                      <Icon name="copy" size={12} />
+                    </button>
+                  )}
+                </span>
+              )}
               {numero?.showName && <AccountChip name={numero.name} />}
               {conversation.contract ? (
                 <ContractBadgeLink
@@ -218,7 +236,7 @@ export function ConversationThread({
                 </span>
               )}
               {conversation.clientName && (
-                <span className="modern-badge max-w-full">
+                <span className="modern-badge max-w-full max-lg:hidden">
                   <span className="truncate">
                     {t('whatsapp.inbox.subscriber')}: <ContactLink contract={conversation.contract} name={conversation.clientName} className="" />
                   </span>
@@ -258,7 +276,7 @@ export function ConversationThread({
             quatro viram só ícone, com o nome no `aria-label` e no `title`; e o
             grupo quebra linha em vez de sair da tela. */}
         {!compact && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 max-lg:order-2 max-lg:flex-nowrap max-lg:gap-1">
             {can('whatsapp.send') && (
               <button
                 type="button"
