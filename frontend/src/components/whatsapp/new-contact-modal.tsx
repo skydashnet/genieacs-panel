@@ -70,7 +70,7 @@ function maskDocument(value: string) {
  * files it here under the SGP's own id.
  */
 export function NewContactModal({ onClose }: { onClose: () => void }) {
-  const { t } = useTranslation()
+  const { t, formatDateTime } = useTranslation()
   const toast = useToast()
   const navigate = useNavigate()
   const { can } = useAuth()
@@ -92,13 +92,15 @@ export function NewContactModal({ onClose }: { onClose: () => void }) {
 
   const open = (key: string) => navigate(`/contacts/${encodeURIComponent(key)}`)
 
-  const runLookup = async () => {
+  const runLookup = async (fresh = false) => {
+    // A new consultation is a paid call; ask first when the panel already holds one.
+    if (fresh && !window.confirm(t('contacts.new.teiahRefreshConfirm', { date: lookup?.teiahConsultedAt ? formatDateTime(lookup.teiahConsultedAt) : '' }))) return
     setLooking(true)
     setLookupError(null)
     setLookup(null)
     setShowForm(false)
     try {
-      const res = await contactsAPI.lookupDocument(document)
+      const res = await contactsAPI.lookupDocument(document, fresh)
       if (!res.success || !res.data) {
         setLookupError(res.message || t('contacts.new.invalidDocument'))
         return
@@ -299,6 +301,14 @@ export function NewContactModal({ onClose }: { onClose: () => void }) {
                         ? t(lookup.prefill ? 'contacts.new.cnpjPrefilled' : 'contacts.new.cnpjFailed')
                         : t(lookup.teiahConsulted ? 'contacts.new.teiahNotFound' : 'contacts.new.cpfNoSource')}
                 </span>
+              </p>
+            )}
+            {lookup?.teiahCached && lookup.teiahConsultedAt && (
+              <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground" data-testid="new-contact-teiah-cached">
+                <span>{t('contacts.new.teiahCachedNote', { date: formatDateTime(lookup.teiahConsultedAt) })}</span>
+                <button type="button" className="font-semibold text-primary hover:underline" disabled={looking} onClick={() => void runLookup(true)}>
+                  {t('contacts.new.teiahRefresh')}
+                </button>
               </p>
             )}
             {lookup?.deceased && (

@@ -41,13 +41,19 @@ export function TeiahCard({ profile, onProfile, onReload }: {
   const canAdd = newPhones.length > 0 || newEmails.length > 0 || (teiah?.phones.length && !profile.whatsappPhone)
 
   const consult = async () => {
+    // "Consultar de novo" is a paid call: the TeiaH answer is reused for 30 days,
+    // so asking again within that window needs an explicit yes.
+    const asksAgain = teiah !== null
+    if (asksAgain && teiah && Date.now() - Date.parse(teiah.consultedAt) < 30 * 86_400_000
+      && !window.confirm(t('contacts.profile.teiahRefreshConfirm', { date: formatDateTime(teiah.consultedAt) }))) return
     setBusy(true)
     try {
-      const res = await contactsAPI.teiahConsult(profile.key)
-      if (!res.success) {
+      const res = await contactsAPI.teiahConsult(profile.key, asksAgain)
+      if (!res.success || !res.data) {
         toast.error(res.message || t('contacts.profile.teiahFailed'))
         return
       }
+      if (res.data.cached) toast.info(t('contacts.profile.teiahFromCache', { date: formatDateTime(res.data.teiah.consultedAt) }))
       await onReload()
     } catch {
       toast.error(t('contacts.profile.teiahFailed'))

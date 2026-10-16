@@ -1,4 +1,5 @@
 import AppState from '../models/AppState.js';
+import TeiahConsultation from '../models/TeiahConsultation.js';
 import { createSecretBox } from '../utils/secretBox.js';
 import { PinnedTransport, RESPONSE_TOO_LARGE } from '../utils/net/pinnedFetch.js';
 import { deploymentIsShared } from './genieacsEgress.js';
@@ -29,6 +30,13 @@ export const DEFAULT_BASE_URL = 'https://api.valid.teiah.ai';
 export const IMPORT_ONE_PATH = '/api/import/address';
 export const IMPORT_MANY_PATH = '/api/import/addresses';
 export const CONSULT_DOCUMENT_PATH = '/api/whatsapp/consulta-cpf';
+/**
+ * Each consultation is a paid call: an answer is reused for this long before
+ * the panel asks again. "Not found" is kept for less, since the TeiaH may come
+ * to know the document.
+ */
+export const CONSULT_CACHE_DAYS = 30;
+export const CONSULT_MISS_CACHE_DAYS = 7;
 
 const DEFAULT_CONFIG = Object.freeze({
   enabled: false,
@@ -542,6 +550,30 @@ class TeiahService {
    * Asked only by an operator filling "Novo cliente" for someone the SGP does
    * not know.
    */
+  /**
+   * `consultDocument` behind the panel's memory of what it already paid for:
+   * an answer younger than `CONSULT_CACHE_DAYS` (a miss, `CONSULT_MISS_CACHE_DAYS`)
+   * comes back without calling the API. `fresh` asks anyway and replaces what
+   * was kept. A failure is thrown and never kept.
+   *
+   * @returns {Promise<{ result: object, consultedAt: string, cached: boolean }>}
+   */
+  static async consultCached(document, { fresh = false } = {}) {
+    const digits = String(document ?? '').replace(/\D/g, '');
+    if (!fresh) {
+      const stored = await TeiahConsultation.get(digits);
+      if (stored) {
+        const days = stored.data.found === false ? CONSULT_MISS_CACHE_DAYS : CONSULT_CACHE_DAYS;
+        if (Date.now() - stored.consultedAt.getTime() < days * 86_400_000) {
+          return { result: stored.data, consultedAt: stored.consultedAt.toISOString(), cached: true };
+        }
+      }
+    }
+    const result = await this.consultDocument(digits);
+    const saved = await TeiahConsultation.save(digits, result);
+    return { result, consultedAt: saved.consultedAt.toISOString(), cached: false };
+  }
+
   static async consultDocument(document, configOverride = null) {
     const digits = String(document ?? '').replace(/\D/g, '');
     const { status, data } = await this.request(CONSULT_DOCUMENT_PATH, { cpf: digits }, configOverride);

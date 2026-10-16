@@ -1855,8 +1855,24 @@ const teiahExportsTable = (db) => (t) => {
   t.index(['tenant_id', 'status'], 'teiah_exports_status_idx');
 };
 
+/**
+ * O que a TeiaH respondeu sobre um CPF/CNPJ, para não consultar (e pagar) de
+ * novo dentro do prazo. Uma linha por documento e provedor; `data` é o
+ * resultado já normalizado, em JSON. Não depende de o documento ser cliente.
+ */
+const teiahConsultationsTable = (db) => (t) => {
+  t.increments('id').primary();
+  t.integer('tenant_id').unsigned().notNullable()
+    .references('id').inTable('tenants').onDelete('CASCADE');
+  t.string('document', 32).notNullable();
+  t.text('data').notNullable();
+  t.timestamp('consulted_at').notNullable().defaultTo(db.fn.now());
+  t.unique(['tenant_id', 'document'], 'teiah_consultations_document_uq');
+};
+
 const TEIAH_TABLES = [
-  ['teiah_exports', teiahExportsTable]
+  ['teiah_exports', teiahExportsTable],
+  ['teiah_consultations', teiahConsultationsTable]
 ];
 
 /**
@@ -6416,6 +6432,18 @@ export const migrations = [
       await db.schema.alterTable('sgp_clients', (t) => {
         for (const add of missing) add(t);
       });
+    }
+  },
+  {
+    /** O cache das consultas à TeiaH — ver `teiahConsultationsTable`. */
+    id: '0116_teiah_consultations',
+    async isApplied(db) {
+      if (!(await db.schema.hasTable('tenants'))) return true;
+      return db.schema.hasTable('teiah_consultations');
+    },
+    async up(db) {
+      if (!(await db.schema.hasTable('tenants'))) return;
+      await createTableIfMissing(db, 'teiah_consultations', teiahConsultationsTable(db));
     }
   }
 ];

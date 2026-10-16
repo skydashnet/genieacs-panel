@@ -3700,6 +3700,9 @@ export interface ContactDocumentLookup {
   prefillError: boolean
   /** Whether the TeiaH was asked (the document is nobody's yet and the integration is on). */
   teiahConsulted: boolean
+  /** The answer was one the panel already held (younger than 30 days): no new paid call. */
+  teiahCached?: boolean
+  teiahConsultedAt?: string | null
   teiahScore: {
     score: number | null
     risk: string | null
@@ -3778,8 +3781,8 @@ export const contactsAPI = {
     apiClient.post<ContactSyncResult>(`/contacts/${encodeURIComponent(key)}/sync`, {}),
 
   /** Asks the TeiaH about this client and keeps the answer on the record. */
-  teiahConsult: (key: string) =>
-    apiClient.post<{ teiah: ContactTeiah }>(`/contacts/${encodeURIComponent(key)}/teiah`, {}),
+  teiahConsult: (key: string, fresh = false) =>
+    apiClient.post<{ teiah: ContactTeiah; cached: boolean }>(`/contacts/${encodeURIComponent(key)}/teiah`, fresh ? { fresh: true } : {}),
 
   /** Merges the phones and e-mails the TeiaH found into the record. */
   teiahApply: (key: string) =>
@@ -3796,8 +3799,8 @@ export const contactsAPI = {
     apiClient.post<ContactTeiahApplied & { clients: number; skipped: number }>('/contacts/teiah/phones/apply', { keys }),
 
   /** Before the form: the SGP by document and, for a new company, the Receita. */
-  lookupDocument: (document: string) =>
-    apiClient.get<ContactDocumentLookup>(`/contacts/lookup/document?document=${encodeURIComponent(document.replace(/\D/g, ''))}`),
+  lookupDocument: (document: string, fresh = false) =>
+    apiClient.get<ContactDocumentLookup>(`/contacts/lookup/document?document=${encodeURIComponent(document.replace(/\D/g, ''))}${fresh ? '&fresh=1' : ''}`),
 
   /** The address of a CEP, to fill the form. */
   lookupCep: (cep: string) =>

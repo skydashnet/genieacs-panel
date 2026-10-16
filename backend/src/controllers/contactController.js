@@ -183,12 +183,12 @@ class ContactController {
   /** `POST /api/contacts/:key/teiah` — asks the TeiaH about this client and files the answer on the record. */
   static async teiahConsult(req, res) {
     try {
-      const result = await ContactTeiahService.consult(req.params.key);
+      const result = await ContactTeiahService.consult(req.params.key, { fresh: req.body?.fresh === true });
       await AuditLog.fromRequest(req, {
         action: AuditLog.ACTIONS.CONTACT_TEIAH_LOOKUP,
         subjectType: 'contact',
         subjectId: req.params.key,
-        detail: { found: result.teiah.found, origin: 'profile' }
+        detail: { found: result.teiah.found, origin: 'profile', cached: result.cached }
       });
       return res.json(createResponse(req.t('contacts.lookupDone'), result));
     } catch (error) {
@@ -220,7 +220,7 @@ class ContactController {
         action: AuditLog.ACTIONS.CONTACT_TEIAH_LOOKUP,
         subjectType: 'contact',
         subjectId: null,
-        detail: { origin: 'bulk', processed: result.processed, failed: result.failed }
+        detail: { origin: 'bulk', processed: result.processed, failed: result.failed, fromCache: result.fromCache }
       });
       return res.json(createResponse(req.t('contacts.lookupDone'), result));
     } catch (error) {
@@ -260,13 +260,13 @@ class ContactController {
    */
   static async lookupDocument(req, res) {
     try {
-      const result = await ContactOnboardingService.lookupDocument(req.query?.document);
+      const result = await ContactOnboardingService.lookupDocument(req.query?.document, { fresh: req.query?.fresh === '1' });
       if (result.teiahConsulted) {
         await AuditLog.fromRequest(req, {
           action: AuditLog.ACTIONS.CONTACT_TEIAH_LOOKUP,
           subjectType: 'contact',
           subjectId: null,
-          detail: { found: Boolean(result.prefill?.source === 'teiah'), error: result.prefillError }
+          detail: { found: Boolean(result.prefill?.source === 'teiah'), error: result.prefillError, cached: result.teiahCached }
         });
       }
       return res.json(createResponse(req.t('contacts.lookupDone'), result));
