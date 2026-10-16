@@ -594,11 +594,11 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
         </div>
       )}
 
-      {/* No celular, "Enviar" sobe para a linha da nota e os outros botões
-          descem juntos para a de baixo: eram três linhas tirando altura da
-          conversa. Com o teclado aberto (`compact`) já cabe tudo numa linha. */}
-      <div className={`${compact ? 'mt-1.5 gap-2' : 'mt-2.5 gap-3 max-sm:justify-end max-sm:gap-x-2 max-sm:gap-y-0'} flex flex-wrap items-center justify-between @4xl:items-start`}>
-        <div className={`min-w-0 ${compact ? '' : 'max-sm:order-first max-sm:mr-auto'}`}>
+      {/* No celular tudo cabe numa linha só: a nota vira só o cadeado com a
+          caixa, os botões de ação viram quadrados de ícone e "Enviar" fecha a
+          linha. Com o teclado aberto (`compact`) é a mesma coisa. */}
+      <div className={`${compact ? 'mt-1.5 gap-2' : 'mt-2.5 gap-3 max-sm:flex-nowrap max-sm:gap-1.5 max-[23.75rem]:flex-wrap'} flex flex-wrap items-center justify-between @4xl:items-start`}>
+        <div className="min-w-0 max-sm:mr-auto">
           <label
             className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground"
             title={t('whatsapp.inbox.noteHint')}
@@ -610,12 +610,12 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
               onChange={(event) => setIsNote(event.target.checked)}
             />
             <Icon name="lock" size={14} className={isNote ? 'text-[hsl(var(--status-warning))]' : 'text-muted-foreground'} />
-            <span className={compact ? 'sr-only' : undefined}>{t('whatsapp.inbox.note')}</span>
+            <span className={compact ? 'sr-only' : 'max-sm:sr-only'}>{t('whatsapp.inbox.note')}</span>
           </label>
           <p className="field-hint hidden max-w-md @6xl:block">{t('whatsapp.inbox.noteHint')}</p>
         </div>
 
-        <div className={`flex flex-wrap items-center justify-end gap-2 ${compact ? '' : 'max-sm:contents'}`}>
+        <div className="flex flex-wrap items-center justify-end gap-2 max-sm:flex-nowrap max-sm:gap-1.5 max-[23.75rem]:flex-wrap">
           <input
             ref={fileRef}
             type="file"
@@ -635,7 +635,7 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
           {!compact && quickReplies !== null && (
             <button
               type="button"
-              className="modern-button-secondary shrink-0 px-3 @4xl:px-4"
+              className="modern-button-secondary shrink-0 px-3 @4xl:px-4 max-sm:h-9 max-sm:w-8 max-sm:min-h-0 max-sm:px-0"
               aria-label={t('whatsapp.quickReplies.button')}
               title={t('whatsapp.quickReplies.button')}
               aria-pressed={pickerOpen}
@@ -657,7 +657,7 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
           {!compact && templates !== null && onPickTemplate && (
             <button
               type="button"
-              className="modern-button-secondary shrink-0 px-3 sm:px-4"
+              className="modern-button-secondary shrink-0 px-3 sm:px-4 max-sm:h-9 max-sm:w-8 max-sm:min-h-0 max-sm:px-0"
               aria-label={t('whatsapp.templatePicker.button')}
               title={t('whatsapp.templatePicker.button')}
               aria-pressed={templatesOpen}
@@ -676,7 +676,7 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
           {!compact && onSuggest && !isNote && (
             <button
               type="button"
-              className="modern-button-secondary shrink-0 px-3 @4xl:px-4"
+              className="modern-button-secondary shrink-0 px-3 @4xl:px-4 max-sm:h-9 max-sm:w-8 max-sm:min-h-0 max-sm:px-0"
               aria-label={t('whatsapp.ai.suggest')}
               title={t('whatsapp.ai.suggest')}
               disabled={busy || suggesting}
@@ -703,7 +703,7 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
           )}
           <button
             type="button"
-            className="modern-button-secondary shrink-0 px-3 @4xl:px-4"
+            className="modern-button-secondary shrink-0 px-3 @4xl:px-4 max-sm:h-9 max-sm:w-8 max-sm:min-h-0 max-sm:px-0"
             aria-label={t('whatsapp.inbox.attach')}
             title={t('whatsapp.inbox.attachHint')}
             disabled={busy || items.length >= MAX_ATTACHMENTS_PER_SEND}
@@ -715,7 +715,7 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
 
           <button
             type="button"
-            className={`${isNote ? 'modern-button-secondary shrink-0 border-[hsl(var(--status-warning))]/70' : 'modern-button shrink-0'} ${compact ? '' : 'max-sm:-order-1'}`}
+            className={`${isNote ? 'modern-button-secondary shrink-0 border-[hsl(var(--status-warning))]/70' : 'modern-button shrink-0'} max-sm:min-h-9 max-sm:px-3`}
             disabled={empty || busy || windowBlocked}
             aria-live="polite"
             onClick={() => void submit()}
@@ -723,7 +723,6 @@ export function ThreadComposer({ optedOut, sending, onSend, replyTo = null, onCa
             <Icon name={busy ? 'refresh' : isNote ? 'lock' : 'chat'} size={16} className={busy ? 'animate-spin' : ''} />
             {sendLabel}
           </button>
-          {!compact && <span aria-hidden="true" className="hidden max-sm:-order-1 max-sm:block max-sm:h-2 max-sm:basis-full" />}
         </div>
       </div>
     </div>

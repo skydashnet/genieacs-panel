@@ -129,7 +129,7 @@ export function VoiceRecorder({ disabled, onRecorded }: { disabled: boolean; onR
   return (
     <button
       type="button"
-      className="modern-button-secondary shrink-0 px-3 @4xl:px-4"
+      className="modern-button-secondary shrink-0 px-3 @4xl:px-4 max-sm:h-9 max-sm:w-8 max-sm:min-h-0 max-sm:px-0"
       aria-label={t('whatsapp.audio.record')}
       title={t('whatsapp.audio.recordHint')}
       disabled={disabled}
