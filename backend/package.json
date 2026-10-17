@@ -27,7 +27,7 @@
     "jsonwebtoken": "^9.0.2",
     "knex": "^3.3.0",
     "mysql2": "^3.6.5",
-    "nodemailer": "^10.0.13",
+    "nodemailer": "^10.1.1",
     "pg": "^8.23.0",
     "proxy-addr": "^2.0.8",
     "ws": "^8.22.0"
