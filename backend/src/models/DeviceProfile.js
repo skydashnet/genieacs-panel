@@ -1,12 +1,16 @@
-import { getDb } from '../config/database.js';
+import { tdb, tinsert } from '../config/database.js';
 
 class DeviceProfile {
   static async getByDeviceId(deviceId) {
-    return (await getDb()('device_profiles').where({ device_id: deviceId }).first()) || null;
+    return (await tdb('device_profiles').where({ device_id: deviceId }).first()) || null;
   }
 
   static async upsertInstallationDate(deviceId, installationDate, installationTag) {
-    const db = getDb();
+    // The read decides insert-vs-update, so it has to be the provider's own.
+    // Unfiltered it found whichever provider wrote the device id first, and the
+    // second provider then spent every save overwriting that row instead of
+    // ever getting one — the installation date of one ISP's subscriber landing
+    // on another ISP's, and from there into the Customer ID minted from it.
     const existing = await this.getByDeviceId(deviceId);
     const values = {
       installation_date: installationDate,
@@ -14,9 +18,9 @@ class DeviceProfile {
       updated_at: new Date()
     };
     if (existing) {
-      await db('device_profiles').where({ device_id: deviceId }).update(values);
+      await tdb('device_profiles').where({ device_id: deviceId }).update(values);
     } else {
-      await db('device_profiles').insert({
+      await tinsert('device_profiles', {
         device_id: deviceId,
         ...values,
         created_at: new Date()

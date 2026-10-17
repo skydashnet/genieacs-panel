@@ -1,8 +1,8 @@
-import { getDb } from '../config/database.js';
+import { tdb, tinsert } from '../config/database.js';
 
 class Setting {
   static async getAll() {
-    const rows = await getDb()('settings').select('key', 'value');
+    const rows = await tdb('settings').select('key', 'value');
     const settings = {};
     rows.forEach((row) => {
       settings[row.key] = row.value;
@@ -11,32 +11,35 @@ class Setting {
   }
 
   static async getByKey(key) {
-    const row = await getDb()('settings').where({ key }).first();
+    const row = await tdb('settings').where({ key }).first();
     return row ? row.value : null;
   }
 
   static async create(key, value) {
-    await getDb()('settings').insert({ key, value });
+    await tinsert('settings', { key, value });
     return true;
   }
 
   static async update(key, value) {
-    const affected = await getDb()('settings')
+    const affected = await tdb('settings')
       .where({ key })
       .update({ value, updated_at: new Date() });
     return affected > 0;
   }
 
   static async upsert(key, value) {
-    await getDb()('settings')
-      .insert({ key, value, updated_at: new Date() })
-      .onConflict('key')
+    // The conflict target is the composite primary key, not `key` alone:
+    // since 0014 the same key exists once per provider. On MySQL the target is
+    // ignored either way, so getting this wrong is invisible there and fails
+    // loudly on SQLite and Postgres.
+    await tinsert('settings', { key, value, updated_at: new Date() })
+      .onConflict(['tenant_id', 'key'])
       .merge({ value, updated_at: new Date() });
     return true;
   }
 
   static async delete(key) {
-    const affected = await getDb()('settings').where({ key }).del();
+    const affected = await tdb('settings').where({ key }).del();
     return affected > 0;
   }
 }

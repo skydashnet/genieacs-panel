@@ -1,0 +1,160 @@
+#
+# O bloco de UM provedor. Renderizado por `deploy/novo-provedor.sh`, que troca
+# `__HOST__` pelo endereço do provedor e instala o resultado em
+# /etc/nginx/sites-available/skygenpanel-<slug>.conf.
+#
+# Existe porque nem todo deploy pode ter certificado curinga: curinga só se
+# emite por desafio DNS, que precisa de API no provedor de DNS para renovar
+# sozinho. Onde não há essa API — Registro.br, por exemplo — a saída é um
+# certificado por provedor, emitido por HTTP-01, e então cada provedor precisa
+# do seu `server`, porque o nginx escolhe o certificado pelo `server_name`.
+#
+# Onde HÁ curinga, este arquivo não é usado: um único bloco `*.painel…` atende
+# todos, e é o que `nginx-saas.conf.example` descreve.
+#
+# O `proxy_set_header Host $host` é o arquivo inteiro: é o `Host` que diz ao
+# painel QUAL PROVEDOR está falando. Um proxy que o reescreve entrega todo
+# mundo no mesmo lugar e o resolvedor responde 404 para todos.
+#
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name __HOST__;
+
+    ssl_certificate     /etc/letsencrypt/live/__HOST__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__HOST__/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # O painel quase não recebe upload: o maior corpo JSON que ele aceita é 1 MB
+    # (`express.json`), e a mídia do WhatsApp ele busca, não recebe. A exceção
+    # é o envio de firmware, com `location` e teto próprios logo abaixo.
+    client_max_body_size 2m;
+
+    # --- O agente do GenieACS (WebSocket) ---------------------------------
+    #
+    # A conexão que o agente instalado na rede do provedor abre PARA o painel:
+    # um WebSocket que fica aberto por horas. Precisa de bloco próprio, e ANTES
+    # do `location /` só para ser lido primeiro — o `=` já ganha de qualquer
+    # prefixo. O motivo é a linha `proxy_set_header Connection ""` do bloco
+    # abaixo: ela existe para o keepalive com o painel, e apaga o
+    # `Connection: upgrade` do pedido. O nginx também não repassa `Upgrade`
+    # sozinho (é cabeçalho de salto). Sem este bloco o painel recebe um GET
+    # comum, o agente nunca conecta, e o log dele diz só "conexão recusada".
+    #
+    # Os tempos: o painel manda ping a cada 30 s, então o `read_timeout` nunca
+    # chega a contar numa conexão viva; 3600 s é para que ele não seja o motivo
+    # de uma queda. `proxy_buffering off` porque cada quadro é uma resposta que
+    # alguém está esperando na tela.
+    location = /api/genieacs-agent/connect {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    # --- Importação de contatos ---------------------------------------------
+    #
+    # Uma planilha de contatos ou a agenda exportada do Gmail passa de 1 MB. O
+    # painel já manda o arquivo comprimido (gzip); este teto é para o navegador
+    # que não comprime — o painel aceita até 5 MB descomprimidos. O tempo é o de
+    # criar alguns milhares de clientes de uma vez.
+    location = /api/contacts/import {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 6m;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    # --- Envio de firmware ao GenieACS ---------------------------------------
+    #
+    # A única rota do painel que recebe arquivo grande: o firmware que o
+    # provedor envia (Configurações) e o que o console reenvia como de um
+    # provedor. O painel aceita até `FIRMWARE_MAX_MB` (64 por padrão); o teto
+    # aqui é o mesmo — subir um sem descer o outro faz o nginx recusar com uma
+    # página dele, que a tela não sabe ler. Os tempos são maiores porque o
+    # painel só responde depois de repassar o arquivo inteiro ao GenieACS (até
+    # 120 s); `proxy_request_buffering off` manda os bytes ao painel enquanto
+    # chegam, em vez de guardá-los em disco primeiro.
+    location = /api/devices/firmware/files {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64m;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location ~ ^/api/platform/tenants/[0-9]+/genieacs/firmware/reassign$ {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64m;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # `TRUST_PROXY=1` no painel confia em UM salto: este. É o que dá a cada
+        # provedor o seu balde de rate limit.
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_read_timeout 120s;
+    }
+}
+
+# O `:80` deste provedor serve o desafio do ACME e redireciona o resto. É o
+# mesmo bloco que `novo-provedor.sh` instala sozinho ANTES de emitir — ali
+# sozinho, para o desafio ter por onde chegar; aqui ao lado do `:443`, que só
+# pode existir depois que o certificado saiu. Uma fonte de verdade, duas etapas.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __HOST__;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

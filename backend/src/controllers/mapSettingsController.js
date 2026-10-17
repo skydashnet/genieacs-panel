@@ -1,4 +1,4 @@
-import MapSettings from '../models/MapSettings.js';
+import MapSettings, { DEFAULTS as MAP_DEFAULTS } from '../models/MapSettings.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
 
 class MapSettingsController {
@@ -8,23 +8,17 @@ class MapSettingsController {
       
       if (!settings) {
         return res.json(
-          createResponse('Map settings retrieved successfully', {
-            center_lat: '-6.2088',
-            center_lng: '106.8456',
-            max_zoom_in: '18',
-            max_zoom_out: '5',
-            default_zoom: '13'
-          })
+          createResponse(req.t('mapSettings.retrieved'), { ...MAP_DEFAULTS })
         );
       }
       
       return res.json(
-        createResponse('Map settings retrieved successfully', settings)
+        createResponse(req.t('mapSettings.retrieved'), settings)
       );
     } catch (error) {
       console.error('Get map settings error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get map settings', error.message)
+        createErrorResponse(req.t('mapSettings.getFailed'), error.message)
       );
     }
   }
@@ -36,7 +30,7 @@ class MapSettingsController {
       if ([center_lat, center_lng, max_zoom_in, max_zoom_out, default_zoom]
         .some((value) => value === undefined || value === null || value === '')) {
         return res.status(400).json(
-          createErrorResponse('All fields are required: center_lat, center_lng, max_zoom_in, max_zoom_out, default_zoom')
+          createErrorResponse(req.t('mapSettings.fieldsRequired'))
         );
       }
 
@@ -56,7 +50,7 @@ class MapSettingsController {
         maxOut > maxIn
       ) {
         return res.status(400).json(
-          createErrorResponse('Invalid coordinates or zoom levels')
+          createErrorResponse(req.t('mapSettings.invalidValues'))
         );
       }
 
@@ -71,12 +65,12 @@ class MapSettingsController {
       const updatedSettings = await MapSettings.get();
       
       return res.json(
-        createResponse('Map settings updated successfully', updatedSettings)
+        createResponse(req.t('mapSettings.updated'), updatedSettings)
       );
     } catch (error) {
       console.error('Update map settings error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to update map settings', error.message)
+        createErrorResponse(req.t('mapSettings.updateFailed'), error.message)
       );
     }
   }
@@ -88,12 +82,12 @@ class MapSettingsController {
       const resetSettings = await MapSettings.get();
       
       return res.json(
-        createResponse('Map settings reset to defaults', resetSettings)
+        createResponse(req.t('mapSettings.reset'), resetSettings)
       );
     } catch (error) {
       console.error('Reset map settings error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to reset map settings', error.message)
+        createErrorResponse(req.t('mapSettings.resetFailed'), error.message)
       );
     }
   }

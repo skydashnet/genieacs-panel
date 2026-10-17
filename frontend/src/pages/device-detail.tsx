@@ -1,13 +1,34 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 import { useToast } from '@/components/ui/toast'
+import { DeviceParametersCard } from '@/components/device-parameters-card'
 import { useLoading } from '@/components/ui/loading'
-import { devicesAPI } from '@/lib/api'
+import { devicesAPI, sgpAPI, whatsappAPI, type SgpContractLink, type SgpInvoice } from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import { copyToClipboard, formatBrl, isSafeExternalUrl, sgpBadge } from '@/lib/sgp'
 import { Icon } from '@/components/ui/icon'
+import { ProvisioningCard } from '@/components/provisioning-card'
+import { informedRecently, serialMatches, summonDeferredMessage } from '@/lib/device-actions'
+import { DeviceHistoryCard } from '@/components/device-history-card'
+import { DeviceSwapsCard } from '@/components/device-swaps-card'
+import { DeviceDiagnosticsCard } from '@/components/device-diagnostics-card'
+import { DeviceFirmwareCard } from '@/components/device-firmware-card'
 import { useAuth } from '@/contexts/auth-context'
+import { sessionOwner } from '@/lib/session-owner'
+import { CustomerLgpd } from '@/components/customer-lgpd'
+import { WifiStatusFilterControl } from '@/components/wifi-status-filter'
+import { filterWifiByStatus, type WifiStatusFilter } from '@/lib/wifi-filter'
+import { FilterRail, useStoredChoice } from '@/components/ui/filter-rail'
+import { filterInvoicesByStatus, parseInvoiceStatusFilter, type InvoiceStatusFilter } from '@/lib/invoice-filter'
+import { useTranslation } from '@/contexts/language-context'
+import type { TranslationKey } from '@/lib/i18n'
+import { RX_BAND_STYLE, rxBand } from '@/lib/rx-signal'
+
+/* Linha rótulo/valor dos cartões: no celular o valor (ID, série, usuário
+   PPPoE) quebra dentro da coluna em vez de empurrar a página para o lado. */
+const KV_ROW = 'flex justify-between gap-4 *:first:shrink-0 *:last:min-w-0 *:last:text-end *:last:wrap-anywhere'
 
 interface WanBindingData {
   lan: string[];
@@ -53,6 +74,8 @@ interface ProcessedDeviceDetail {
     softwareVersion?: string;
     upTime?: string;
     macAddress?: string;
+    wanMacAddress?: string | null;
+    lanMacAddress?: string | null;
   };
   virtualParameters: {
     [key: string]: { path: string; value: any }
@@ -65,6 +88,10 @@ interface ProcessedDeviceDetail {
     customerId: string | null;
     installationDate: string | null;
     generated: boolean;
+    /** O id da LINHA da conta — o endereço das rotas do dossiê. Nulo quando não há conta. */
+    accountId?: number | null;
+    portalPasswordSet?: boolean;
+    portalPasswordUpdatedAt?: string | null;
   };
   _raw?: any;
 }
@@ -143,6 +170,7 @@ function EditWanModal({
     }
   });
 
+  const { t } = useTranslation();
   const [isVlanConfigurable, setIsVlanConfigurable] = useState(false);
 
   useEffect(() => {
@@ -194,16 +222,16 @@ function EditWanModal({
   if (!isOpen || !wanData) return null;
 
   return (
-    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="wan-dialog-title">
-      <div className="modern-card flex max-h-[90vh] w-full max-w-2xl flex-col">
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="wan-dialog-title">
+      <div className="modal-panel modern-card flex max-w-2xl flex-col">
         {/* Header Modal */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
           <h3 id="wan-dialog-title" className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            Edit WAN Connection
+            {t('detail.wan.edit')}
           </h3>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
+            className="p-2 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -212,24 +240,24 @@ function EditWanModal({
         </div>
 
         {/* Form Body */}
-        <div className="p-6 space-y-6 overflow-y-auto">
+        <div className="p-5 sm:p-6 space-y-6 overflow-y-auto">
           {/* 1. WAN Name */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">WAN Name</label>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.wanModal.name')}</label>
             <input
               type="text"
               value={wanForm.name}
               maxLength={256}
               disabled={!wanData.nameConfigurable}
               onChange={(event) => setWanForm((current) => ({ ...current, name: event.target.value }))}
-              placeholder={wanData.nameConfigurable ? 'Enter WAN connection name' : 'Name parameter is not writable'}
+              placeholder={wanData.nameConfigurable ? t('detail.wanModal.namePlaceholder') : t('detail.wanModal.nameReadOnly')}
               className="modern-input w-full"
             />
           </div>
 
           {/* 2. VLAN */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">VLAN</label>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.wanModal.vlan')}</label>
             <div className="flex items-center space-x-3">
               <input
                 type="checkbox"
@@ -243,7 +271,7 @@ function EditWanModal({
                 htmlFor="vlanEnabled"
                 className={`text-sm ${!isVlanConfigurable ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed' : ''}`}
               >
-                Enable VLAN
+                {t('detail.wanModal.enableVlan')}
               </label>
             </div>
             <input
@@ -253,60 +281,60 @@ function EditWanModal({
               value={wanForm.vlanId}
               onChange={(e) => setWanForm(f => ({ ...f, vlanId: e.target.value }))}
               disabled={!wanForm.vlanEnabled}
-              placeholder={!isVlanConfigurable ? 'VLAN Not Available' : (wanForm.vlanEnabled ? 'Enter VLAN ID (1-4094)' : 'VLAN Not Enabled')}
+              placeholder={!isVlanConfigurable ? t('detail.wanModal.vlanNotAvailable') : (wanForm.vlanEnabled ? t('detail.wanModal.vlanPlaceholder') : t('detail.wanModal.vlanNotEnabled'))}
               className="modern-input w-full mt-2"
             />
           </div>
 
           {/* 3. PPP Username */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">PPP Username</label>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.wanModal.pppUsername')}</label>
             <input
               type="text"
               value={wanForm.username}
               disabled={!wanData.usernameConfigurable}
               onChange={(e) => setWanForm(f => ({ ...f, username: e.target.value }))}
-              placeholder={wanData.usernameConfigurable ? 'Enter PPPoE username' : 'Username parameter is not writable'}
+              placeholder={wanData.usernameConfigurable ? t('detail.wanModal.usernamePlaceholder') : t('detail.wanModal.usernameReadOnly')}
               className="modern-input w-full font-mono"
             />
           </div>
 
           {/* 4. PPP Password */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">PPP Password</label>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.wanModal.pppPassword')}</label>
             <input
               type="password"
               value={wanForm.password}
               disabled={!wanData.passwordConfigurable}
               onChange={(e) => setWanForm(f => ({ ...f, password: e.target.value }))}
-              placeholder={wanData.passwordConfigurable ? 'Enter new password (leave blank to keep unchanged)' : 'Password parameter is not writable'}
+              placeholder={wanData.passwordConfigurable ? t('detail.wanModal.passwordPlaceholder') : t('detail.wanModal.passwordReadOnly')}
               className="modern-input w-full font-mono"
             />
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Service list</label>
+              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.wanModal.serviceList')}</label>
               <input
                 type="text"
                 value={wanForm.serviceList}
                 maxLength={128}
                 disabled={!wanData.serviceListConfigurable}
                 onChange={(event) => setWanForm((current) => ({ ...current, serviceList: event.target.value }))}
-                placeholder={wanData.serviceListConfigurable ? 'INTERNET' : 'Service parameter is not writable'}
+                placeholder={wanData.serviceListConfigurable ? 'INTERNET' : t('detail.wanModal.serviceReadOnly')}
                 className="modern-input w-full font-mono"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Connection mode</label>
+              <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.wanModal.connectionMode')}</label>
               <select
                 value={wanForm.connectionType}
                 disabled={!wanData.connectionTypeConfigurable}
                 onChange={(event) => setWanForm((current) => ({ ...current, connectionType: event.target.value }))}
                 className="modern-input w-full"
               >
-                <option value="IP_Routed">Routed</option>
-                <option value="PPPoE_Bridged">Bridged</option>
+                <option value="IP_Routed">{t('detail.wanModal.routed')}</option>
+                <option value="PPPoE_Bridged">{t('detail.wanModal.bridged')}</option>
               </select>
             </div>
           </div>
@@ -320,25 +348,25 @@ function EditWanModal({
               className="size-4 accent-[hsl(var(--primary))]"
             />
             <span>
-              <span className="block text-sm font-semibold">Enable NAT</span>
+              <span className="block text-sm font-semibold">{t('detail.wanModal.enableNat')}</span>
               <span className="block text-xs text-muted-foreground">
-                {wanData.natConfigurable ? 'Apply NAT on this routed WAN.' : 'NAT parameter is not writable on this connection.'}
+                {wanData.natConfigurable ? t('detail.wanModal.natHint') : t('detail.wanModal.natReadOnly')}
               </span>
             </span>
           </label>
 
           {/* 5. Interface Binding */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Interface Binding</label>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.wanModal.interfaceBinding')}</label>
             {!wanData.bindingsConfigurable && (
               <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-                This ONT did not report writable interface-binding parameters.
+                {t('detail.wanModal.bindingsReadOnly')}
               </p>
             )}
             <div className="space-y-4">
               {/* LAN */}
               <div>
-                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">LAN Ports</p>
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">{t('detail.wan.lanPorts')}</p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {([1, 2, 3, 4] as const).map(i => (
                     <label key={`lan-${i}`} className="flex items-center space-x-2 p-2 border dark:border-gray-700 rounded-md">
@@ -357,7 +385,7 @@ function EditWanModal({
               </div>
               {/* WiFi */}
               <div>
-                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">WiFi Networks</p>
+                <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">{t('detail.wan.wifiNetworks')}</p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {([1, 2, 3, 4, 5, 6, 7, 8] as const).map(i => (
                     <label key={`ssid-${i}`} className="flex items-center space-x-2 p-2 border dark:border-gray-700 rounded-md">
@@ -379,18 +407,18 @@ function EditWanModal({
         </div>
 
         {/* Footer Modal (Tombol Save) */}
-        <div className="flex items-center justify-end p-5 space-x-3 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex flex-wrap items-center justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={onClose}
             className="modern-button-secondary"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleSaveClick}
             className="modern-button"
           >
-            Save Changes
+            {t('detail.wanModal.save')}
           </button>
         </div>
       </div>
@@ -411,6 +439,7 @@ function EditCredentialModal({
   username: string;
   onSave: (type: 'super' | 'user', password: string) => void;
 }) {
+  const { t } = useTranslation();
   const [password, setPassword] = useState('');
 
   const handleSaveClick = () => {
@@ -420,21 +449,21 @@ function EditCredentialModal({
     }
   };
 
-  const title = credentialType === 'super' ? 'Superadmin (ISP)' : 'Useradmin (Client)';
+  const title = credentialType === 'super' ? t('detail.credentials.superadmin') : t('detail.credentials.useradmin');
 
   if (!isOpen || !credentialType) return null;
 
   return (
-    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="credential-dialog-title">
-      <div className="modern-card w-full max-w-md">
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="credential-dialog-title">
+      <div className="modal-panel modern-card flex max-w-md flex-col">
         {/* Header Modal */}
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
           <h3 id="credential-dialog-title" className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            Update {title}
+            {t('detail.credentials.title', { target: title })}
           </h3>
           <button
             onClick={onClose}
-            className="p-1 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
+            className="p-2 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -443,42 +472,215 @@ function EditCredentialModal({
         </div>
 
         {/* Form Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto">
            <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Username</label>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.credentials.username')}</label>
             <input
               type="text"
-              value={username || 'N/A'}
+              value={username || t('common.na')}
               readOnly
               className="modern-input w-full bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
             />
           </div>
            <div>
-            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">New Password</label>
+            <label className="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">{t('detail.credentials.newPassword')}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter new password"
+              placeholder={t('detail.credentials.newPasswordPlaceholder')}
               className="modern-input w-full font-mono"
             />
           </div>
         </div>
 
         {/* Footer Modal */}
-        <div className="flex items-center justify-end p-5 space-x-3 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex flex-wrap items-center justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={onClose}
             className="modern-button-secondary"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             onClick={handleSaveClick}
             disabled={!password}
             className="modern-button"
           >
-            Save Password
+            {t('detail.credentials.save')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * O texto de cada ação sem volta que o diálogo abaixo confirma. A série e a
+ * senha são pedidas do mesmo jeito nas duas, então esses rótulos são um só.
+ */
+const IRREVERSIBLE_TEXTS = {
+  factoryReset: {
+    title: 'detail.factoryReset.title',
+    consequence: 'detail.factoryReset.consequence',
+    confirm: 'detail.factoryReset.confirm',
+    sending: 'detail.factoryReset.sending',
+    failed: 'detail.factoryReset.failed'
+  },
+  remove: {
+    title: 'detail.remove.title',
+    consequence: 'detail.remove.consequence',
+    confirm: 'detail.remove.confirm',
+    sending: 'detail.remove.sending',
+    failed: 'detail.remove.failed'
+  }
+} satisfies Record<string, Record<string, TranslationKey>>
+
+type IrreversibleAction = keyof typeof IRREVERSIBLE_TEXTS
+
+/**
+ * As ações que não têm volta: o reset de fábrica e a remoção do GenieACS.
+ *
+ * Pede o número de série digitado, e não um "tem certeza?": a tela pode ter
+ * ficado aberta noutro aparelho, e o que se quer impedir é o clique no aparelho
+ * errado — um "OK" passa por reflexo, digitar a série do aparelho não.
+ */
+function IrreversibleActionModal({
+  action,
+  isOpen,
+  onClose,
+  deviceId,
+  serial,
+  lastInform,
+  provisioningAvailable,
+  onDone
+}: {
+  action: IrreversibleAction | null;
+  isOpen: boolean;
+  onClose: () => void;
+  deviceId: string;
+  serial: string | null;
+  lastInform: string | null;
+  provisioningAvailable: boolean;
+  onDone: (action: IrreversibleAction) => void;
+}) {
+  const { t } = useTranslation()
+  const toast = useToast()
+  const [typed, setTyped] = useState('')
+  const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
+  const [sending, setSending] = useState(false)
+
+  // A senha nunca sobrevive ao diálogo: fechou, apagou.
+  useEffect(() => {
+    if (isOpen) {
+      setTyped('')
+      setPassword('')
+      setPasswordConfirm('')
+    }
+  }, [isOpen])
+
+  if (!isOpen || !action) return null
+
+  const texts = IRREVERSIBLE_TEXTS[action]
+  const alvo = serial || deviceId
+  const confere = serialMatches(typed, serial, deviceId)
+  // A senha duas vezes: o servidor confere as duas e que é a do operador; aqui
+  // só se evita mandar um par que já se sabe diferente.
+  const senhasDiferentes = passwordConfirm.length > 0 && password !== passwordConfirm
+  const podeEnviar = confere && password.length > 0 && password === passwordConfirm
+
+  const enviar = async () => {
+    if (!podeEnviar) return
+    setSending(true)
+    try {
+      const res = action === 'remove'
+        ? await devicesAPI.deleteDevice(deviceId, typed, password, passwordConfirm)
+        : await devicesAPI.factoryResetDevice(deviceId, typed, password, passwordConfirm)
+      if (res.success) {
+        toast.success(res.message || t(texts.title))
+        onDone(action)
+      } else {
+        toast.error(res.message || t(texts.failed))
+      }
+    } catch (error) {
+      toast.error(error instanceof Error && error.message ? error.message : t(texts.failed))
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="factory-reset-title">
+      <div className="modal-panel modern-card flex max-w-md flex-col">
+        <div className="flex items-center gap-2 border-b border-border p-5">
+          <Icon name="warning" size={20} className="shrink-0 text-[hsl(var(--status-danger))]" />
+          <h3 id="factory-reset-title" className="text-lg font-semibold text-foreground">{t(texts.title)}</h3>
+        </div>
+        <div className="space-y-3 overflow-y-auto p-5 text-sm leading-6">
+          <p className="text-foreground">{t(texts.consequence)}</p>
+          {action === 'remove' && informedRecently(lastInform) && (
+            <p className="rounded-md border border-[hsl(var(--status-warning))]/50 bg-[hsl(var(--status-warning))]/10 px-3 py-2 text-[hsl(var(--status-warning))]">
+              {t('detail.remove.onlineWarning')}
+            </p>
+          )}
+          {action === 'factoryReset' && provisioningAvailable && (
+            <p className="text-muted-foreground">{t('detail.factoryReset.provisionHint')}</p>
+          )}
+          <label htmlFor="factory-reset-serial" className="field-label mb-3 pt-1 wrap-anywhere">
+            {t('detail.factoryReset.typeSerial', { serial: alvo })}
+          </label>
+          <input
+            id="factory-reset-serial"
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            className="modern-input w-full font-mono"
+            value={typed}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+          <label htmlFor="factory-reset-password" className="field-label pt-1">
+            {t('detail.factoryReset.password')}
+          </label>
+          <input
+            id="factory-reset-password"
+            type="password"
+            autoComplete="current-password"
+            className="modern-input w-full"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <label htmlFor="factory-reset-password-confirm" className="field-label pt-1">
+            {t('detail.factoryReset.passwordConfirm')}
+          </label>
+          <input
+            id="factory-reset-password-confirm"
+            type="password"
+            autoComplete="current-password"
+            className="modern-input w-full"
+            aria-invalid={senhasDiferentes}
+            aria-describedby={senhasDiferentes ? 'factory-reset-password-mismatch' : undefined}
+            value={passwordConfirm}
+            onChange={(event) => setPasswordConfirm(event.target.value)}
+          />
+          {senhasDiferentes && (
+            <p id="factory-reset-password-mismatch" className="text-xs text-[hsl(var(--status-danger))]">
+              {t('detail.factoryReset.passwordMismatch')}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border p-5">
+          <button type="button" className="modern-button-secondary" onClick={onClose} disabled={sending}>
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            className="modern-button-danger"
+            disabled={!podeEnviar || sending}
+            onClick={() => void enviar()}
+          >
+            <Icon name="warning" size={16} />
+            {sending ? t(texts.sending) : t(texts.confirm)}
           </button>
         </div>
       </div>
@@ -497,6 +699,7 @@ function EditWifiModal({
   onSave: (form: WifiFormState) => void;
   saving: boolean;
 }) {
+  const { t } = useTranslation()
   const [form, setForm] = useState<WifiFormState>({
     enable: true,
     ssid: '',
@@ -519,42 +722,42 @@ function EditWifiModal({
   if (!wifi) return null
 
   return (
-    <div className="fixed inset-0 z-[2100] flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="wifi-dialog-title">
-      <div className="modern-card flex max-h-[92vh] w-full max-w-lg flex-col">
-        <div className="flex items-start justify-between border-b border-border p-5">
-          <div>
-            <h3 id="wifi-dialog-title" className="section-heading">Edit WiFi SSID {wifi.index}</h3>
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="wifi-dialog-title">
+      <div className="modal-panel modern-card flex max-w-lg flex-col">
+        <div className="flex items-start justify-between gap-3 border-b border-border p-5">
+          <div className="min-w-0">
+            <h3 id="wifi-dialog-title" className="section-heading">{t('detail.wifiModal.title', { index: wifi.index })}</h3>
             <p className="section-description mt-1">
-              {wifi.usesVirtualParameters ? 'Using genieacs-installer virtual parameters.' : 'Using the device TR-098 WLAN path.'}
+              {wifi.usesVirtualParameters ? t('detail.wifiModal.vpNote') : t('detail.wifiModal.tr098Note')}
             </p>
           </div>
-          <button type="button" onClick={onClose} className="icon-button" aria-label="Close WiFi editor">
+          <button type="button" onClick={onClose} className="icon-button shrink-0" aria-label={t('detail.wifiModal.close')}>
             <Icon name="x" size={19} />
           </button>
         </div>
         <div className="space-y-4 overflow-y-auto p-5">
           <label className="flex min-h-11 items-center justify-between gap-4 rounded-md border border-border bg-[hsl(var(--surface-subtle))] px-4">
             <span>
-              <span className="block text-sm font-semibold">Radio enabled</span>
-              <span className="block text-xs text-muted-foreground">Applied only when the CPE exposes the Enable parameter.</span>
+              <span className="block text-sm font-semibold">{t('detail.wifiModal.radioEnabled')}</span>
+              <span className="block text-xs text-muted-foreground">{t('detail.wifiModal.radioHint')}</span>
             </span>
             <input type="checkbox" checked={form.enable} onChange={(event) => setForm((current) => ({ ...current, enable: event.target.checked }))} />
           </label>
           <div>
-            <label htmlFor="wifi-ssid" className="field-label">Network name (SSID)</label>
+            <label htmlFor="wifi-ssid" className="field-label">{t('detail.wifiModal.ssidLabel')}</label>
             <input id="wifi-ssid" className="modern-input w-full" maxLength={32} value={form.ssid}
               onChange={(event) => setForm((current) => ({ ...current, ssid: event.target.value }))} />
-            <p className="field-hint">{form.ssid.length}/32 characters</p>
+            <p className="field-hint">{t('detail.wifiModal.ssidCount', { count: form.ssid.length })}</p>
           </div>
           <div>
-            <label htmlFor="wifi-password" className="field-label">New password</label>
+            <label htmlFor="wifi-password" className="field-label">{t('detail.wifiModal.newPassword')}</label>
             <input id="wifi-password" type="password" className="modern-input w-full font-mono" minLength={8} maxLength={63}
-              value={form.password} placeholder="Leave blank to keep the existing password"
+              value={form.password} placeholder={t('detail.wifiModal.passwordPlaceholder')}
               onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
-            <p className="field-hint">WPA/WPA2 passphrases require 8–63 characters.</p>
+            <p className="field-hint">{t('detail.wifiModal.passwordHint')}</p>
           </div>
           <div>
-            <label htmlFor="wifi-security" className="field-label">Beacon/security type</label>
+            <label htmlFor="wifi-security" className="field-label">{t('detail.wifiModal.securityLabel')}</label>
             <input id="wifi-security" className="modern-input w-full" list="wifi-security-options" value={form.security}
               onChange={(event) => setForm((current) => ({ ...current, security: event.target.value }))} />
             <datalist id="wifi-security-options">
@@ -564,22 +767,24 @@ function EditWifiModal({
               <option value="11i" />
               <option value="WPAand11i" />
             </datalist>
-            <p className="field-hint">The exact accepted value depends on the CPE firmware.</p>
+            <p className="field-hint">{t('detail.wifiModal.securityHint')}</p>
           </div>
           <div>
-            <label htmlFor="wifi-channel" className="field-label">Channel</label>
+            <label htmlFor="wifi-channel" className="field-label">{t('detail.wifiModal.channel')}</label>
             <input id="wifi-channel" type="number" min={0} max={196} className="modern-input w-full"
-              value={form.channel} placeholder="0 for automatic when supported"
+              value={form.channel} placeholder={t('detail.wifiModal.channelPlaceholder')}
               onChange={(event) => setForm((current) => ({ ...current, channel: event.target.value }))} />
           </div>
           <div className="rounded-md border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.08)] p-4 text-sm">
-            Updating the SSID, password, or security mode can disconnect every client currently using this network.
+            {t('detail.wifiModal.warning')}
           </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-border p-5">
-          <button type="button" onClick={onClose} className="modern-button-secondary" disabled={saving}>Cancel</button>
+        {/* No celular "Aplicar alterações de WiFi" não cabe ao lado do Cancelar:
+            empilha, com a ação principal em cima. */}
+        <div className="flex flex-col-reverse gap-2 border-t border-border p-5 sm:flex-row sm:flex-wrap sm:justify-end">
+          <button type="button" onClick={onClose} className="modern-button-secondary" disabled={saving}>{t('common.cancel')}</button>
           <button type="button" onClick={() => onSave(form)} className="modern-button" disabled={saving || !form.ssid.trim()}>
-            {saving ? 'Queuing task…' : 'Apply WiFi changes'}
+            {saving ? t('detail.wifiModal.queuing') : t('detail.wifiModal.apply')}
           </button>
         </div>
       </div>
@@ -593,10 +798,25 @@ export default function DeviceDetailPage() {
   const [searchParams] = useSearchParams()
   const deviceId = searchParams.get('id') || ''
   const [device, setDevice] = useState<ProcessedDeviceDetail | null>(null)
+  // A frase do 503 `acs_agent_offline`, quando é por isso que não há equipamento.
+  const [agentOffline, setAgentOffline] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('overview')
   const [rebooting, setRebooting] = useState(false)
-  const { user } = useAuth()
+  const [irreversibleAction, setIrreversibleAction] = useState<IrreversibleAction | null>(null)
+  const { can, user } = useAuth()
+  // Revelar a senha do portal é `customers.secrets`, e mexer no CPE é
+  // `devices.write` — capacidades distintas na matriz porque quem reinicia uma
+  // ONT não precisa, por consequência, ler o segredo de um assinante. As duas
+  // estavam sob `role === 'admin'`, que fechava para o plantão o próprio
+  // trabalho dele.
+  const canReadSecrets = can('customers.secrets')
+  const canWriteDevice = can('devices.write')
+  const canOpenContact = can('contacts.read')
+  // O que não tem volta é do admin: o plantão reinicia, mas não apaga a
+  // configuração do cliente.
+  const canMaintainDevice = can('devices.maintain')
+  const { t, formatDateTime, formatDate: formatDay, intlLocale } = useTranslation()
   const toast = useToast()
   const loadingCtl = useLoading()
   const [isWanModalOpen, setIsWanModalOpen] = useState(false)
@@ -604,12 +824,32 @@ export default function DeviceDetailPage() {
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
   const [credentialType, setCredentialType] = useState<'super' | 'user' | null>(null);
   const [editingWifi, setEditingWifi] = useState<WifiNetwork | null>(null)
+  // `null` = ninguém escolheu ainda nesta visita à aba: vale o padrão
+  // (Ativas, ou Todas quando não há rede ativa). Volta a `null` a cada
+  // entrada na aba WiFi.
+  const [wifiFilterChoice, setWifiFilterChoice] = useState<WifiStatusFilter | null>(null)
   const [savingWifi, setSavingWifi] = useState(false)
   const [installationDate, setInstallationDate] = useState('')
   const [savingInstallationDate, setSavingInstallationDate] = useState(false)
+  const [portalPassword, setPortalPassword] = useState<string | null>(null)
+  const [portalPasswordBusy, setPortalPasswordBusy] = useState(false)
   const [wanContainer, setWanContainer] = useState('')
   const [newWanType, setNewWanType] = useState<'ppp' | 'ip'>('ppp')
   const [addingWan, setAddingWan] = useState(false)
+  const [sgpLink, setSgpLink] = useState<SgpContractLink | null>(null)
+  const [sgpInvoices, setSgpInvoices] = useState<SgpInvoice[]>([])
+  const [invoiceFilter, setInvoiceFilter] = useStoredChoice<InvoiceStatusFilter>('deviceDetail.invoiceFilter', parseInvoiceStatusFilter)
+  const [sgpLoading, setSgpLoading] = useState(false)
+  const [sgpMessage, setSgpMessage] = useState<string | null>(null)
+  const [sgpAvailable, setSgpAvailable] = useState(false)
+  const [sgpContractInput, setSgpContractInput] = useState('')
+  const [sgpUnlocking, setSgpUnlocking] = useState(false)
+  const [sgpTicketEnabled, setSgpTicketEnabled] = useState(false)
+  const [sgpUrl, setSgpUrl] = useState<string | null>(null)
+  const [openingWhatsApp, setOpeningWhatsApp] = useState(false)
+  const [ticketOpen, setTicketOpen] = useState(false)
+  const [ticketText, setTicketText] = useState('')
+  const [ticketSending, setTicketSending] = useState(false)
 
 
   const handleOpenEditModal = (wan: WanConnection) => {
@@ -622,22 +862,58 @@ export default function DeviceDetailPage() {
     setEditingWan(null);
   }
 
+  // Declarado antes dos handlers que o chamam, e não depois deles: ver a
+  // regra `no-use-before-define` no eslint.config.
+  const fetchDeviceDetails = useCallback(async (isRefresh = false) => {
+    if (!isRefresh) {
+      setLoading(true);
+    }
+
+    try {
+      if (!deviceId) {
+        setDevice(null)
+        return
+      }
+      const res = await devicesAPI.getDevice(deviceId)
+      if (res.success && res.data) {
+        const nextDevice = res.data as ProcessedDeviceDetail
+        setAgentOffline(null)
+        setDevice(nextDevice)
+        setInstallationDate(nextDevice.customer?.installationDate || '')
+        setWanContainer((current) => current || nextDevice.wanContainers?.[0]?.path || '')
+      } else {
+        // Agente desconectado não é "equipamento não encontrado": a tela vazia
+        // diz o que houve em vez de mandar a pessoa de volta à lista, que vai
+        // falhar igual. Uma releitura (o `isRefresh` depois de salvar) que cai
+        // aqui também troca a tela — o equipamento na tela já não é o de agora.
+        setAgentOffline(res.code === 'acs_agent_offline' ? (res.message || t('detail.loadFailed')) : null)
+        if (res.code !== 'acs_agent_offline') toast.error(res.message || t('detail.loadFailed'))
+        setDevice(null)
+      }
+    } catch (error) {
+      console.error('Error fetching device details:', error)
+      toast.error(t('detail.networkError'))
+    } finally {
+      setLoading(false);
+    }
+  }, [deviceId, t, toast])
+
   const handleSaveWan = async (formData: WanFormState) => {
     if (!editingWan) return;
     if (formData.vlanEnabled) {
       const vlanId = Number(formData.vlanId)
       if (!Number.isInteger(vlanId) || vlanId < 1 || vlanId > 4094) {
-        toast.error('VLAN ID must be between 1 and 4094')
+        toast.error(t('detail.wan.vlanRange'))
         return
       }
     }
 
-    loadingCtl.show('Saving WAN changes...');
+    loadingCtl.show(t('detail.wan.saving'));
     try {
       const res = await devicesAPI.updateWanConfig(deviceId, editingWan.index, formData);
 
       if (res.success) {
-        toast.success(res.message || 'WAN config updated!');
+        toast.success(res.message || t('detail.wan.updated'));
         handleCloseWanModal();
 
         setTimeout(() => {
@@ -645,10 +921,10 @@ export default function DeviceDetailPage() {
         }, 1500);
 
       } else {
-        toast.error(res.message || 'Failed to update WAN config');
+        toast.error(res.message || t('detail.wan.updateFailed'));
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to save WAN config');
+      toast.error(error.message || t('detail.wan.saveFailed'));
     } finally {
       loadingCtl.hide();
     }
@@ -665,21 +941,21 @@ export default function DeviceDetailPage() {
   }
 
   const handleSaveCredentials = async (type: 'super' | 'user', password: string) => {
-    loadingCtl.show('Updating credentials...');
+    loadingCtl.show(t('detail.credentials.updating'));
     try {
       const res = await devicesAPI.updateCredentials(deviceId, type, password);
 
       if (res.success) {
-        toast.success(res.message || 'Credentials update task queued!');
+        toast.success(res.message || t('detail.credentials.queued'));
         handleCloseCredentialModal();
         setTimeout(() => {
           fetchDeviceDetails(true);
         }, 1500);
       } else {
-        toast.error(res.message || 'Failed to update credentials');
+        toast.error(res.message || t('detail.credentials.failed'));
       }
     } catch (error: any) {
-      toast.error(error.message || 'Failed to update credentials');
+      toast.error(error.message || t('detail.credentials.failed'));
     } finally {
       loadingCtl.hide();
     }
@@ -688,15 +964,15 @@ export default function DeviceDetailPage() {
   const handleSaveWifi = async (formData: WifiFormState) => {
     if (!editingWifi) return
     if (formData.password && (formData.password.length < 8 || formData.password.length > 63)) {
-      toast.error('WiFi password must contain 8 to 63 characters')
+      toast.error(t('detail.wifiModal.passwordLength'))
       return
     }
     setSavingWifi(true)
-    loadingCtl.show(`Queuing WiFi SSID ${editingWifi.index} update…`)
+    loadingCtl.show(t('detail.wifiModal.queuingProgress', { index: editingWifi.index }))
     try {
       const res = await devicesAPI.updateWifiConfig(deviceId, editingWifi.index, formData)
       if (!res.success) {
-        toast.error(res.message || 'Failed to update WiFi configuration')
+        toast.error(res.message || t('detail.wifiModal.updateFailed'))
         return
       }
       setDevice((current) => current ? {
@@ -709,88 +985,233 @@ export default function DeviceDetailPage() {
           channel: formData.channel === '' ? network.channel : Number(formData.channel)
         } : network)
       } : current)
-      toast.success(res.message || 'WiFi update task queued')
+      toast.success(res.message || t('detail.wifiModal.updateQueued'))
       setEditingWifi(null)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update WiFi configuration')
+      toast.error(error instanceof Error ? error.message : t('detail.wifiModal.updateFailed'))
     } finally {
       setSavingWifi(false)
       loadingCtl.hide()
     }
   }
 
-  const fetchDeviceDetails = useCallback(async (isRefresh = false) => {
-    if (!isRefresh) {
-      setLoading(true);
-    }
 
+  // An SGP due date is a plain YYYY-MM-DD; anchor it to local midnight so the
+  // reader's locale, not UTC, decides the displayed day.
+  const invoiceDueDate = (value: string | null) => (value ? formatDay(value) : '—')
+
+  /* O selo de situação, calculado uma vez e usado nos dois lugares que o
+     mostram: a faixa do topo e o bloco do SGP. Aguenta `sgpLink` nulo, então
+     não precisa de guarda em volta. */
+  const selo = sgpBadge(sgpLink)
+
+  const loadSgpData = useCallback(async (refresh = false) => {
+    if (!deviceId) return
+    setSgpLoading(true)
+    setSgpMessage(null)
     try {
-      if (!deviceId) {
-        setDevice(null)
+      const res = await sgpAPI.getDeviceIntegration(deviceId, { refresh })
+      if (res.success && res.data) {
+        setSgpAvailable(true)
+        setSgpLink(res.data.link)
+        setSgpInvoices(res.data.invoices || [])
+        setSgpMessage(res.data.invoiceError)
+        setSgpTicketEnabled(res.data.ticketEnabled === true)
+        setSgpUrl(res.data.sgpUrl ?? null)
         return
       }
-      const res = await devicesAPI.getDevice(deviceId)
-      if (res.success && res.data) {
-        const nextDevice = res.data as ProcessedDeviceDetail
-        setDevice(nextDevice)
-        setInstallationDate(nextDevice.customer?.installationDate || '')
-        setWanContainer((current) => current || nextDevice.wanContainers?.[0]?.path || '')
-      } else {
-        toast.error(res.message || 'Failed to load device details')
-        setDevice(null)
-      }
-    } catch (error) {
-      console.error('Error fetching device details:', error)
-      toast.error('Network error fetching device details')
+      setSgpLink(null)
+      setSgpUrl(null)
+      setSgpInvoices([])
+      // The card stays hidden while the integration is switched off.
+      setSgpAvailable(res.code !== 'not_configured')
+      setSgpMessage(res.message || t('detail.sgp.queryFailed'))
     } finally {
-      setLoading(false);
+      setSgpLoading(false)
     }
-  }, [deviceId, toast])
+  }, [deviceId, t])
+
+  useEffect(() => {
+    void loadSgpData(false)
+  }, [loadSgpData])
+
+  const handleSgpLink = async () => {
+    const contract = sgpContractInput.trim()
+    if (!contract) {
+      toast.error(t('detail.sgp.linkRequired'))
+      return
+    }
+    setSgpLoading(true)
+    try {
+      const res = await sgpAPI.linkDevice(deviceId, { contract })
+      if (!res.success) {
+        toast.error(res.message || t('detail.sgp.linkFailed'))
+        return
+      }
+      toast.success(res.message || t('detail.sgp.linked'))
+      setSgpContractInput('')
+      await loadSgpData(false)
+    } finally {
+      setSgpLoading(false)
+    }
+  }
+
+  const handleSgpUnlink = async () => {
+    if (!confirm(t('detail.sgp.unlinkConfirm'))) return
+    const res = await sgpAPI.unlinkDevice(deviceId)
+    if (!res.success) {
+      toast.error(res.message || t('detail.sgp.unlinkFailed'))
+      return
+    }
+    setSgpLink(null)
+    setSgpInvoices([])
+    setSgpMessage(null)
+    toast.success(res.message || t('detail.sgp.unlinked'))
+  }
+
+  const handleSgpUnlock = async () => {
+    if (!confirm(t('detail.sgp.unlockConfirm'))) return
+    setSgpUnlocking(true)
+    try {
+      const res = await sgpAPI.requestTrustUnlock(deviceId)
+      toast[res.success ? 'success' : 'error'](res.message || t('detail.sgp.unlockSent'))
+    } finally {
+      setSgpUnlocking(false)
+    }
+  }
+
+  /**
+   * O formulário do chamado, para o botão do TOPO poder levar até ele.
+   *
+   * Ele mora dentro do bloco do SGP, lá embaixo. Sem isto, clicar em "Abrir
+   * chamado" no cabeçalho abriria um campo de texto fora da tela e a impressão
+   * seria a de um botão que não faz nada.
+   */
+  const ticketFormRef = useRef<HTMLDivElement | null>(null)
+
+  /* `nearest` e não `center`: quem clicou no botão do bloco já está olhando
+     para o formulário, e ali isto não rola nada. Quem clicou no do cabeçalho é
+     levado até ele. A mesma chamada serve aos dois sem saber de qual veio. */
+  useEffect(() => {
+    if (ticketOpen) {
+      ticketFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [ticketOpen])
+
+  const handleOpenTicket = async () => {
+    const content = ticketText.trim()
+    if (!content) {
+      toast.error(t('detail.sgp.ticketContentRequired'))
+      return
+    }
+    setTicketSending(true)
+    try {
+      const res = await sgpAPI.openTicket(deviceId, { content })
+      if (!res.success) {
+        toast.error(res.message || t('detail.sgp.ticketFailed'))
+        return
+      }
+      // The protocol number is what the subscriber will quote back, so it is
+      // shown rather than a bare "done".
+      toast.success(res.data?.ticket
+        ? t('detail.sgp.ticketOpenedWithNumber', { number: res.data.ticket })
+        : res.message || t('detail.sgp.ticketOpened'))
+      setTicketOpen(false)
+      setTicketText('')
+    } finally {
+      setTicketSending(false)
+    }
+  }
 
   const handleSaveInstallationDate = async () => {
     if (!installationDate) {
-      toast.error('Select an installation date first')
+      toast.error(t('detail.customer.selectDate'))
       return
     }
     setSavingInstallationDate(true)
     try {
       const res = await devicesAPI.updateInstallationDate(deviceId, installationDate)
       if (!res.success) {
-        toast.error(res.message || 'Failed to save installation date')
+        toast.error(res.message || t('detail.customer.dateSaveFailed'))
         return
       }
       const result = res.data as { customerId?: string | null; installationDate?: string }
       setDevice((current) => current ? {
         ...current,
         customer: {
+          ...current.customer,
           customerId: result.customerId ?? current.customer?.customerId ?? null,
           installationDate: result.installationDate || installationDate,
           generated: Boolean(result.customerId ?? current.customer?.customerId)
         }
       } : current)
-      toast.success(res.message || 'Installation date saved')
+      toast.success(res.message || t('detail.customer.dateSaved'))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to save installation date')
+      toast.error(error instanceof Error ? error.message : t('detail.customer.dateSaveFailed'))
     } finally {
       setSavingInstallationDate(false)
     }
   }
 
+  const handleRevealPortalPassword = async () => {
+    setPortalPasswordBusy(true)
+    try {
+      const res = await devicesAPI.getPortalPassword(deviceId)
+      if (!res.success || !res.data) {
+        toast.error(res.message || t('detail.portalPassword.readFailed'))
+        return
+      }
+      setPortalPassword(res.data.password)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('detail.portalPassword.readFailed'))
+    } finally {
+      setPortalPasswordBusy(false)
+    }
+  }
+
+  const handleResetPortalPassword = async () => {
+    if (!window.confirm(t('detail.portalPassword.confirmReset'))) {
+      return
+    }
+    setPortalPasswordBusy(true)
+    try {
+      const res = await devicesAPI.resetPortalPassword(deviceId)
+      if (!res.success || !res.data) {
+        toast.error(res.message || t('detail.portalPassword.resetFailed'))
+        return
+      }
+      setPortalPassword(res.data.password)
+      setDevice((current) => current ? {
+        ...current,
+        customer: {
+          ...current.customer,
+          portalPasswordSet: true,
+          portalPasswordUpdatedAt: new Date().toISOString()
+        }
+      } : current)
+      toast.success(t('detail.portalPassword.reset'))
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('detail.portalPassword.resetFailed'))
+    } finally {
+      setPortalPasswordBusy(false)
+    }
+  }
+
   const handleAddWan = async () => {
     if (!wanContainer) {
-      toast.error('This device did not report a WAN connection container')
+      toast.error(t('detail.wan.containerMissing'))
       return
     }
     setAddingWan(true)
     try {
       const res = await devicesAPI.addWanConnection(deviceId, wanContainer, newWanType)
       if (!res.success) {
-        toast.error(res.message || 'Failed to add WAN connection')
+        toast.error(res.message || t('detail.wan.addFailed'))
         return
       }
-      toast.success(res.message || 'WAN creation task queued')
+      toast.success(res.message || t('detail.wan.addQueued'))
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to add WAN connection')
+      toast.error(error instanceof Error ? error.message : t('detail.wan.addFailed'))
     } finally {
       setAddingWan(false)
     }
@@ -801,20 +1222,20 @@ export default function DeviceDetailPage() {
   }, [fetchDeviceDetails]);
 
   const handleReboot = async () => {
-    if (!window.confirm(`Reboot ${device?._id || deviceId}?\n\nThe subscriber connection may be unavailable while the device restarts. Existing configuration is preserved.`)) {
+    if (!window.confirm(t('detail.rebootConfirm', { device: device?._id || deviceId }))) {
       return
     }
     setRebooting(true)
-    loadingCtl.show('Sending reboot command...')
+    loadingCtl.show(t('detail.rebootSending'))
     try {
       const res = await devicesAPI.rebootDevice(deviceId)
       if (res.success) {
-        toast.success('Device reboot command sent successfully!')
+        toast.success(t('detail.rebootSent'))
       } else {
-        toast.error(res.message || 'Failed to send reboot command')
+        toast.error(res.message || t('detail.rebootFailed'))
       }
     } catch {
-      toast.error('Error sending reboot command')
+      toast.error(t('detail.rebootError'))
     } finally {
       setRebooting(false)
       loadingCtl.hide()
@@ -822,93 +1243,63 @@ export default function DeviceDetailPage() {
   }
 
   const handleSummon = async () => {
-    loadingCtl.show('Summoning device...')
+    loadingCtl.show(t('devices.summon.loading'))
     try {
       const res = await devicesAPI.summonDevice(deviceId)
-      if (res.success) {
-        toast.success(res.message || 'Summon command sent!')
+      if (res.success && res.data?.reached === false) {
+        toast.warning(summonDeferredMessage(res.data, t, formatDateTime, res.message || t('devices.summon.success')))
+      } else if (res.success) {
+        toast.success(res.message || t('devices.summon.success'))
       } else {
-        toast.error(res.message || 'Failed to send summon')
+        toast.error(res.message || t('devices.summon.failed'))
       }
     } catch {
-      toast.error('Error sending summon command')
+      toast.error(t('devices.summon.error'))
     } finally {
       loadingCtl.hide()
     }
   }
 
+  // A faixa sai de `lib/rx-signal` — ver `pages/devices.tsx`, que tinha a
+  // mesma cópia.
   const getSignalStrengthInfo = (rxPowerStr: string | number | null | undefined) => {
-    const rxpower = parseFloat(String(rxPowerStr));
-
-    if (isNaN(rxpower)) {
-      return {
-        color: 'text-gray-500 dark:text-gray-400',
-        label: 'N/A',
-        badgeClass: 'modern-badge'
-      };
-    }
-
-    if (rxpower >= -21.99) {
-      return {
-        color: 'text-green-600 dark:text-green-400',
-        label: 'Excellent',
-        badgeClass: 'modern-badge-success'
-      };
-    }
-    if (rxpower >= -24.99) {
-      return {
-        color: 'text-blue-600 dark:text-blue-400',
-        label: 'Good',
-        badgeClass: 'modern-badge-info'
-      };
-    }
-    if (rxpower >= -26.99) {
-      return {
-        color: 'text-yellow-600 dark:text-yellow-400',
-        label: 'Poor',
-        badgeClass: 'modern-badge-warning'
-      };
-    }
-    return {
-      color: 'text-red-600 dark:text-red-400',
-      label: 'Danger',
-      badgeClass: 'modern-badge-error'
-    };
+    const estilo = RX_BAND_STYLE[rxBand(rxPowerStr)]
+    return { color: estilo.color, label: t(estilo.labelKey), badgeClass: estilo.badgeClass }
   }
 
   const getStatusBadge = (status: string | undefined) => {
-    if (!status) return <span className="modern-badge">Unknown</span>
+    if (!status) return <span className="modern-badge">{t('common.unknown')}</span>
 
     if (status.includes(':') || status.includes('Z')) {
        try {
          const lastSeen = new Date(status)
          if (Number.isNaN(lastSeen.getTime())) {
-           return <span className="modern-badge">Invalid Date</span>
+           return <span className="modern-badge">{t('common.invalidDate')}</span>
          }
          const now = new Date()
          const diffMinutes = Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60))
 
          if (diffMinutes < 10) {
-           return <span className="modern-badge-success">Online</span>
+           return <span className="modern-badge-success">{t('detail.status.online')}</span>
          } else if (diffMinutes < 60) {
-           return <span className="modern-badge-warning">Away</span>
+           return <span className="modern-badge-warning">{t('detail.status.away')}</span>
          } else {
-           return <span className="modern-badge-error">Offline</span>
+           return <span className="modern-badge-error">{t('detail.status.offline')}</span>
          }
        } catch {
-          return <span className="modern-badge">Invalid Date</span>
+          return <span className="modern-badge">{t('common.invalidDate')}</span>
        }
     }
 
     switch (status.toLowerCase()) {
       case 'connected':
-        return <span className="modern-badge-success">Connected</span>
+        return <span className="modern-badge-success">{t('detail.status.connected')}</span>
       case 'disconnected':
-        return <span className="modern-badge-error">Disconnected</span>
+        return <span className="modern-badge-error">{t('detail.status.disconnected')}</span>
       case 'connecting':
-        return <span className="modern-badge-warning">Connecting</span>
+        return <span className="modern-badge-warning">{t('detail.status.connecting')}</span>
       case 'idle':
-        return <span className="modern-badge-warning">Idle</span>
+        return <span className="modern-badge-warning">{t('detail.status.idle')}</span>
       default:
         return <span className="modern-badge">{status}</span>
     }
@@ -953,18 +1344,40 @@ export default function DeviceDetailPage() {
     )
   }
 
+  if (!device && agentOffline) {
+    return (
+      <div className="page-shell">
+        <div className="page-frame">
+          <div className="modern-card empty-state" role="alert">
+            <div className="empty-state-icon text-[hsl(var(--status-danger))]"><Icon name="warning" size={22} /></div>
+            <h2 className="empty-state-title">{t('detail.agentOffline.title')}</h2>
+            <p className="empty-state-copy">{agentOffline}</p>
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <button type="button" onClick={() => void fetchDeviceDetails()} className="modern-button">
+                {t('devices.error.retry')}
+              </button>
+              <button type="button" onClick={() => navigate('/devices')} className="modern-button-secondary">
+                {t('detail.notFound.back')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!device) {
     return (
       <div className="page-shell">
         <div className="page-frame">
           <div className="modern-card empty-state">
             <div className="empty-state-icon"><Icon name="server" size={22} /></div>
-            <h2 className="empty-state-title">Device could not be opened</h2>
-            <p className="empty-state-copy">Perangkat mungkin sudah dihapus atau GenieACS tidak mengembalikan detailnya. Kembali ke inventory lalu cari ulang serial perangkat.</p>
+            <h2 className="empty-state-title">{t('detail.notFound.title')}</h2>
+            <p className="empty-state-copy">{t('detail.notFound.copy')}</p>
             <button
               onClick={() => navigate('/devices')} className="modern-button mt-5"
             >
-              Back to inventory
+              {t('detail.notFound.back')}
             </button>
           </div>
         </div>
@@ -976,97 +1389,319 @@ export default function DeviceDetailPage() {
   const deviceInfo = device.deviceInfo || {}
   const primaryWAN = (device.wan && device.wan.length > 0) ? device.wan[0] : null
   const signalInfo = getSignalStrengthInfo(vp.rxpower?.value);
+  const wifiNetworks = device.wifi ?? []
+  const wifiEnabledCount = wifiNetworks.filter((ssid) => ssid.enable === true).length
+  const wifiFilter: WifiStatusFilter = wifiFilterChoice ?? (wifiEnabledCount > 0 ? 'enabled' : 'all')
+  const { visible: filteredWifi, counts: wifiCounts } = filterWifiByStatus(wifiNetworks, wifiFilter, (ssid) => ssid.enable)
+  const { visible: visibleInvoices, counts: invoiceCounts } = filterInvoicesByStatus(sgpInvoices, invoiceFilter)
+
+  /**
+   * Abre (ou fecha) o formulário do chamado. Um só caminho para os dois botões
+   * que o acionam — o do cabeçalho e o do bloco —, senão o texto semeado passa
+   * a depender de por onde se clicou.
+   *
+   * Mora AQUI, depois de `vp`, e não junto do resto dos manipuladores: o texto
+   * semeado lê a potência óptica, que só existe a partir desta linha.
+   */
+  const toggleTicket = () => {
+    // Semeado com a ONT e a leitura óptica do momento: exatamente o que um
+    // chamado aberto por telefone nunca carrega, e o que a equipe de campo
+    // precisa.
+    if (!ticketOpen && !ticketText) {
+      setTicketText(t('detail.sgp.ticketDefaultText', {
+        device: deviceId,
+        rx: vp.rxpower?.value ?? '—'
+      }))
+    }
+    // O formulário mora DENTRO da aba Visão geral. O botão do cabeçalho está
+    // visível nas cinco abas, então sem esta linha clicar nele estando em WiFi
+    // ou em Clientes abriria um campo que não é renderizado — nada na tela, e
+    // a impressão de um botão quebrado.
+    if (!ticketOpen) setActiveTab('overview')
+    setTicketOpen((open) => !open)
+  }
+
+  /**
+   * Opens this subscriber's WhatsApp thread — the one already there, or a new
+   * one on the contract's number — and lands on it in the inbox. The route
+   * refuses a contract with no number on record, and says so.
+   */
+  const openWhatsApp = async () => {
+    if (!sgpLink) return
+    setOpeningWhatsApp(true)
+    try {
+      const res = await whatsappAPI.openContactConversation(sgpLink.contract)
+      if (!res.success || !res.data) {
+        toast.error(res.message || t('api.requestFailed'))
+        return
+      }
+      navigate('/whatsapp', { state: { conversation: res.data, owner: sessionOwner(user) } })
+    } catch {
+      toast.error(t('api.requestFailed'))
+    } finally {
+      setOpeningWhatsApp(false)
+    }
+  }
+
+  // Os botões do topo, cada um só quando o perfil e o contrato o permitem.
+  const contractActions = Boolean(sgpAvailable && sgpLink)
+  // O login PPPoE que o equipamento reporta: é o elo entre ele e o ponto do mapa.
+  const devicePppoe = device?.wan?.find((connection) => String(connection.username ?? '').trim())?.username?.trim() || ''
+  const headerActions: Array<{ key: string; label: string; render: () => ReactNode }> = [
+    {
+      key: 'reboot',
+      label: t('detail.reboot'),
+      render: () => (
+        <button key="reboot" onClick={handleReboot} disabled={rebooting} className="modern-button-secondary">
+          <Icon name="power" size={17} />
+          {rebooting ? t('detail.rebooting') : t('detail.reboot')}
+        </button>
+      )
+    },
+    ...(canMaintainDevice ? [{
+      key: 'factoryReset',
+      label: t('detail.factoryReset.button'),
+      render: () => (
+        <button
+          key="factoryReset"
+          type="button"
+          onClick={() => setIrreversibleAction('factoryReset')}
+          className="modern-button-secondary text-[hsl(var(--status-danger))]"
+        >
+          <Icon name="warning" size={17} />
+          {t('detail.factoryReset.button')}
+        </button>
+      )
+    }, {
+      key: 'remove',
+      label: t('detail.remove.button'),
+      render: () => (
+        <button
+          key="remove"
+          type="button"
+          onClick={() => setIrreversibleAction('remove')}
+          className="modern-button-secondary text-[hsl(var(--status-danger))]"
+        >
+          <Icon name="trash" size={17} />
+          {t('detail.remove.button')}
+        </button>
+      )
+    }] : []),
+    {
+      key: 'summon',
+      label: t('detail.requestInform'),
+      render: () => (
+        <button
+          key="summon"
+          onClick={handleSummon}
+          className="modern-button inline-flex items-center gap-1.5"
+          title={t('detail.summonTitle')}
+        >
+          <Icon name="bell" size={16} /> {t('detail.requestInform')}
+        </button>
+      )
+    },
+    ...(contractActions ? [{
+      key: 'unlock',
+      label: t('detail.sgp.unlock'),
+      render: () => (
+        <button
+          key="unlock"
+          type="button"
+          className="modern-button-secondary"
+          disabled={sgpUnlocking}
+          onClick={() => void handleSgpUnlock()}
+        >
+          <Icon name="unlock" size={16} />
+          {sgpUnlocking ? t('detail.sgp.unlocking') : t('detail.sgp.unlock')}
+        </button>
+      )
+    }] : []),
+    ...(contractActions && sgpTicketEnabled ? [{
+      key: 'ticket',
+      label: t('detail.sgp.ticket'),
+      render: () => (
+        <button key="ticket" type="button" className="modern-button-secondary" onClick={toggleTicket}>
+          <Icon name="chat" size={16} />
+          {t('detail.sgp.ticket')}
+        </button>
+      )
+    }] : []),
+    ...(contractActions && isSafeExternalUrl(sgpUrl) ? [{
+      key: 'openSgp',
+      label: t('detail.sgp.openSgp'),
+      render: () => (
+        <a
+          key="openSgp"
+          className="modern-button-secondary"
+          href={sgpUrl ?? undefined}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <Icon name="external" size={16} />
+          {t('detail.sgp.openSgp')}
+        </a>
+      )
+    }] : []),
+    // Leva ao mapa com o login deste equipamento: se ele já tem ponto, o mapa
+    // abre o ponto; se não, o diálogo de colocá-lo (quem pode editar o mapa).
+    ...(devicePppoe && can('map.read') ? [{
+      key: 'placeOnMap',
+      label: t('detail.placeOnMap'),
+      render: () => (
+        <button
+          key="placeOnMap"
+          type="button"
+          className="modern-button-secondary"
+          onClick={() => navigate(`/network-map?place=${encodeURIComponent(devicePppoe)}&device=${encodeURIComponent(device?._id ?? '')}`)}
+        >
+          <Icon name="map" size={16} />
+          {t('detail.placeOnMap')}
+        </button>
+      )
+    }] : []),
+    ...(contractActions && can('whatsapp.send') ? [{
+      key: 'whatsapp',
+      label: t('detail.sgp.openWhatsapp'),
+      render: () => (
+        <button
+          key="whatsapp"
+          type="button"
+          className="modern-button-secondary"
+          disabled={openingWhatsApp}
+          onClick={() => void openWhatsApp()}
+        >
+          <Icon name="phone" size={16} />
+          {t('detail.sgp.openWhatsapp')}
+        </button>
+      )
+    }] : [])
+  ].sort((a, b) => a.label.localeCompare(b.label, intlLocale, { sensitivity: 'base' }))
 
   return (
     <div className="page-shell">
       <div className="page-frame">
-        <header className="page-header">
-          <div>
+        {/* Entre sm e lg a fileira de botões espremia o título numa coluna
+            estreita: ali o cabeçalho continua empilhado, como no celular. */}
+        <header className="page-header sm:flex-col sm:items-stretch lg:flex-row lg:items-end">
+          <div className="min-w-0">
             <div className="mb-3">
               <button
                 onClick={() => navigate('/devices')}
                 className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
               >
-                <Icon name="back" size={17} /> Device inventory
+                <Icon name="back" size={17} /> {t('detail.back')}
               </button>
             </div>
-            <p className="page-kicker">Managed endpoint</p>
+            <p className="page-kicker">{t('detail.kicker')}</p>
             <h1 className="page-title break-all">
               {deviceInfo.serialNumber || device._id}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               {getStatusBadge(device._lastInform)}
               <span className="text-xs text-muted-foreground">
-                Last Inform {formatDate(device._lastInform)}
+                {t('detail.lastInform', { time: formatDate(device._lastInform) })}
               </span>
               <span className="max-w-full truncate font-mono text-[0.68rem] text-muted-foreground">{device._id}</span>
               <span className={device.customer?.customerId ? 'modern-badge-info font-mono' : 'modern-badge'}>
-                {device.customer?.customerId || 'Customer ID not generated'}
+                {device.customer?.customerId || t('detail.customerIdMissing')}
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={handleReboot}
-              disabled={rebooting}
-              className="modern-button-secondary"
-            >
-              <Icon name="power" size={17} />
-              {rebooting ? 'Rebooting…' : 'Reboot device'}
-            </button>
-            <button
-              onClick={handleSummon}
-              className="modern-button inline-flex items-center gap-1.5"
-              title="Summon Device"
-            >
-              <Icon name="bell" size={16} /> Request Inform
-            </button>
+          {/* Em ordem alfabética pelo nome traduzido, em qualquer idioma: quem
+              procura um botão lê a fileira, e a ordem não pode depender de quais
+              ações o perfil ou o contrato liberam. Ordena pelo nome FIXO de cada
+              ação, não pelo "…ando" de quando está em andamento, para o botão
+              não pular de lugar no meio do clique.
+
+              As ações do CONTRATO (liberação, chamado, SGP, WhatsApp) repetem as
+              do bloco do SGP: quem está no telefone age antes de rolar a página.
+              Todas secundárias — o verde já é o "Solicitar Inform". */}
+          <div className="grid grid-cols-2 gap-2 text-center sm:flex sm:flex-wrap sm:items-center sm:text-start [&_svg]:shrink-0">
+            {headerActions.map((action) => action.render())}
           </div>
         </header>
 
+        {/* A faixa do cliente.
+            FORA do switch de abas, de propósito: o bloco do SGP mora dentro da
+            Visão geral, então hoje o nome do assinante some ao clicar em WiFi
+            ou em Clientes. Quem está no telefone precisa saber com quem fala em
+            qualquer aba.
+
+            Repete o que o bloco de baixo mostra, e não o substitui: lá ficam as
+            faturas, o chamado e o desvincular. Aqui é só quem é o cliente. */}
+        {sgpAvailable && sgpLink && (
+          <div className="mb-6 rounded-(--radius) border border-border bg-card p-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="min-w-0">
+                <p className="metric-label">{t('detail.sgp.client')}</p>
+                <p className="mt-1 truncate font-semibold" title={sgpLink.clientName || undefined}>
+                  <ClientName link={sgpLink} canOpen={canOpenContact} />
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="metric-label">{t('detail.sgp.contract')}</p>
+                <p className="mt-1 font-mono font-semibold">{sgpLink.contract}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="metric-label">{t('detail.sgp.plan')}</p>
+                <p className="mt-1 truncate font-semibold" title={sgpLink.plan || undefined}>
+                  {sgpLink.plan || '—'}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="metric-label">{t('detail.sgp.status')}</p>
+                <p className="mt-1">
+                  <span className={selo.className}>{selo.text ?? t(selo.fallbackKey)}</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Device Info Cards */}
-        <div className="mb-6 grid grid-cols-2 overflow-hidden rounded-[var(--radius)] border border-border bg-card lg:grid-cols-4">
-          <div className="border-b border-r border-border p-4 lg:border-b-0">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Signal Strength</span>
+        <div className="mb-6 grid grid-cols-2 overflow-hidden rounded-(--radius) border border-border bg-card lg:grid-cols-4">
+          <div className="min-w-0 border-b border-e border-border p-4 lg:border-b-0">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t('detail.metric.signal')}</span>
               <span className={signalInfo.badgeClass}>{signalInfo.label}</span>
             </div>
             <div className={`text-2xl font-bold ${signalInfo.color}`}>
-              {vp.rxpower?.value !== null && vp.rxpower?.value !== undefined ? `${vp.rxpower.value} dBm` : 'N/A'}
+              {vp.rxpower?.value !== null && vp.rxpower?.value !== undefined ? `${vp.rxpower.value} dBm` : t('common.na')}
             </div>
           </div>
-          <div className="border-b border-border p-4 lg:border-b-0 lg:border-r">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Temperature</span>
+          <div className="min-w-0 border-b border-border p-4 lg:border-b-0 lg:border-e">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t('detail.metric.temperature')}</span>
               <Icon name="thermometer" size={20} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {vp.temperature?.value ?? 'N/A'}
+              {vp.temperature?.value ?? t('common.na')}
             </div>
           </div>
-          <div className="border-r border-border p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Devices</span>
+          <div className="min-w-0 border-e border-border p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t('detail.metric.activeDevices')}</span>
               <Icon name="phone" size={20} className="text-gray-400 dark:text-gray-500" />
             </div>
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
               {vp.activedevices?.value || 0}
             </div>
           </div>
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Model</span>
+          <div className="min-w-0 p-4">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{t('detail.metric.model')}</span>
               <Icon name="server" size={20} className="text-gray-400 dark:text-gray-500" />
             </div>
-            <div className="text-lg font-bold text-gray-900 dark:text-gray-100">
-              {deviceInfo.productclass || 'N/A'}
+            <div className="text-lg font-bold text-gray-900 dark:text-gray-100 wrap-anywhere">
+              {deviceInfo.productclass || t('common.na')}
             </div>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="mb-6">
-          <div className="tab-rail" role="tablist" aria-label="Device details">
+          <div className="tab-rail" role="tablist" aria-label={t('detail.tabsAria')}>
             <button
               onClick={() => setActiveTab('overview')}
               className="tab-button"
@@ -1074,7 +1709,7 @@ export default function DeviceDetailPage() {
               role="tab"
               aria-selected={activeTab === 'overview'}
             >
-              Overview
+              {t('detail.tab.overview')}
             </button>
             <button
               onClick={() => setActiveTab('wan')}
@@ -1083,16 +1718,16 @@ export default function DeviceDetailPage() {
               role="tab"
               aria-selected={activeTab === 'wan'}
             >
-              WAN
+              {t('detail.tab.wan')}
             </button>
             <button
-              onClick={() => setActiveTab('wifi')}
+              onClick={() => { setActiveTab('wifi'); setWifiFilterChoice(null) }}
               className="tab-button"
               data-active={activeTab === 'wifi'}
               role="tab"
               aria-selected={activeTab === 'wifi'}
             >
-              WiFi
+              {t('detail.tab.wifi')}
             </button>
             <button
               onClick={() => setActiveTab('clients')}
@@ -1101,7 +1736,7 @@ export default function DeviceDetailPage() {
               role="tab"
               aria-selected={activeTab === 'clients'}
             >
-              Clients ({device.clients?.length || 0})
+              {t('detail.tab.clients', { count: device.clients?.length || 0 })}
             </button>
             <button
               onClick={() => setActiveTab('advanced')}
@@ -1110,7 +1745,7 @@ export default function DeviceDetailPage() {
               role="tab"
               aria-selected={activeTab === 'advanced'}
             >
-              Advanced
+              {t('detail.tab.advanced')}
             </button>
           </div>
         </div>
@@ -1118,55 +1753,104 @@ export default function DeviceDetailPage() {
         {/* Tab Overview */}
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="modern-card p-6">
-              <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Device Information</h2>
+            <div className="modern-card p-5 sm:p-6">
+              <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{t('detail.info.title')}</h2>
               <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Device ID:</span>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.deviceId')}:</span>
                   <span className="font-mono text-sm">{device._id}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Serial Number:</span>
-                  <span className="font-mono text-sm">{deviceInfo.serialNumber || 'N/A'}</span>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.serialNumber')}:</span>
+                  <span className="font-mono text-sm">{deviceInfo.serialNumber || t('common.na')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Manufacturer:</span>
-                  <span>{deviceInfo.manufacturer || 'N/A'}</span>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.manufacturer')}:</span>
+                  <span>{deviceInfo.manufacturer || t('common.na')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Product Class:</span>
-                  <span>{deviceInfo.productclass || 'N/A'}</span>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.productClass')}:</span>
+                  <span>{deviceInfo.productclass || t('common.na')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Hardware Version:</span>
-                  <span>{deviceInfo.hardwareVersion || 'N/A'}</span>
+                {/* O MAC WAN é o que o SGP mostra na sessão PPPoE — é por ele
+                    que se confere, no ERP, qual assinante está neste ONT. */}
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.wanMac')}:</span>
+                  <span className="font-mono text-sm">{deviceInfo.wanMacAddress || t('common.na')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Software Version:</span>
-                  <span>{deviceInfo.softwareVersion || 'N/A'}</span>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.lanMac')}:</span>
+                  <span className="font-mono text-sm">{deviceInfo.lanMacAddress || t('common.na')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Last Boot:</span>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.hardwareVersion')}:</span>
+                  <span>{deviceInfo.hardwareVersion || t('common.na')}</span>
+                </div>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.softwareVersion')}:</span>
+                  <span>{deviceInfo.softwareVersion || t('common.na')}</span>
+                </div>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.lastBoot')}:</span>
                   <span>{formatDate(device._lastBoot)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600 dark:text-gray-400">Last Registered:</span>
+                <div className={KV_ROW}>
+                  <span className="text-gray-600 dark:text-gray-400">{t('detail.info.lastRegistered')}:</span>
                   <span>{formatDate(device._registered)}</span>
                 </div>
               </div>
             </div>
 
             <div className="modern-card p-5 sm:p-6">
-              <p className="page-kicker">Customer access</p>
-              <h2 className="section-heading">Customer ID</h2>
+              <p className="page-kicker">{t('detail.customer.kicker')}</p>
+              <h2 className="section-heading">{t('detail.customer.title')}</h2>
               <p className="mt-3 break-all font-mono text-lg font-bold">
-                {device.customer?.customerId || 'Not generated'}
+                {device.customer?.customerId || t('detail.customer.notGenerated')}
               </p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                This ID is permanent after generation and remains bound to SoftwareID plus PPPoE username.
+                {t('detail.customer.hint')}
               </p>
+              {canReadSecrets && device.customer?.customerId && (
+                <div className="mt-5 border-t border-border pt-4">
+                  <p className="field-label">{t('detail.portalPassword.label')}</p>
+                  {portalPassword ? (
+                    <p className="break-all font-mono text-lg font-bold">{portalPassword}</p>
+                  ) : (
+                    <p className="font-mono text-lg font-bold tracking-widest">••••••••••</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="modern-button-secondary"
+                      disabled={portalPasswordBusy || !device.customer?.portalPasswordSet}
+                      onClick={() => void handleRevealPortalPassword()}
+                    >
+                      {portalPasswordBusy ? t('detail.portalPassword.working') : t('detail.portalPassword.reveal')}
+                    </button>
+                    <button
+                      type="button"
+                      className="modern-button"
+                      disabled={portalPasswordBusy}
+                      onClick={() => void handleResetPortalPassword()}
+                    >
+                      {t('detail.portalPassword.generate')}
+                    </button>
+                  </div>
+                  <p className="field-hint">
+                    {device.customer?.portalPasswordUpdatedAt
+                      ? t('detail.portalPassword.lastChanged', { time: formatDate(device.customer.portalPasswordUpdatedAt) })
+                      : t('detail.portalPassword.autoGenerated')}
+                  </p>
+                </div>
+              )}
+              {device.customer?.accountId && device.customer?.customerId && (
+                <CustomerLgpd
+                  accountId={device.customer.accountId}
+                  customerId={device.customer.customerId}
+                />
+              )}
               <div className="mt-5 border-t border-border pt-4">
-                <label htmlFor="installation-date" className="field-label">Installation date</label>
+                <label htmlFor="installation-date" className="field-label">{t('detail.customer.installationDate')}</label>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <input
                     id="installation-date"
@@ -1181,29 +1865,285 @@ export default function DeviceDetailPage() {
                     disabled={savingInstallationDate}
                     onClick={() => void handleSaveInstallationDate()}
                   >
-                    {savingInstallationDate ? 'Saving…' : 'Save date'}
+                    {savingInstallationDate ? t('detail.customer.savingDate') : t('detail.customer.saveDate')}
                   </button>
                 </div>
-                <p className="field-hint">Saved in SkyGenPanel and synchronized to GenieACS as an installation tag.</p>
+                <p className="field-hint">{t('detail.customer.dateHint')}</p>
               </div>
             </div>
 
-            <div className="modern-card p-6">
-              <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Signal Information</h2>
+            {sgpAvailable && (
+              <div className="modern-card p-5 sm:p-6 lg:col-span-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="page-kicker">{t('detail.sgp.kicker')}</p>
+                    <h2 className="section-heading">{t('detail.sgp.title')}</h2>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="modern-button-secondary"
+                      disabled={sgpLoading}
+                      onClick={() => void loadSgpData(true)}
+                    >
+                      <Icon name="refresh" size={16} className="me-2" />
+                      {sgpLoading ? t('detail.sgp.refreshing') : t('detail.sgp.refresh')}
+                    </button>
+                    {sgpLink && (
+                      <>
+                        <button
+                          type="button"
+                          className="modern-button"
+                          disabled={sgpUnlocking}
+                          onClick={() => void handleSgpUnlock()}
+                        >
+                          {sgpUnlocking ? t('detail.sgp.unlocking') : t('detail.sgp.unlock')}
+                        </button>
+                        {sgpTicketEnabled && (
+                          <button
+                            type="button"
+                            className="modern-button-secondary"
+                            onClick={toggleTicket}
+                          >
+                            <Icon name="chat" size={16} className="me-2" />
+                            {t('detail.sgp.ticket')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="modern-button-secondary"
+                          onClick={() => void handleSgpUnlink()}
+                        >
+                          {t('detail.sgp.unlink')}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {sgpLink && sgpTicketEnabled && ticketOpen && (
+                  <div
+                    ref={ticketFormRef}
+                    className="mt-4 rounded-md border border-border bg-[hsl(var(--surface-subtle))] p-4"
+                  >
+                    <label className="metric-label" htmlFor="sgp-ticket-text">
+                      {t('detail.sgp.ticketLabel')}
+                    </label>
+                    <textarea
+                      id="sgp-ticket-text"
+                      className="modern-input mt-2 min-h-24 w-full"
+                      value={ticketText}
+                      maxLength={4000}
+                      onChange={(event) => setTicketText(event.target.value)}
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t('detail.sgp.ticketHint', { contract: sgpLink.contract })}
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="modern-button"
+                        disabled={ticketSending || !ticketText.trim()}
+                        onClick={() => void handleOpenTicket()}
+                      >
+                        {ticketSending ? t('detail.sgp.ticketSending') : t('detail.sgp.ticketSend')}
+                      </button>
+                      <button
+                        type="button"
+                        className="modern-button-secondary"
+                        disabled={ticketSending}
+                        onClick={() => setTicketOpen(false)}
+                      >
+                        {t('common.cancel')}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {sgpLink ? (
+                  <>
+                    <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div>
+                        <p className="metric-label">{t('detail.sgp.contract')}</p>
+                        <p className="mt-1 font-mono font-semibold">{sgpLink.contract}</p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="metric-label">{t('detail.sgp.client')}</p>
+                        <p className="mt-1 font-semibold wrap-anywhere"><ClientName link={sgpLink} canOpen={canOpenContact} /></p>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="metric-label">{t('detail.sgp.plan')}</p>
+                        <p className="mt-1 font-semibold wrap-anywhere">{sgpLink.plan || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="metric-label">{t('detail.sgp.status')}</p>
+                        <p className="mt-1">
+                          {/* O MESMO selo da faixa lá de cima. A mesma tela dando
+                              duas respostas sobre o mesmo contrato é o defeito
+                              que só aparece quando alguém compara. */}
+                          <span className={selo.className}>
+                            {selo.text ?? t(selo.fallbackKey)}
+                          </span>
+                        </p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground wrap-anywhere">
+                      {t(sgpLink.linkMode === 'manual' ? 'detail.sgp.linkManual' : 'detail.sgp.linkAuto')}
+                      {sgpLink.login ? ` · ${t('detail.sgp.linkLogin', { login: sgpLink.login })}` : ''}
+                      {sgpLink.lastSyncedAt
+                        ? ` · ${t('detail.sgp.linkSynced', { time: formatDateTime(sgpLink.lastSyncedAt) })}`
+                        : ''}
+                    </p>
+
+                    <div className="mt-5 border-t border-border pt-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="font-semibold">{t('detail.sgp.invoicesTitle')}</h3>
+                        {sgpInvoices.length > 0 && (
+                          <FilterRail
+                            value={invoiceFilter}
+                            onChange={setInvoiceFilter}
+                            ariaLabel={t('detail.sgp.invoiceFilterAria')}
+                            // Quatro botões não cabem na largura de um celular:
+                            // quebram em duas linhas em vez de rolar de lado e
+                            // esconder "Todos".
+                            className="flex-wrap"
+                            options={[
+                              { value: 'open', label: t('detail.sgp.invoiceFilterOpen', { count: invoiceCounts.open }) },
+                              { value: 'cancelled', label: t('detail.sgp.invoiceFilterCancelled', { count: invoiceCounts.cancelled }) },
+                              { value: 'other', label: t('detail.sgp.invoiceFilterOther', { count: invoiceCounts.other }) },
+                              { value: 'all', label: t('detail.sgp.invoiceFilterAll', { count: invoiceCounts.all }) },
+                            ]}
+                          />
+                        )}
+                      </div>
+                      {sgpMessage && (
+                        <p className="mt-2 text-sm text-[hsl(var(--status-warning))]">{sgpMessage}</p>
+                      )}
+                      {sgpInvoices.length === 0 ? (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          {t(sgpMessage ? 'detail.sgp.invoicesUnavailable' : 'detail.sgp.noInvoices')}
+                        </p>
+                      ) : visibleInvoices.length === 0 ? (
+                        <p className="mt-3 text-sm text-muted-foreground">{t('detail.sgp.invoiceFilterEmpty')}</p>
+                      ) : (
+                        <ul className="mt-3 space-y-3">
+                          {visibleInvoices.map((invoice, index) => (
+                            <li
+                              key={invoice.id || `${invoice.dueDate}-${index}`}
+                              className="rounded-md border border-border p-4"
+                            >
+                              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <span className="font-semibold">{formatBrl(invoice.amount, intlLocale)}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {t('detail.sgp.dueOn', { date: invoiceDueDate(invoice.dueDate) })}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground wrap-anywhere">
+                                {invoice.description || t('detail.sgp.invoiceFallback')}
+                                {invoice.status ? ` · ${invoice.status}` : ''}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {invoice.digitableLine && (
+                                  <button
+                                    type="button"
+                                    className="modern-button-secondary"
+                                    onClick={async () => {
+                                      const copied = await copyToClipboard(invoice.digitableLine as string)
+                                      toast[copied ? 'success' : 'error'](
+                                        t(copied ? 'detail.sgp.copiedLine' : 'detail.sgp.copyFailed')
+                                      )
+                                    }}
+                                  >
+                                    {t('detail.sgp.copyLine')}
+                                  </button>
+                                )}
+                                {invoice.pix && (
+                                  <button
+                                    type="button"
+                                    className="modern-button-secondary"
+                                    onClick={async () => {
+                                      const copied = await copyToClipboard(invoice.pix as string)
+                                      toast[copied ? 'success' : 'error'](
+                                        t(copied ? 'detail.sgp.copiedPix' : 'detail.sgp.copyFailed')
+                                      )
+                                    }}
+                                  >
+                                    {t('detail.sgp.copyPix')}
+                                  </button>
+                                )}
+                                {isSafeExternalUrl(invoice.link) && (
+                                  <a
+                                    className="modern-button-secondary"
+                                    href={invoice.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {t('detail.sgp.openBoleto')}
+                                  </a>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-5">
+                    <p className="text-sm text-muted-foreground">
+                      {sgpMessage || t('detail.sgp.notLinked')}
+                    </p>
+                    <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        type="text"
+                        className="modern-input sm:max-w-xs"
+                        placeholder={t('detail.sgp.contractPlaceholder')}
+                        value={sgpContractInput}
+                        onChange={(event) => setSgpContractInput(event.target.value)}
+                      />
+                      <button
+                        type="button"
+                        className="modern-button shrink-0"
+                        disabled={sgpLoading}
+                        onClick={() => void handleSgpLink()}
+                      >
+                        {t('detail.sgp.link')}
+                      </button>
+                    </div>
+                    <p className="field-hint">{t('detail.sgp.linkHint')}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {sgpAvailable && (
+              <ProvisioningCard deviceId={deviceId} />
+            )}
+
+            <DeviceSwapsCard deviceId={deviceId} />
+
+            {canWriteDevice && <DeviceDiagnosticsCard deviceId={deviceId} />}
+
+            {canMaintainDevice && <DeviceFirmwareCard deviceId={deviceId} />}
+
+            <DeviceHistoryCard deviceId={deviceId} />
+
+            <div className="modern-card p-5 sm:p-6">
+              <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{t('detail.signalInfo.title')}</h2>
               <div className="space-y-3">
-                 <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">RX Power:</span>
+                 <div className={KV_ROW}>
+                    <span className="text-gray-600 dark:text-gray-400">{t('detail.signalInfo.rxPower')}:</span>
                     <span className={`font-medium ${signalInfo.color}`}>
-                      {vp.rxpower?.value !== null && vp.rxpower?.value !== undefined ? `${vp.rxpower.value} dBm` : 'N/A'}
+                      {vp.rxpower?.value !== null && vp.rxpower?.value !== undefined ? `${vp.rxpower.value} dBm` : t('common.na')}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Temperature:</span>
-                    <span className="font-medium">{vp.temperature?.value ?? 'N/A'}</span>
+                  <div className={KV_ROW}>
+                    <span className="text-gray-600 dark:text-gray-400">{t('detail.signalInfo.temperature')}:</span>
+                    <span className="font-medium">{vp.temperature?.value ?? t('common.na')}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Connection Status:</span>
-                    {primaryWAN ? getStatusBadge(primaryWAN.status || 'Disconnected') : <span className="modern-badge">N/A</span>}
+                  <div className={KV_ROW}>
+                    <span className="text-gray-600 dark:text-gray-400">{t('detail.signalInfo.connectionStatus')}:</span>
+                    {primaryWAN ? getStatusBadge(primaryWAN.status || 'Disconnected') : <span className="modern-badge">{t('common.na')}</span>}
                   </div>
                 </div>
             </div>
@@ -1215,13 +2155,13 @@ export default function DeviceDetailPage() {
           <div className="modern-card p-5 sm:p-6">
             <div className="mb-5 flex flex-col gap-4 border-b border-border pb-5 xl:flex-row xl:items-end xl:justify-between">
               <div>
-                <h2 className="section-heading">WAN configuration</h2>
-                <p className="section-description">Existing connections reported by the ONT and a safe GenieACS addObject workflow.</p>
+                <h2 className="section-heading">{t('detail.wan.title')}</h2>
+                <p className="section-description">{t('detail.wan.description')}</p>
               </div>
-              {user?.role === 'admin' && (
-                <div className="grid gap-2 sm:grid-cols-[minmax(15rem,1fr)_8rem_auto]">
-                  <div>
-                    <label htmlFor="wan-container" className="field-label">WAN container</label>
+              {canWriteDevice && (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(15rem,1fr)_8rem_auto]">
+                  <div className="min-w-0">
+                    <label htmlFor="wan-container" className="field-label">{t('detail.wan.container')}</label>
                     <select id="wan-container" className="modern-input max-w-full" value={wanContainer}
                       onChange={(event) => setWanContainer(event.target.value)}>
                       {(device.wanContainers || []).map((container) => (
@@ -1230,7 +2170,7 @@ export default function DeviceDetailPage() {
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="wan-type" className="field-label">Type</label>
+                    <label htmlFor="wan-type" className="field-label">{t('detail.wan.type')}</label>
                     <select id="wan-type" className="modern-input" value={newWanType}
                       onChange={(event) => setNewWanType(event.target.value as 'ppp' | 'ip')}>
                       <option value="ppp">PPPoE</option>
@@ -1239,7 +2179,7 @@ export default function DeviceDetailPage() {
                   </div>
                   <button type="button" className="modern-button self-end" disabled={addingWan || !wanContainer}
                     onClick={() => void handleAddWan()}>
-                    {addingWan ? 'Queuing…' : 'Add WAN'}
+                    {addingWan ? t('detail.wan.queuing') : t('detail.wan.add')}
                   </button>
                 </div>
               )}
@@ -1249,58 +2189,58 @@ export default function DeviceDetailPage() {
                 device.wan.map((wan) => (
                   <div key={wan.index} className="flex flex-col border border-gray-200 dark:border-gray-700 rounded-md">
                     <div className="p-5 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <h3 className="text-md font-semibold text-gray-900 dark:text-gray-100">
-                          {wan.name || `Connection ${wan.index}`}
+                      <div className="flex justify-between items-start gap-3">
+                        <h3 className="min-w-0 text-md font-semibold text-gray-900 dark:text-gray-100 wrap-anywhere">
+                          {wan.name || t('detail.wan.connection', { index: wan.index })}
                         </h3>
-                        {getStatusBadge(wan.status || 'Disconnected')}
+                        <span className="shrink-0">{getStatusBadge(wan.status || 'Disconnected')}</span>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 pt-3 border-t border-gray-200 dark:border-gray-700">
                         <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">VLAN ID:</span>
+                          <div className={KV_ROW}>
+                            <span className="text-gray-600 dark:text-gray-400">{t('detail.wan.vlanId')}:</span>
                             <span className="font-medium">
                               { (wan.vlanId === null || wan.vlanId === undefined) ? (
                                 <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs">
-                                  not set
+                                  {t('detail.wan.notSet')}
                                 </span>
                               ) : (
                                 String(wan.vlanId)
                               )}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Username:</span>
-                            <span className="font-mono text-sm">{wan.username || 'N/A'}</span>
+                          <div className={KV_ROW}>
+                            <span className="text-gray-600 dark:text-gray-400">{t('detail.wan.username')}:</span>
+                            <span className="font-mono text-sm">{wan.username || t('common.na')}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">IP Address:</span>
-                            <span className="font-mono text-sm">{wan.ipAddress || 'N/A'}</span>
+                          <div className={KV_ROW}>
+                            <span className="text-gray-600 dark:text-gray-400">{t('detail.wan.ipAddress')}:</span>
+                            <span className="font-mono text-sm">{wan.ipAddress || t('common.na')}</span>
                           </div>
                         </div>
                         <div className="space-y-3">
-                          <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Service:</span>
+                          <div className={KV_ROW}>
+                            <span className="text-gray-600 dark:text-gray-400">{t('detail.wan.service')}:</span>
                             <span className="font-medium">
                             { (wan.serviceList === null || wan.serviceList === undefined) ? (
                                 <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-xs">
-                                  not set
+                                  {t('detail.wan.notSet')}
                                 </span>
                               ) : (
                                 wan.serviceList
                               )}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">Connection Type:</span>
-                            <span className="font-medium">{wan.connectionType || 'N/A'}</span>
+                          <div className={KV_ROW}>
+                            <span className="text-gray-600 dark:text-gray-400">{t('detail.wan.connectionType')}:</span>
+                            <span className="font-medium">{wan.connectionType || t('common.na')}</span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-gray-600 dark:text-gray-400">NAT:</span>
+                          <div className={KV_ROW}>
+                            <span className="text-gray-600 dark:text-gray-400">{t('detail.wan.nat')}:</span>
                             <span className="font-medium">
-                              { (wan.natEnabled === null || wan.natEnabled === undefined) ? 'N/A' : (
-                                wan.natEnabled ? 'Enabled' : 'Disabled'
+                              { (wan.natEnabled === null || wan.natEnabled === undefined) ? t('common.na') : (
+                                wan.natEnabled ? t('common.enabled') : t('common.disabled')
                               )}
                             </span>
                           </div>
@@ -1311,15 +2251,15 @@ export default function DeviceDetailPage() {
                       {wan.bindings && (wan.bindings.lan.length > 0 || wan.bindings.ssid.length > 0) ? (
                         <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                           <h4 className="flex items-center text-md font-semibold mb-4 text-gray-900 dark:text-gray-100">
-                            <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <svg className="w-5 h-5 me-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.135a4 4 0 000-5.656l-4-4a4 4 0 00-5.656 0zm0 0L9.5 7.5"></path>
                             </svg>
-                            Interface Bindings
+                            {t('detail.wan.bindings')}
                           </h4>
 
                           {/* LAN Ports */}
                           <div className="mb-4">
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">LAN Ports</p>
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('detail.wan.lanPorts')}</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                               {[1, 2, 3, 4].map(i => (
                                 <div key={`lan-${i}`} className="flex-1 min-w-[80px]">
@@ -1331,7 +2271,7 @@ export default function DeviceDetailPage() {
 
                           {/* WiFi Networks */}
                           <div>
-                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">WiFi Networks</p>
+                            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{t('detail.wan.wifiNetworks')}</p>
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                               {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
                                 <div key={`ssid-${i}`} className="flex-1 min-w-[80px]">
@@ -1344,12 +2284,12 @@ export default function DeviceDetailPage() {
                       ) : wan.bindings ? (
                         <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
                           <h4 className="flex items-center text-md font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                            <svg className="w-5 h-5 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <svg className="w-5 h-5 me-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.135a4 4 0 000-5.656l-4-4a4 4 0 00-5.656 0zm0 0L9.5 7.5"></path>
                             </svg>
-                            Interface Bindings
+                            {t('detail.wan.bindings')}
                           </h4>
-                          <span className="text-gray-500 dark:text-gray-400 text-sm">No active interface bindings found for this connection.</span>
+                          <span className="text-gray-500 dark:text-gray-400 text-sm">{t('detail.wan.noBindings')}</span>
                         </div>
                       ) : null}
                     </div>
@@ -1362,18 +2302,18 @@ export default function DeviceDetailPage() {
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
                           </svg>
-                          <span>Edit WAN Connection</span>
+                          <span>{t('detail.wan.edit')}</span>
                         </button>
                       ) : (
                         <p className="text-center text-xs text-gray-500 dark:text-gray-400">
-                          Only PPPoE connections can be edited.
+                          {t('detail.wan.onlyPppoe')}
                         </p>
                       )}
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-gray-500 dark:text-gray-400">No WAN connection data found.</p>
+                <p className="text-gray-500 dark:text-gray-400">{t('detail.wan.empty')}</p>
               )}
             </div>
           </div>
@@ -1383,43 +2323,43 @@ export default function DeviceDetailPage() {
           <div className="modern-card overflow-hidden">
             <div className="flex flex-col gap-3 border-b border-border p-5 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="section-heading">Connected-device inventory</h2>
-                <p className="section-description">Online and offline hosts reported by the ONT through TR-098 or TR-181.</p>
+                <h2 className="section-heading">{t('detail.clients.title')}</h2>
+                <p className="section-description">{t('detail.clients.description')}</p>
               </div>
-              <div className="flex gap-2">
-                <span className="modern-badge-success">{device.clients?.filter((client) => client.active === true).length || 0} online</span>
-                <span className="modern-badge">{device.clients?.filter((client) => client.active === false).length || 0} offline</span>
+              <div className="flex flex-wrap gap-2">
+                <span className="modern-badge-success">{t('detail.clients.onlineCount', { count: device.clients?.filter((client) => client.active === true).length || 0 })}</span>
+                <span className="modern-badge">{t('detail.clients.offlineCount', { count: device.clients?.filter((client) => client.active === false).length || 0 })}</span>
               </div>
             </div>
             {device.clients?.length ? (
               <>
                 <div className="grid gap-3 p-4 md:hidden">
                   {device.clients.map((client) => (
-                    <article key={`${client.dataModel}-${client.instance}-${client.macAddress || client.ipAddress || ''}`} className="rounded-md border border-border p-4">
+                    <article key={`${client.dataModel}-${client.instance}-${client.macAddress || client.ipAddress || ''}`} className="min-w-0 rounded-md border border-border p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h3 className="truncate font-semibold">{client.hostName || 'Unnamed client'}</h3>
-                          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{client.macAddress || 'MAC not reported'}</p>
+                          <h3 className="truncate font-semibold">{client.hostName || t('detail.clients.unnamed')}</h3>
+                          <p className="mt-1 break-all font-mono text-xs text-muted-foreground">{client.macAddress || t('detail.clients.macNotReported')}</p>
                         </div>
-                        <span className={client.active === true ? 'modern-badge-success' : client.active === false ? 'modern-badge' : 'modern-badge-warning'}>
-                          {client.active === true ? 'Online' : client.active === false ? 'Offline' : 'Unknown'}
+                        <span className={`shrink-0 ${client.active === true ? 'modern-badge-success' : client.active === false ? 'modern-badge' : 'modern-badge-warning'}`}>
+                          {client.active === true ? t('detail.status.online') : client.active === false ? t('detail.status.offline') : t('common.unknown')}
                         </span>
                       </div>
-                      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                        <div><dt className="text-xs text-muted-foreground">IP address</dt><dd className="mt-1 break-all font-mono">{client.ipAddress || '—'}</dd></div>
-                        <div><dt className="text-xs text-muted-foreground">Interface</dt><dd className="mt-1 break-all">{client.interfaceType || '—'}</dd></div>
+                      <dl className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] gap-3 text-sm">
+                        <div><dt className="text-xs text-muted-foreground">{t('detail.clients.ipAddress')}</dt><dd className="mt-1 break-all font-mono">{client.ipAddress || '—'}</dd></div>
+                        <div><dt className="text-xs text-muted-foreground">{t('detail.clients.interface')}</dt><dd className="mt-1 break-all">{client.interfaceType || '—'}</dd></div>
                       </dl>
                     </article>
                   ))}
                 </div>
                 <div className="hidden overflow-x-auto md:block">
                   <table className="modern-table">
-                    <thead><tr><th>Status</th><th>Hostname</th><th>IP address</th><th>MAC address</th><th>Interface</th><th>Source</th></tr></thead>
+                    <thead><tr><th>{t('common.status')}</th><th>{t('detail.clients.hostname')}</th><th>{t('detail.clients.ipAddress')}</th><th>{t('detail.clients.macAddress')}</th><th>{t('detail.clients.interface')}</th><th>{t('detail.clients.source')}</th></tr></thead>
                     <tbody>
                       {device.clients.map((client) => (
                         <tr key={`${client.dataModel}-${client.instance}-${client.macAddress || client.ipAddress || ''}`}>
-                          <td><span className={client.active === true ? 'modern-badge-success' : client.active === false ? 'modern-badge' : 'modern-badge-warning'}>{client.active === true ? 'Online' : client.active === false ? 'Offline' : 'Unknown'}</span></td>
-                          <td className="font-semibold">{client.hostName || 'Unnamed client'}</td>
+                          <td><span className={client.active === true ? 'modern-badge-success' : client.active === false ? 'modern-badge' : 'modern-badge-warning'}>{client.active === true ? t('detail.status.online') : client.active === false ? t('detail.status.offline') : t('common.unknown')}</span></td>
+                          <td className="font-semibold">{client.hostName || t('detail.clients.unnamed')}</td>
                           <td className="font-mono text-xs">{client.ipAddress || '—'}</td>
                           <td className="font-mono text-xs">{client.macAddress || '—'}</td>
                           <td>{client.interfaceType || '—'}</td>
@@ -1433,8 +2373,8 @@ export default function DeviceDetailPage() {
             ) : (
               <div className="empty-state">
                 <div className="empty-state-icon"><Icon name="phone" size={22} /></div>
-                <h3 className="empty-state-title">No host inventory reported</h3>
-                <p className="empty-state-copy">Request an Inform or confirm that the ONT exposes its Hosts table through CWMP.</p>
+                <h3 className="empty-state-title">{t('detail.clients.emptyTitle')}</h3>
+                <p className="empty-state-copy">{t('detail.clients.emptyCopy')}</p>
               </div>
             )}
           </div>
@@ -1443,55 +2383,71 @@ export default function DeviceDetailPage() {
         {/* Tab WiFi */}
         {activeTab === 'wifi' && (
           <div className="modern-card p-5 sm:p-6">
-            <div className="mb-5">
-              <h2 className="section-heading">WiFi configuration</h2>
-              <p className="section-description mt-1">Review every reported WLAN instance and queue typed GenieACS configuration tasks.</p>
+            <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="section-heading">{t('detail.wifi.title')}</h2>
+                <p className="section-description mt-1">{t('detail.wifi.description')}</p>
+              </div>
+              {wifiNetworks.length > 0 && (
+                <WifiStatusFilterControl value={wifiFilter} onChange={setWifiFilterChoice} counts={wifiCounts} />
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {device.wifi && device.wifi.length > 0 ? (
-                device.wifi.map((ssid) => (
+              {wifiNetworks.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400 md:col-span-2">{t('detail.wifi.empty')}</p>
+              ) : filteredWifi.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400 md:col-span-2">{t('detail.wifi.filterEmpty')}</p>
+              ) : (
+                filteredWifi.map((ssid) => (
                   <div key={ssid.index} className="rounded-md border border-border bg-[hsl(var(--surface-subtle))] p-4">
                     <div className="mb-4 flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="font-semibold text-foreground">SSID {ssid.index}</h3>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-foreground">{t('detail.wifi.ssidTitle', { index: ssid.index })}</h3>
                         <div className="mt-1 flex flex-wrap gap-2">
                           <span className={ssid.enable === false ? 'modern-badge-error' : ssid.enable === true ? 'modern-badge-success' : 'modern-badge'}>
-                            {ssid.enable === false ? 'Disabled' : ssid.enable === true ? 'Enabled' : 'Unknown state'}
+                            {ssid.enable === false ? t('common.disabled') : ssid.enable === true ? t('common.enabled') : t('detail.wifi.unknownState')}
                           </span>
-                          {ssid.usesVirtualParameters && <span className="modern-badge-info">Installer VP</span>}
+                          {ssid.usesVirtualParameters && <span className="modern-badge-info">{t('detail.wifi.installerVp')}</span>}
                         </div>
                       </div>
-                      <span className="font-mono text-xs text-muted-foreground">CH {ssid.channel ?? '—'}</span>
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">{t('detail.wifi.channelShort')} {ssid.channel ?? '—'}</span>
                     </div>
                     <dl className="space-y-3 text-sm">
                       <div className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">Network name</dt>
-                        <dd className="max-w-[65%] break-all text-right font-mono font-semibold">{ssid.ssid || 'Not reported'}</dd>
+                        <dt className="text-muted-foreground">{t('detail.wifi.networkName')}</dt>
+                        <dd className="max-w-[65%] break-all text-end font-mono font-semibold">{ssid.ssid || t('detail.wifi.notReported')}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">Password</dt>
-                        <dd className="font-mono">{ssid.password ? '••••••••' : 'Not reported'}</dd>
+                        <dt className="text-muted-foreground">{t('detail.wifi.password')}</dt>
+                        {ssid.password ? (
+                          <dd className="font-mono">••••••••</dd>
+                        ) : (
+                          // O GenieACS quase nunca tem a senha: os ONTs não a
+                          // devolvem na leitura. "Não informado" soava como
+                          // defeito; isto diz de quem é a lacuna e o que fazer.
+                          <dd className="text-end text-muted-foreground" title={t('detail.wifi.passwordNotReportedHint')}>
+                            {t('detail.wifi.passwordNotReported')}
+                          </dd>
+                        )}
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">Security</dt>
-                        <dd className="text-right">{ssid.security || 'Not reported'}</dd>
+                        <dt className="text-muted-foreground">{t('detail.wifi.security')}</dt>
+                        <dd className="min-w-0 text-end wrap-anywhere">{ssid.security || t('detail.wifi.notReported')}</dd>
                       </div>
                       <div className="flex justify-between gap-4">
-                        <dt className="text-muted-foreground">Associated clients</dt>
+                        <dt className="text-muted-foreground">{t('detail.wifi.associatedClients')}</dt>
                         <dd className="font-mono font-semibold">{ssid.totalAssociations ?? 0}</dd>
                       </div>
                     </dl>
-                    {user?.role === 'admin' ? (
+                    {canWriteDevice ? (
                       <button type="button" onClick={() => setEditingWifi(ssid)} className="modern-button-secondary mt-5 w-full">
-                        <Icon name="edit" size={17} /> Edit SSID {ssid.index}
+                        <Icon name="edit" size={17} /> {t('detail.wifi.edit', { index: ssid.index })}
                       </button>
                     ) : (
-                      <p className="mt-4 text-xs text-muted-foreground">Administrator access is required to change WiFi configuration.</p>
+                      <p className="mt-4 text-xs text-muted-foreground">{t('detail.wifi.adminRequired')}</p>
                     )}
                   </div>
                 ))
-              ) : (
-                <p className="text-gray-500 dark:text-gray-400 md:col-span-2">No WiFi SSIDs reported.</p>
               )}
             </div>
           </div>
@@ -1499,36 +2455,38 @@ export default function DeviceDetailPage() {
 
         {/* Tab Advanced */}
         {activeTab === 'advanced' && (
-          <div className="modern-card p-6">
-            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">Advanced Configuration</h2>
+          <div className="modern-card p-5 sm:p-6">
+            <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{t('detail.advanced.title')}</h2>
             <div className="space-y-6">
               <div>
-                <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">Change Credentials</h3>
+                <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">{t('detail.advanced.changeCredentials')}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
-                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Superadmin (ISP)</h4>
-                    <p className="text-sm text-gray-500">User: {vp.superAdmin?.value || 'N/A'}</p>
-                    <p className="text-sm text-gray-500">Pass: {vp.superPassword?.value ? '******' : 'N/A'}</p>
+                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">{t('detail.credentials.superadmin')}</h4>
+                    <p className="text-sm text-gray-500 wrap-anywhere">{t('detail.advanced.user')}: {vp.superAdmin?.value || t('common.na')}</p>
+                    <p className="text-sm text-gray-500">{t('detail.advanced.pass')}: {vp.superPassword?.value ? '******' : t('common.na')}</p>
                     <button
                       onClick={() => handleOpenCredentialModal('super')}
                       className="modern-button mt-3"
                     >
-                      Update Superadmin
+                      {t('detail.advanced.updateSuperadmin')}
                     </button>
                   </div>
                   <div className="border border-gray-200 dark:border-gray-700 rounded-md p-4">
-                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">Useradmin (Client)</h4>
-                    <p className="text-sm text-gray-500">User: {vp.userAdmin?.value || 'N/A'}</p>
-                    <p className="text-sm text-gray-500">Pass: {vp.userPassword?.value ? '******' : 'N/A'}</p>
+                    <h4 className="font-medium mb-2 text-gray-900 dark:text-gray-100">{t('detail.credentials.useradmin')}</h4>
+                    <p className="text-sm text-gray-500 wrap-anywhere">{t('detail.advanced.user')}: {vp.userAdmin?.value || t('common.na')}</p>
+                    <p className="text-sm text-gray-500">{t('detail.advanced.pass')}: {vp.userPassword?.value ? '******' : t('common.na')}</p>
                     <button
                       onClick={() => handleOpenCredentialModal('user')}
                       className="modern-button mt-3"
                     >
-                      Update Useradmin
+                      {t('detail.advanced.updateUseradmin')}
                     </button>
                   </div>
                 </div>
               </div>
+
+              <DeviceParametersCard deviceId={deviceId} />
 
               {/* <div>
                 <h3 className="text-md font-medium mb-3 text-gray-900 dark:text-gray-100">Raw Device Data (Debug)</h3>
@@ -1552,11 +2510,25 @@ export default function DeviceDetailPage() {
           onClose={handleCloseCredentialModal}
           credentialType={credentialType}
           username={
-            credentialType === 'super' ? (vp.superAdmin?.value || 'N/A') :
-            credentialType === 'user' ? (vp.userAdmin?.value || 'N/A') :
+            credentialType === 'super' ? (vp.superAdmin?.value || t('common.na')) :
+            credentialType === 'user' ? (vp.userAdmin?.value || t('common.na')) :
             ''
           }
           onSave={handleSaveCredentials}
+        />
+        <IrreversibleActionModal
+          action={irreversibleAction}
+          isOpen={irreversibleAction !== null}
+          onClose={() => setIrreversibleAction(null)}
+          deviceId={deviceId}
+          serial={deviceInfo?.serialNumber || null}
+          lastInform={device._lastInform || null}
+          provisioningAvailable={sgpAvailable}
+          onDone={(done) => {
+            setIrreversibleAction(null)
+            // A página de um aparelho que o ACS já não conhece não tem o que mostrar.
+            if (done === 'remove') navigate('/devices')
+          }}
         />
         <EditWifiModal
           wifi={editingWifi}
@@ -1566,5 +2538,16 @@ export default function DeviceDetailPage() {
         />
       </div>
     </div>
+  )
+}
+
+/** The subscriber's name, a link to their client record when the operator may open it. */
+function ClientName({ link, canOpen }: { link: SgpContractLink; canOpen: boolean }) {
+  if (!link.clientName) return <>—</>
+  if (!canOpen || !link.contract) return <>{link.clientName}</>
+  return (
+    <Link className="py-2.5 text-primary hover:underline sm:py-0" to={`/contacts/${encodeURIComponent(link.contract)}`}>
+      {link.clientName}
+    </Link>
   )
 }

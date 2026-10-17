@@ -1,8 +1,111 @@
 // Authentication Types
+
+/**
+ * Os quatro papéis vivem em `@/lib/permissions`, junto da matriz que diz o que
+ * cada um alcança. Reexportado aqui porque este é o módulo onde o resto do
+ * painel já procura os tipos, e um papel escrito solto ao lado da matriz seria
+ * a primeira coisa a divergir dela.
+ */
+export type { OperatorRole } from '@/lib/permissions'
+import type { OperatorRole } from '@/lib/permissions'
+
 export interface User {
   id: number
   username: string
-  role: string
+  /**
+   * O e-mail de login, que pode ser `null`.
+   *
+   * Nulo não é ausência de dado: é uma conta anterior a esta versão, criada
+   * quando a coluna não existia e nenhuma migração podia adivinhar o endereço.
+   * São essas contas que a tela de operadores precisa deixar visíveis, porque é
+   * o número delas que decide quando o login pode passar a exigir e-mail.
+   *
+   * Opcional porque nem toda resposta do backend traz o campo: `GET
+   * /api/auth/user` responde sem ele.
+   */
+  email?: string | null
+  /**
+   * Se o endereço acima foi PROVADO — alguém abriu o que foi mandado para ele.
+   *
+   * Cadastrar um endereço prova que se controla a conta, não que se controla o
+   * endereço, e a diferença é o que decide se a redefinição de senha por e-mail
+   * vai funcionar para esta pessoa no dia em que ela precisar — um dia em que
+   * ela, por definição, não vai poder resolver. Daí a tela de conta insistir
+   * enquanto isto for falso.
+   *
+   * Opcional pelo mesmo motivo de `email`: nem toda resposta traz o campo.
+   */
+  emailVerified?: boolean
+  /** Se o login em duas etapas está ligado — só isso; o segredo nunca vem. */
+  mfaEnabled?: boolean
+  /**
+   * O provedor desta sessão exige o 2FA e esta pessoa ainda não ativou: a
+   * casca do painel dá lugar à ativação até ela ativar.
+   */
+  mfaEnrollmentRequired?: boolean
+  /**
+   * O papel NO PROVEDOR desta sessão — e `null` quando ela não tem provedor.
+   *
+   * A sessão do console é esse caso: ela não trabalha em provedor nenhum, então
+   * não há papel a reportar. Nulo e não um papel de reserva, porque um papel de
+   * reserva é o que uma tela acaba consultando como se valesse.
+   */
+  role: OperatorRole | null
+  /**
+   * Whether this person is on the SaaS control plane's roster.
+   *
+   * NOT the same thing as being an administrator here: a provider's own
+   * administrator — `owner` included — is at the provider's level, and the
+   * control plane is above them, since minting providers and reaching between
+   * them is exactly what a provider's admin must not do.
+   * Gating the menu on `role` would put the link in front of most of the
+   * panel's admins, pointing at routes that answer 404 for them.
+   *
+   * Always false on a self-hosted install, where those routes are not mounted
+   * at all — so the screen hides itself without the browser having to know
+   * which edition it is talking to.
+   */
+  isPlatformAdmin?: boolean
+  /**
+   * Presente só na sessão do console: esta sessão é DA PLATAFORMA e não de um
+   * provedor.
+   *
+   * Separado de `isPlatformAdmin`, que responde outra pergunta — quem tem a
+   * chave do console também trabalha em provedores, e ali a sessão é comum. É
+   * isto, e não um `tenantId` nulo, que diz à casca qual árvore de telas montar:
+   * deduzir de uma ausência é a dedução que um dia alguém faz errado.
+   */
+  platform?: boolean
+  /**
+   * O provedor DESTA sessão, lido do token pelo backend — o que o topo do menu
+   * mostra. Nulo na sessão do console. Opcional porque só `GET /api/auth/user`
+   * traz o campo; até ele responder, a tela usa o perfil público do host.
+   */
+  tenant?: { slug: string | null; name: string } | null
+  /** O id do provedor desta sessão; nulo na sessão do console. */
+  tenantId?: number | null
+  /**
+   * Presente só numa sessão de personificação: quem, do plano de controle,
+   * está olhando este painel.
+   *
+   * É o que a faixa no alto da tela lê. `isPlatformAdmin` vem `false` junto,
+   * de propósito e sem contradição: dentro de uma personificação o console
+   * responde 404, então acender o menu dele seria apontar para uma tela que
+   * não abre.
+   */
+  impersonation?: {
+    platformUsername: string
+    /**
+     * O provedor que está sendo olhado, pelo NOME que a sessão carrega.
+     *
+     * Não vem do perfil público porque aquele é resolvido pelo endereço, e numa
+     * instalação de host único o endereço nomeia sempre o primeiro provedor —
+     * a faixa diria o nome errado justamente na tela onde ela existe para dizer
+     * o certo. Opcional porque uma sessão aberta antes desta mudança não o traz.
+     */
+    tenantName?: string
+    tenantSlug?: string
+  } | null
   createdAt: string
   updatedAt: string
 }
@@ -152,16 +255,6 @@ export interface VendorParameter {
   priority: number
   enabled: number
   fallback_to_null: number
-  description?: string
-  created_at: string
-  updated_at: string
-}
-
-export interface WifiSecurityMapping {
-  id: number
-  vendor_id: number
-  raw_security_value: string
-  normalized_security: string
   description?: string
   created_at: string
   updated_at: string

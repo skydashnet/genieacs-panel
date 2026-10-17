@@ -3,6 +3,20 @@ import MappingEdge from '../models/MappingEdge.js';
 import User from '../models/User.js';
 import bcrypt from 'bcryptjs';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
+import { searchPlaces } from '../services/addressLookupService.js';
+import MapStatusService from '../services/mapStatusService.js';
+import OutageEvent from '../models/OutageEvent.js';
+import ClientLocationService from '../services/clientLocationService.js';
+import { classifySyncError } from '../services/customerSyncErrors.js';
+
+/**
+ * A política de uso do Nominatim é de uma consulta por segundo por
+ * aplicação — o painel inteiro, não cada provedor. As buscas fazem fila; se a
+ * fila passar de alguns segundos, a próxima ouve "tente de novo" em vez de
+ * esperar sem fim.
+ */
+const searchQueue = { next: 0 };
+const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 const NODE_TYPES = new Set(['htb', 'olt', 'odc', 'odp', 'ont', 'server']);
 const FIBER_TYPES = new Set(['backbone', 'feeder', 'distribution', 'drop', 'patch']);
@@ -18,22 +32,22 @@ function validateNodePayload(payload) {
     : Number(payload.capacity);
 
   if (!nodeId || nodeId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(nodeId)) {
-    return { error: 'Node ID is required and may only contain letters, numbers, dot, underscore, colon, or dash.' };
+    return { errorKey: 'mapping.validation.nodeId' };
   }
   if (!NODE_TYPES.has(type)) {
-    return { error: 'Invalid type. Must be: HTB, OLT, ODC, ODP, ONT, or server.' };
+    return { errorKey: 'mapping.validation.nodeType' };
   }
   if (!name || name.length > 255) {
-    return { error: 'Node name is required and must not exceed 255 characters.' };
+    return { errorKey: 'mapping.validation.nodeName' };
   }
   if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
-    return { error: 'Latitude must be between -90 and 90.' };
+    return { errorKey: 'mapping.validation.latitude' };
   }
   if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-    return { error: 'Longitude must be between -180 and 180.' };
+    return { errorKey: 'mapping.validation.longitude' };
   }
   if (capacity !== null && (!Number.isInteger(capacity) || capacity < 0 || capacity > 1_000_000)) {
-    return { error: 'Capacity must be a non-negative integer.' };
+    return { errorKey: 'mapping.validation.capacity' };
   }
 
   return {
@@ -54,12 +68,12 @@ function validateNodePayload(payload) {
 function validateWaypoints(waypoints) {
   if (waypoints === null || waypoints === undefined || waypoints === '') return { value: null };
   if (!Array.isArray(waypoints) || waypoints.length > 100) {
-    return { error: 'Waypoints must be an array with at most 100 coordinates.' };
+    return { errorKey: 'mapping.validation.waypointsArray' };
   }
   const normalized = [];
   for (const point of waypoints) {
     if (!Array.isArray(point) || point.length !== 2) {
-      return { error: 'Every waypoint must be a [latitude, longitude] pair.' };
+      return { errorKey: 'mapping.validation.waypointPair' };
     }
     const latitude = Number(point[0]);
     const longitude = Number(point[1]);
@@ -67,7 +81,7 @@ function validateWaypoints(waypoints) {
       !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
       !Number.isFinite(longitude) || longitude < -180 || longitude > 180
     ) {
-      return { error: 'Waypoint coordinates are outside valid latitude/longitude ranges.' };
+      return { errorKey: 'mapping.validation.waypointRange' };
     }
     normalized.push([latitude, longitude]);
   }
@@ -85,17 +99,17 @@ function validateEdgePayload(payload) {
   const waypoints = validateWaypoints(payload.waypoints);
 
   if (!edgeId || edgeId.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(edgeId)) {
-    return { error: 'Cable ID is required and may only contain letters, numbers, dot, underscore, colon, or dash.' };
+    return { errorKey: 'mapping.validation.cableId' };
   }
-  if (!source || !target) return { error: 'Source and target nodes are required.' };
-  if (source === target) return { error: 'Source and target nodes must be different.' };
+  if (!source || !target) return { errorKey: 'mapping.validation.endpointsRequired' };
+  if (source === target) return { errorKey: 'mapping.validation.endpointsDistinct' };
   if (!FIBER_TYPES.has(fiberType)) {
-    return { error: 'Invalid cable type. Must be: backbone, feeder, distribution, drop, or patch.' };
+    return { errorKey: 'mapping.validation.cableType' };
   }
   if (distance !== null && (!Number.isFinite(distance) || distance < 0 || distance > 1_000_000)) {
-    return { error: 'Distance must be a non-negative number.' };
+    return { errorKey: 'mapping.validation.distance' };
   }
-  if (waypoints.error) return waypoints;
+  if (waypoints.errorKey) return waypoints;
 
   return {
     value: {
@@ -111,16 +125,118 @@ function validateEdgePayload(payload) {
 }
 
 class MappingController {
+  /** Intervalo entre consultas ao Nominatim (os testes zeram). */
+  static SEARCH_INTERVAL_MS = 1_000;
+  static SEARCH_MAX_WAIT_MS = 5_000;
+
+  /** Estado ao vivo dos pontos com PPPoE — ver `MapStatusService`. */
+  static async liveStatus(req, res) {
+    try {
+      return res.json(createResponse(req.t('mapping.statusReady'), await MapStatusService.status()));
+    } catch (error) {
+      console.warn(`Map live status failed: ${error.message}`);
+      // Mesmo classificador da sincronização de IDs: diz se o ACS não
+      // respondeu, recusou a credencial ou nem está configurado.
+      const reason = classifySyncError(error);
+      const message = reason.code === 'database'
+        ? req.t('mapping.statusFailed')
+        : req.t(reason.reasonKey, reason.status ? { status: reason.status } : undefined);
+      return res.status(502).json(createErrorResponse(message, error.message, reason.code));
+    }
+  }
+
+  /** Onde fica a casa do cliente (endereço do SGP), para o "Colocar no mapa". */
+  static async clientLocation(req, res) {
+    try {
+      const pppoe = String(req.query.pppoe ?? '').slice(0, 255);
+      const deviceId = String(req.query.deviceId ?? '').slice(0, 255);
+      if (!pppoe.trim() && !deviceId.trim()) {
+        return res.status(400).json(createErrorResponse(req.t('mapping.clientLocationMissing')));
+      }
+      return res.json(createResponse(req.t('mapping.statusReady'), await ClientLocationService.locate({ pppoe, deviceId })));
+    } catch (error) {
+      console.error('Client location error:', error);
+      return res.status(500).json(createErrorResponse(req.t('common.internalError'), error.message));
+    }
+  }
+
+  /** Equipamentos com PPPoE que ainda não estão no mapa. */
+  static async unmappedDevices(req, res) {
+    try {
+      return res.json(createResponse(req.t('mapping.statusReady'), await MapStatusService.unmapped()));
+    } catch (error) {
+      console.warn(`Unmapped devices failed: ${error.message}`);
+      const reason = classifySyncError(error);
+      const message = reason.code === 'database'
+        ? req.t('mapping.statusFailed')
+        : req.t(reason.reasonKey, reason.status ? { status: reason.status } : undefined);
+      return res.status(502).json(createErrorResponse(message, error.message, reason.code));
+    }
+  }
+
+  /**
+   * "Colocar todos no mapa": os equipamentos fora do mapa, separados entre os
+   * que o SGP já dá as coordenadas, os que só têm endereço e os sem endereço.
+   * A gravação vai pelo `/import`, que acrescenta e ignora o que já existe.
+   */
+  static async bulkPlacement(req, res) {
+    try {
+      const { total, items } = await MapStatusService.unmapped({ limit: 5000 });
+      const groups = await ClientLocationService.locateMany(items);
+      return res.json(createResponse(req.t('mapping.statusReady'), { total, truncated: total > items.length, ...groups }));
+    } catch (error) {
+      console.warn(`Bulk placement failed: ${error.message}`);
+      const reason = classifySyncError(error);
+      const message = reason.code === 'database'
+        ? req.t('mapping.statusFailed')
+        : req.t(reason.reasonKey, reason.status ? { status: reason.status } : undefined);
+      return res.status(502).json(createErrorResponse(message, error.message, reason.code));
+    }
+  }
+
+  /** Histórico de rompimentos: as ocorrências e o resumo por caixa. */
+  static async outageHistory(req, res) {
+    try {
+      const days = Math.min(365, Math.max(1, Number.parseInt(String(req.query.days ?? '90'), 10) || 90));
+      const events = await OutageEvent.recent({ days });
+      return res.json(createResponse(req.t('mapping.outagesReady'), { days, events, byNode: OutageEvent.summarize(events) }));
+    } catch (error) {
+      console.error('Outage history error:', error);
+      return res.status(500).json(createErrorResponse(req.t('common.internalError'), error.message));
+    }
+  }
+
+  static async searchAddress(req, res) {
+    const q = String(req.query.q ?? '').replace(/\s+/g, ' ').trim();
+    if (q.length < 3 || q.length > 200) {
+      return res.status(400).json(createErrorResponse(req.t('mapping.searchTooShort')));
+    }
+    const now = Date.now();
+    const wait = Math.max(0, searchQueue.next - now);
+    if (wait > MappingController.SEARCH_MAX_WAIT_MS) {
+      return res.status(429).json(createErrorResponse(req.t('mapping.searchBusy')));
+    }
+    searchQueue.next = Math.max(now, searchQueue.next) + MappingController.SEARCH_INTERVAL_MS;
+    if (wait) await sleep(wait);
+    try {
+      const results = await searchPlaces(q, { limit: 5 });
+      return res.json(createResponse(req.t('mapping.searchDone'), results));
+    } catch (error) {
+      console.warn(`Map address search failed: ${error.message}`);
+      return res.status(502).json(createErrorResponse(req.t('mapping.searchFailed'), error.message));
+    }
+  }
+
   static async getAllNodes(req, res) {
     try {
       const nodes = await MappingNode.getAll();
       return res.json(
-        createResponse('Mapping nodes retrieved successfully', nodes)
+        createResponse(req.t('mapping.nodesRetrieved'), nodes)
       );
     } catch (error) {
       console.error('Get all mapping nodes error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get mapping nodes', error.message)
+        createErrorResponse(req.t('mapping.nodesFailed'), error.message)
       );
     }
   }
@@ -131,7 +247,7 @@ class MappingController {
       
       if (!nodeId) {
         return res.status(400).json(
-          createErrorResponse('Node ID is required')
+          createErrorResponse(req.t('mapping.nodeIdRequired'))
         );
       }
 
@@ -139,17 +255,17 @@ class MappingController {
       
       if (!node) {
         return res.status(404).json(
-          createErrorResponse('Node not found')
+          createErrorResponse(req.t('mapping.nodeNotFound'))
         );
       }
 
       return res.json(
-        createResponse('Node retrieved successfully', node)
+        createResponse(req.t('mapping.nodeRetrieved'), node)
       );
     } catch (error) {
       console.error('Get node by ID error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get node', error.message)
+        createErrorResponse(req.t('mapping.nodeGetFailed'), error.message)
       );
     }
   }
@@ -157,13 +273,13 @@ class MappingController {
   static async createNode(req, res) {
     try {
       const validated = validateNodePayload(req.body || {});
-      if (validated.error) {
-        return res.status(400).json(createErrorResponse(validated.error));
+      if (validated.errorKey) {
+        return res.status(400).json(createErrorResponse(req.t(validated.errorKey)));
       }
       const nodeId = await MappingNode.create(validated.value);
       
       return res.status(201).json(
-        createResponse('Node created successfully', { id: nodeId })
+        createResponse(req.t('mapping.nodeCreated'), { id: nodeId })
       );
     } catch (error) {
       console.error('Create node error:', error);
@@ -174,12 +290,12 @@ class MappingController {
         error.message.includes('UNIQUE constraint failed')
       ) {
         return res.status(409).json(
-          createErrorResponse('Node ID already exists')
+          createErrorResponse(req.t('mapping.nodeIdExists'))
         );
       }
       
       return res.status(500).json(
-        createErrorResponse('Failed to create node', error.message)
+        createErrorResponse(req.t('mapping.nodeCreateFailed'), error.message)
       );
     }
   }
@@ -190,29 +306,29 @@ class MappingController {
       
       if (!nodeId) {
         return res.status(400).json(
-          createErrorResponse('Node ID is required')
+          createErrorResponse(req.t('mapping.nodeIdRequired'))
         );
       }
 
       const validated = validateNodePayload({ ...(req.body || {}), node_id: nodeId });
-      if (validated.error) {
-        return res.status(400).json(createErrorResponse(validated.error));
+      if (validated.errorKey) {
+        return res.status(400).json(createErrorResponse(req.t(validated.errorKey)));
       }
       const updated = await MappingNode.update(nodeId, validated.value);
       
       if (!updated) {
         return res.status(404).json(
-          createErrorResponse('Node not found')
+          createErrorResponse(req.t('mapping.nodeNotFound'))
         );
       }
 
       return res.json(
-        createResponse('Node updated successfully')
+        createResponse(req.t('mapping.nodeUpdated'))
       );
     } catch (error) {
       console.error('Update node error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to update node', error.message)
+        createErrorResponse(req.t('mapping.nodeUpdateFailed'), error.message)
       );
     }
   }
@@ -223,7 +339,7 @@ class MappingController {
       
       if (!nodeId) {
         return res.status(400).json(
-          createErrorResponse('Node ID is required')
+          createErrorResponse(req.t('mapping.nodeIdRequired'))
         );
       }
 
@@ -231,17 +347,17 @@ class MappingController {
       
       if (!deleted) {
         return res.status(404).json(
-          createErrorResponse('Node not found')
+          createErrorResponse(req.t('mapping.nodeNotFound'))
         );
       }
 
       return res.json(
-        createResponse('Node deleted successfully')
+        createResponse(req.t('mapping.nodeDeleted'))
       );
     } catch (error) {
       console.error('Delete node error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to delete node', error.message)
+        createErrorResponse(req.t('mapping.nodeDeleteFailed'), error.message)
       );
     }
   }
@@ -250,12 +366,12 @@ class MappingController {
     try {
       const edges = await MappingEdge.getAll();
       return res.json(
-        createResponse('Mapping edges retrieved successfully', edges)
+        createResponse(req.t('mapping.edgesRetrieved'), edges)
       );
     } catch (error) {
       console.error('Get all mapping edges error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get mapping edges', error.message)
+        createErrorResponse(req.t('mapping.edgesFailed'), error.message)
       );
     }
   }
@@ -266,7 +382,7 @@ class MappingController {
       
       if (!edgeId) {
         return res.status(400).json(
-          createErrorResponse('Edge ID is required')
+          createErrorResponse(req.t('mapping.edgeIdRequired'))
         );
       }
 
@@ -274,17 +390,17 @@ class MappingController {
       
       if (!edge) {
         return res.status(404).json(
-          createErrorResponse('Edge not found')
+          createErrorResponse(req.t('mapping.edgeNotFound'))
         );
       }
 
       return res.json(
-        createResponse('Edge retrieved successfully', edge)
+        createResponse(req.t('mapping.edgeRetrieved'), edge)
       );
     } catch (error) {
       console.error('Get edge by ID error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get edge', error.message)
+        createErrorResponse(req.t('mapping.edgeGetFailed'), error.message)
       );
     }
   }
@@ -292,13 +408,13 @@ class MappingController {
   static async createEdge(req, res) {
     try {
       const validated = validateEdgePayload(req.body || {});
-      if (validated.error) {
-        return res.status(400).json(createErrorResponse(validated.error));
+      if (validated.errorKey) {
+        return res.status(400).json(createErrorResponse(req.t(validated.errorKey)));
       }
       const edgeId = await MappingEdge.create(validated.value);
       
       return res.status(201).json(
-        createResponse('Edge created successfully', { id: edgeId })
+        createResponse(req.t('mapping.edgeCreated'), { id: edgeId })
       );
     } catch (error) {
       console.error('Create edge error:', error);
@@ -309,7 +425,7 @@ class MappingController {
         error.message.includes('UNIQUE constraint failed')
       ) {
         return res.status(409).json(
-          createErrorResponse('Edge ID already exists')
+          createErrorResponse(req.t('mapping.edgeIdExists'))
         );
       }
       
@@ -319,12 +435,12 @@ class MappingController {
         error.message.includes('FOREIGN KEY constraint failed')
       ) {
         return res.status(400).json(
-          createErrorResponse('Source or target node does not exist')
+          createErrorResponse(req.t('mapping.endpointsMissing'))
         );
       }
       
       return res.status(500).json(
-        createErrorResponse('Failed to create edge', error.message)
+        createErrorResponse(req.t('mapping.edgeCreateFailed'), error.message)
       );
     }
   }
@@ -335,29 +451,29 @@ class MappingController {
       
       if (!edgeId) {
         return res.status(400).json(
-          createErrorResponse('Edge ID is required')
+          createErrorResponse(req.t('mapping.edgeIdRequired'))
         );
       }
 
       const validated = validateEdgePayload({ ...(req.body || {}), edge_id: edgeId });
-      if (validated.error) {
-        return res.status(400).json(createErrorResponse(validated.error));
+      if (validated.errorKey) {
+        return res.status(400).json(createErrorResponse(req.t(validated.errorKey)));
       }
       const updated = await MappingEdge.update(edgeId, validated.value);
       
       if (!updated) {
         return res.status(404).json(
-          createErrorResponse('Edge not found')
+          createErrorResponse(req.t('mapping.edgeNotFound'))
         );
       }
 
       return res.json(
-        createResponse('Edge updated successfully')
+        createResponse(req.t('mapping.edgeUpdated'))
       );
     } catch (error) {
       console.error('Update edge error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to update edge', error.message)
+        createErrorResponse(req.t('mapping.edgeUpdateFailed'), error.message)
       );
     }
   }
@@ -368,7 +484,7 @@ class MappingController {
       
       if (!edgeId) {
         return res.status(400).json(
-          createErrorResponse('Edge ID is required')
+          createErrorResponse(req.t('mapping.edgeIdRequired'))
         );
       }
 
@@ -376,17 +492,17 @@ class MappingController {
       
       if (!deleted) {
         return res.status(404).json(
-          createErrorResponse('Edge not found')
+          createErrorResponse(req.t('mapping.edgeNotFound'))
         );
       }
 
       return res.json(
-        createResponse('Edge deleted successfully')
+        createResponse(req.t('mapping.edgeDeleted'))
       );
     } catch (error) {
       console.error('Delete edge error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to delete edge', error.message)
+        createErrorResponse(req.t('mapping.edgeDeleteFailed'), error.message)
       );
     }
   }
@@ -397,22 +513,26 @@ class MappingController {
       
       if (!Array.isArray(nodes) || !Array.isArray(edges)) {
         return res.status(400).json(
-          createErrorResponse('Invalid data format. Expected { nodes: [], edges: [] }')
+          createErrorResponse(req.t('mapping.invalidFormat'))
         );
       }
 
       if (nodes.length > 10_000 || edges.length > 20_000) {
-        return res.status(400).json(createErrorResponse('Mapping import is too large.'));
+        return res.status(400).json(createErrorResponse(req.t('mapping.importTooLarge')));
       }
       const validatedNodes = [];
       const nodeIds = new Set();
       for (const node of nodes) {
         const validated = validateNodePayload(node || {});
-        if (validated.error) {
-          return res.status(400).json(createErrorResponse(`Invalid node: ${validated.error}`));
+        if (validated.errorKey) {
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.invalidNode', { error: req.t(validated.errorKey) })
+          ));
         }
         if (nodeIds.has(validated.value.node_id)) {
-          return res.status(400).json(createErrorResponse(`Duplicate node ID: ${validated.value.node_id}`));
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.duplicateNodeId', { id: validated.value.node_id })
+          ));
         }
         nodeIds.add(validated.value.node_id);
         validatedNodes.push(validated.value);
@@ -421,14 +541,20 @@ class MappingController {
       const edgeIds = new Set();
       for (const edge of edges) {
         const validated = validateEdgePayload(edge || {});
-        if (validated.error) {
-          return res.status(400).json(createErrorResponse(`Invalid cable: ${validated.error}`));
+        if (validated.errorKey) {
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.invalidCable', { error: req.t(validated.errorKey) })
+          ));
         }
         if (edgeIds.has(validated.value.edge_id)) {
-          return res.status(400).json(createErrorResponse(`Duplicate cable ID: ${validated.value.edge_id}`));
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.duplicateCableId', { id: validated.value.edge_id })
+          ));
         }
         if (!nodeIds.has(validated.value.source) || !nodeIds.has(validated.value.target)) {
-          return res.status(400).json(createErrorResponse(`Cable ${validated.value.edge_id} references an unknown node.`));
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.cableUnknownNode', { id: validated.value.edge_id })
+          ));
         }
         edgeIds.add(validated.value.edge_id);
         validatedEdges.push(validated.value);
@@ -437,7 +563,7 @@ class MappingController {
       await MappingEdge.syncData(validatedNodes, validatedEdges);
       
       return res.json(
-        createResponse('Mapping data synchronized successfully', {
+        createResponse(req.t('mapping.synced'), {
           summary: {
             nodes: validatedNodes.length,
             edges: validatedEdges.length
@@ -447,8 +573,67 @@ class MappingController {
     } catch (error) {
       console.error('Sync mapping data error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to sync mapping data', error.message)
+        createErrorResponse(req.t('mapping.syncFailed'), error.message)
       );
+    }
+  }
+
+  /**
+   * Importação de KML/KMZ: o navegador lê o arquivo e manda pontos e cabos em
+   * lotes. Acrescenta, não substitui — ver `MappingEdge.importData`.
+   */
+  static async importMappingData(req, res) {
+    try {
+      const { nodes, edges } = req.body || {};
+      if (!Array.isArray(nodes) || !Array.isArray(edges)) {
+        return res.status(400).json(createErrorResponse(req.t('mapping.invalidFormat')));
+      }
+      if (nodes.length > 2_000 || edges.length > 4_000) {
+        return res.status(400).json(createErrorResponse(req.t('mapping.importTooLarge')));
+      }
+      const validatedNodes = [];
+      const nodeIds = new Set();
+      for (const node of nodes) {
+        const validated = validateNodePayload(node || {});
+        if (validated.errorKey) {
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.invalidNode', { error: req.t(validated.errorKey) })
+          ));
+        }
+        if (nodeIds.has(validated.value.node_id)) {
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.duplicateNodeId', { id: validated.value.node_id })
+          ));
+        }
+        nodeIds.add(validated.value.node_id);
+        validatedNodes.push(validated.value);
+      }
+      const validatedEdges = [];
+      const edgeIds = new Set();
+      for (const edge of edges) {
+        const validated = validateEdgePayload(edge || {});
+        if (validated.errorKey) {
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.invalidCable', { error: req.t(validated.errorKey) })
+          ));
+        }
+        if (edgeIds.has(validated.value.edge_id)) {
+          return res.status(400).json(createErrorResponse(
+            req.t('mapping.duplicateCableId', { id: validated.value.edge_id })
+          ));
+        }
+        edgeIds.add(validated.value.edge_id);
+        validatedEdges.push(validated.value);
+      }
+
+      const result = await MappingEdge.importData(validatedNodes, validatedEdges);
+      return res.json(createResponse(req.t('mapping.imported', {
+        nodes: result.createdNodes,
+        edges: result.createdEdges
+      }), result));
+    } catch (error) {
+      console.error('Import mapping data error:', error);
+      return res.status(500).json(createErrorResponse(req.t('mapping.importFailed'), error.message));
     }
   }
 
@@ -458,7 +643,7 @@ class MappingController {
       
       if (!password) {
         return res.status(400).json(
-          createErrorResponse('Password is required')
+          createErrorResponse(req.t('mapping.passwordRequired'))
         );
       }
 
@@ -466,7 +651,7 @@ class MappingController {
       
       if (!user || user.role !== 'admin') {
         return res.status(403).json(
-          createErrorResponse('Insufficient permissions')
+          createErrorResponse(req.t('auth.insufficientPermissions'))
         );
       }
 
@@ -474,19 +659,19 @@ class MappingController {
       
       if (!isPasswordValid) {
         return res.status(400).json(
-          createErrorResponse('Invalid password. Please try again.')
+          createErrorResponse(req.t('mapping.invalidPassword'))
         );
       }
 
       await MappingEdge.resetAll();
       
       return res.json(
-        createResponse('All mapping data has been deleted successfully')
+        createResponse(req.t('mapping.reset'))
       );
     } catch (error) {
       console.error('Reset mapping data error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to reset mapping data', error.message)
+        createErrorResponse(req.t('mapping.resetFailed'), error.message)
       );
     }
   }

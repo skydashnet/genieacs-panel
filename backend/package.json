@@ -1,7 +1,7 @@
 {
   "name": "genieacs-panel-api",
-  "version": "1.13.1",
-  "description": "API for SkyGenPanel",
+  "version": "1.18.0",
+  "description": "API for TR69 Controle",
   "main": "src/server.js",
   "type": "module",
   "scripts": {
@@ -10,19 +10,27 @@
     "postinstall": "node scripts/install-cli.js",
     "db:init": "node scripts/init-db.js",
     "reset-password": "node scripts/reset-password.js",
-    "check": "node --check src/server.js && node --check src/services/deviceService.js && node --check src/controllers/deviceController.js"
+    "reset-mfa": "node scripts/reset-mfa.js",
+    "check": "node scripts/check-syntax.js",
+    "e2e:asaas-sandbox": "node scripts/asaas-sandbox-e2e.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^13.0.1",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
+    "dotenv": "^18.0.3",
     "express": "^5.1.0",
-    "express-rate-limit": "^7.4.1",
+    "express-rate-limit": "^8.7.0",
+    "heic-convert": "^2.1.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "knex": "^3.3.0",
-    "mysql2": "^3.6.5"
+    "mysql2": "^3.6.5",
+    "nodemailer": "^10.0.13",
+    "pg": "^8.23.0",
+    "proxy-addr": "^2.0.8",
+    "ws": "^8.22.0"
   },
   "engines": {
     "node": ">=22.22.0"

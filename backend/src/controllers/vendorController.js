@@ -1,19 +1,34 @@
 import Vendor from '../models/Vendor.js';
 import WifiSecurityConfig from '../models/WifiSecurityConfig.js';
-import WifiSecurityMapping from '../models/WifiSecurityMapping.js';
 import { createResponse, createErrorResponse } from '../utils/helpers.js';
+import { getDb } from '../config/database.js';
+import { currentTenantId } from '../config/tenantContext.js';
+import { catalogueSource, sourceCatalogueRow } from '../config/seed.js';
+
+/**
+ * A versão do catálogo PADRÃO de uma linha deste provedor, ou `null`.
+ *
+ * Padrão aqui é o da caixa da plataforma e só dela: quando a fonte é outro
+ * provedor (deploy sem caixa, ou self-hosted), "restaurar padrão" copiaria o
+ * ajuste de um cliente para outro, e não existe padrão a restaurar.
+ */
+async function defaultRowFor(table, identity) {
+  const fonte = await catalogueSource(getDb());
+  if (fonte.kind !== 'platform' || fonte.id === Number(currentTenantId())) return null;
+  return sourceCatalogueRow(getDb(), { sourceId: fonte.id, table, identity });
+}
 
 class VendorController {
   static async getAllVendors(req, res) {
     try {
       const vendors = await Vendor.getAll();
       return res.json(
-        createResponse('Vendors retrieved successfully', vendors)
+        createResponse(req.t('vendor.listRetrieved'), vendors)
       );
     } catch (error) {
       console.error('Get all vendors error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get vendors', error.message)
+        createErrorResponse(req.t('vendor.listFailed'), error.message)
       );
     }
   }
@@ -24,7 +39,7 @@ class VendorController {
       
       if (!id) {
         return res.status(400).json(
-          createErrorResponse('Vendor ID is required')
+          createErrorResponse(req.t('vendor.idRequired'))
         );
       }
 
@@ -32,17 +47,17 @@ class VendorController {
       
       if (!vendor) {
         return res.status(404).json(
-          createErrorResponse('Vendor not found')
+          createErrorResponse(req.t('vendor.notFound'))
         );
       }
 
       return res.json(
-        createResponse('Vendor retrieved successfully', vendor)
+        createResponse(req.t('vendor.retrieved'), vendor)
       );
     } catch (error) {
       console.error('Get vendor by ID error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get vendor', error.message)
+        createErrorResponse(req.t('vendor.getFailed'), error.message)
       );
     }
   }
@@ -53,19 +68,25 @@ class VendorController {
       
       if (!vendorData.name || !vendorData.manufacturer_patterns || !vendorData.product_patterns) {
         return res.status(400).json(
-          createErrorResponse('Name, manufacturer_patterns, and product_patterns are required')
+          createErrorResponse(req.t('vendor.fieldsRequired'))
         );
       }
 
       const vendorId = await Vendor.create(vendorData);
-      
+      // `null` is the model refusing a name this provider already uses. Told
+      // apart from a failure on purpose: nothing went wrong, the operator is
+      // being asked to pick a name they can find the row by later.
+      if (vendorId === null) {
+        return res.status(409).json(createErrorResponse(req.t('vendor.nameTaken')));
+      }
+
       return res.status(201).json(
-        createResponse('Vendor created successfully', { id: vendorId })
+        createResponse(req.t('vendor.created'), { id: vendorId })
       );
     } catch (error) {
       console.error('Create vendor error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to create vendor', error.message)
+        createErrorResponse(req.t('vendor.createFailed'), error.message)
       );
     }
   }
@@ -77,25 +98,28 @@ class VendorController {
       
       if (!id) {
         return res.status(400).json(
-          createErrorResponse('Vendor ID is required')
+          createErrorResponse(req.t('vendor.idRequired'))
         );
       }
 
       const updated = await Vendor.update(id, vendorData);
-      
+
+      if (updated === null) {
+        return res.status(409).json(createErrorResponse(req.t('vendor.nameTaken')));
+      }
       if (!updated) {
         return res.status(404).json(
-          createErrorResponse('Vendor not found')
+          createErrorResponse(req.t('vendor.notFound'))
         );
       }
 
       return res.json(
-        createResponse('Vendor updated successfully')
+        createResponse(req.t('vendor.updated'))
       );
     } catch (error) {
       console.error('Update vendor error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to update vendor', error.message)
+        createErrorResponse(req.t('vendor.updateFailed'), error.message)
       );
     }
   }
@@ -106,7 +130,7 @@ class VendorController {
       
       if (!id) {
         return res.status(400).json(
-          createErrorResponse('Vendor ID is required')
+          createErrorResponse(req.t('vendor.idRequired'))
         );
       }
 
@@ -114,129 +138,17 @@ class VendorController {
       
       if (!deleted) {
         return res.status(404).json(
-          createErrorResponse('Vendor not found')
+          createErrorResponse(req.t('vendor.notFound'))
         );
       }
 
       return res.json(
-        createResponse('Vendor deleted successfully')
+        createResponse(req.t('vendor.deleted'))
       );
     } catch (error) {
       console.error('Delete vendor error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to delete vendor', error.message)
-      );
-    }
-  }
-
-  static async getWifiSecurityMappings(req, res) {
-    try {
-      const { vendorId } = req.params;
-      
-      if (!vendorId) {
-        return res.status(400).json(
-          createErrorResponse('Vendor ID is required')
-        );
-      }
-
-      const mappings = await WifiSecurityMapping.getByVendor(vendorId);
-      
-      return res.json(
-        createResponse('WiFi security mappings retrieved successfully', mappings)
-      );
-    } catch (error) {
-      console.error('Get WiFi security mappings error:', error);
-      return res.status(500).json(
-        createErrorResponse('Failed to get WiFi security mappings', error.message)
-      );
-    }
-  }
-
-  static async createWifiSecurityMapping(req, res) {
-    try {
-      const vendor_id = Number(req.params.vendorId);
-      const { raw_security_value, normalized_security, description } = req.body;
-      
-      if (!Number.isInteger(vendor_id) || vendor_id < 1 || !raw_security_value || !normalized_security) {
-        return res.status(400).json(
-          createErrorResponse('vendor_id, raw_security_value, and normalized_security are required')
-        );
-      }
-
-      if (!(await Vendor.findById(vendor_id))) {
-        return res.status(404).json(
-          createErrorResponse('Vendor not found')
-        );
-      }
-
-      await WifiSecurityMapping.create({ vendor_id, raw_security_value, normalized_security, description });
-
-      return res.status(201).json(
-        createResponse('WiFi security mapping created successfully')
-      );
-    } catch (error) {
-      console.error('Create WiFi security mapping error:', error);
-      return res.status(500).json(
-        createErrorResponse('Failed to create WiFi security mapping', error.message)
-      );
-    }
-  }
-
-  static async updateWifiSecurityMapping(req, res) {
-    try {
-      const { id } = req.params;
-      const { raw_security_value, normalized_security, description } = req.body;
-      
-      if (!id) {
-        return res.status(400).json(
-          createErrorResponse('Mapping ID is required')
-        );
-      }
-
-      const updated = await WifiSecurityMapping.update(id, { raw_security_value, normalized_security, description });
-
-      if (!updated) {
-        return res.status(404).json(
-          createErrorResponse('WiFi security mapping not found')
-        );
-      }
-
-      return res.json(
-        createResponse('WiFi security mapping updated successfully')
-      );
-    } catch (error) {
-      console.error('Update WiFi security mapping error:', error);
-      return res.status(500).json(
-        createErrorResponse('Failed to update WiFi security mapping', error.message)
-      );
-    }
-  }
-
-  static async deleteWifiSecurityMapping(req, res) {
-    try {
-      const { id } = req.params;
-      
-      if (!id) {
-        return res.status(400).json(
-          createErrorResponse('Mapping ID is required')
-        );
-      }
-
-      const deleted = await WifiSecurityMapping.delete(id);
-
-      if (!deleted) {
-        return res.status(404).json(
-          createErrorResponse('WiFi security mapping not found')
-        );
-      }
-
-      return res.json(
-        createResponse('WiFi security mapping deleted successfully')
-      );
-    } catch (error) {
-      console.error('Delete WiFi security mapping error:', error);
-      return res.status(500).json(
-        createErrorResponse('Failed to delete WiFi security mapping', error.message)
+        createErrorResponse(req.t('vendor.deleteFailed'), error.message)
       );
     }
   }
@@ -245,12 +157,12 @@ class VendorController {
     try {
       const configs = await WifiSecurityConfig.getAll();
       return res.json(
-        createResponse('WiFi security configs retrieved successfully', configs)
+        createResponse(req.t('wifiConfig.listRetrieved'), configs)
       );
     } catch (error) {
       console.error('Get all WiFi security configs error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get WiFi security configs', error.message)
+        createErrorResponse(req.t('wifiConfig.listFailed'), error.message)
       );
     }
   }
@@ -261,7 +173,7 @@ class VendorController {
       
       if (!id) {
         return res.status(400).json(
-          createErrorResponse('Config ID is required')
+          createErrorResponse(req.t('wifiConfig.idRequired'))
         );
       }
 
@@ -269,17 +181,17 @@ class VendorController {
       
       if (!config) {
         return res.status(404).json(
-          createErrorResponse('WiFi security config not found')
+          createErrorResponse(req.t('wifiConfig.notFound'))
         );
       }
 
       return res.json(
-        createResponse('WiFi security config retrieved successfully', config)
+        createResponse(req.t('wifiConfig.retrieved'), config)
       );
     } catch (error) {
       console.error('Get WiFi security config by ID error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get WiFi security config', error.message)
+        createErrorResponse(req.t('wifiConfig.getFailed'), error.message)
       );
     }
   }
@@ -290,7 +202,7 @@ class VendorController {
 
       if (!productClass) {
         return res.status(400).json(
-          createErrorResponse('Product class is required')
+          createErrorResponse(req.t('wifiConfig.productClassRequired'))
         );
       }
 
@@ -298,17 +210,17 @@ class VendorController {
 
       if (!config) {
         return res.status(404).json(
-          createErrorResponse('WiFi security config not found for this product class')
+          createErrorResponse(req.t('wifiConfig.notFoundForProductClass'))
         );
       }
 
       return res.json(
-        createResponse('WiFi security config retrieved successfully', config)
+        createResponse(req.t('wifiConfig.retrieved'), config)
       );
     } catch (error) {
       console.error('Get WiFi security config by product class error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to get WiFi security config', error.message)
+        createErrorResponse(req.t('wifiConfig.getFailed'), error.message)
       );
     }
   }
@@ -319,7 +231,7 @@ class VendorController {
       
       if (!product_class || !security_types || !password_param_path) {
         return res.status(400).json(
-          createErrorResponse('Product class, security types, and password parameter path are required')
+          createErrorResponse(req.t('wifiConfig.fieldsRequired'))
         );
       }
 
@@ -328,14 +240,21 @@ class VendorController {
         security_types,
         password_param_path
       });
-      
+      // `null` is the model refusing a product class this provider already has
+      // a config for. Worth a real answer rather than a second row: the WiFi
+      // write path reads the FIRST match, so the row added here would never
+      // apply, and nothing on screen would say why the old one kept winning.
+      if (configId === null) {
+        return res.status(409).json(createErrorResponse(req.t('wifiConfig.productClassTaken')));
+      }
+
       return res.status(201).json(
-        createResponse('WiFi security config created successfully', { id: configId })
+        createResponse(req.t('wifiConfig.created'), { id: configId })
       );
     } catch (error) {
       console.error('Create WiFi security config error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to create WiFi security config', error.message)
+        createErrorResponse(req.t('wifiConfig.createFailed'), error.message)
       );
     }
   }
@@ -347,13 +266,13 @@ class VendorController {
       
       if (!id) {
         return res.status(400).json(
-          createErrorResponse('Config ID is required')
+          createErrorResponse(req.t('wifiConfig.idRequired'))
         );
       }
 
       if (!product_class || !security_types || !password_param_path) {
         return res.status(400).json(
-          createErrorResponse('Product class, security types, and password parameter path are required')
+          createErrorResponse(req.t('wifiConfig.fieldsRequired'))
         );
       }
 
@@ -362,20 +281,23 @@ class VendorController {
         security_types,
         password_param_path
       });
-      
+
+      if (updated === null) {
+        return res.status(409).json(createErrorResponse(req.t('wifiConfig.productClassTaken')));
+      }
       if (!updated) {
         return res.status(404).json(
-          createErrorResponse('WiFi security config not found')
+          createErrorResponse(req.t('wifiConfig.notFound'))
         );
       }
 
       return res.json(
-        createResponse('WiFi security config updated successfully')
+        createResponse(req.t('wifiConfig.updated'))
       );
     } catch (error) {
       console.error('Update WiFi security config error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to update WiFi security config', error.message)
+        createErrorResponse(req.t('wifiConfig.updateFailed'), error.message)
       );
     }
   }
@@ -386,7 +308,7 @@ class VendorController {
       
       if (!id) {
         return res.status(400).json(
-          createErrorResponse('Config ID is required')
+          createErrorResponse(req.t('wifiConfig.idRequired'))
         );
       }
 
@@ -394,18 +316,48 @@ class VendorController {
       
       if (!deleted) {
         return res.status(404).json(
-          createErrorResponse('WiFi security config not found')
+          createErrorResponse(req.t('wifiConfig.notFound'))
         );
       }
 
       return res.json(
-        createResponse('WiFi security config deleted successfully')
+        createResponse(req.t('wifiConfig.deleted'))
       );
     } catch (error) {
       console.error('Delete WiFi security config error:', error);
       return res.status(500).json(
-        createErrorResponse('Failed to delete WiFi security config', error.message)
+        createErrorResponse(req.t('wifiConfig.deleteFailed'), error.message)
       );
+    }
+  }
+
+  /** `POST /api/vendor-management/:id/reset` — o perfil volta a ser o do catálogo padrão. */
+  static async resetVendor(req, res) {
+    try {
+      const vendor = await Vendor.findById(req.params.id);
+      if (!vendor) return res.status(404).json(createErrorResponse(req.t('vendor.notFound'), null, 'not_found'));
+      const padrao = await defaultRowFor('vendors', vendor.name);
+      if (!padrao) return res.status(404).json(createErrorResponse(req.t('catalogue.noDefault'), null, 'no_default'));
+      await Vendor.resetTo(vendor.id, padrao);
+      return res.json(createResponse(req.t('catalogue.resetDone'), await Vendor.findById(vendor.id)));
+    } catch (error) {
+      console.error('Reset vendor error:', error);
+      return res.status(500).json(createErrorResponse(req.t('vendor.updateFailed'), error.message));
+    }
+  }
+
+  /** `POST /api/vendor-management/wifi-security-configs/:id/reset` — idem, para o mapeamento WiFi. */
+  static async resetWifiSecurityConfig(req, res) {
+    try {
+      const config = await WifiSecurityConfig.getById(req.params.id);
+      if (!config) return res.status(404).json(createErrorResponse(req.t('wifiConfig.notFound'), null, 'not_found'));
+      const padrao = await defaultRowFor('wifi_security_config', config.product_class);
+      if (!padrao) return res.status(404).json(createErrorResponse(req.t('catalogue.noDefault'), null, 'no_default'));
+      await WifiSecurityConfig.resetTo(config.id, padrao);
+      return res.json(createResponse(req.t('catalogue.resetDone'), await WifiSecurityConfig.getById(config.id)));
+    } catch (error) {
+      console.error('Reset WiFi security config error:', error);
+      return res.status(500).json(createErrorResponse(req.t('wifiConfig.updateFailed'), error.message));
     }
   }
 }

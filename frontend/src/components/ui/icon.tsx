@@ -38,7 +38,23 @@ import {
   CircleStackIcon,
   CommandLineIcon,
   EyeIcon,
-  EyeSlashIcon
+  ChatBubbleLeftRightIcon,
+  EyeSlashIcon,
+  DocumentDuplicateIcon,
+  LockOpenIcon,
+  BanknotesIcon,
+  ClipboardDocumentListIcon,
+  UsersIcon,
+  DocumentIcon,
+  PaperClipIcon,
+  MicrophoneIcon,
+  PlayIcon,
+  StopIcon,
+  SparklesIcon,
+  FunnelIcon,
+  EllipsisVerticalIcon,
+  ArrowUturnLeftIcon,
+  ArrowUturnRightIcon
 } from '@heroicons/react/24/outline'
 
 const ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> = {
@@ -48,6 +64,10 @@ const ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> 
   settings: Cog6ToothIcon,
   check: CheckCircleIcon,
   x: XMarkIcon,
+  filter: FunnelIcon,
+  more: EllipsisVerticalIcon,
+  reply: ArrowUturnLeftIcon,
+  forward: ArrowUturnRightIcon,
   info: InformationCircleIcon,
   warning: ExclamationTriangleIcon,
   bell: BellIcon,
@@ -79,8 +99,20 @@ const ICONS: Record<string, React.ComponentType<React.SVGProps<SVGSVGElement>>> 
   wifi: WifiIcon,
   database: CircleStackIcon,
   terminal: CommandLineIcon,
+  copy: DocumentDuplicateIcon,
+  unlock: LockOpenIcon,
+  invoice: BanknotesIcon,
+  trail: ClipboardDocumentListIcon,
   eye: EyeIcon,
-  'eye-off': EyeSlashIcon
+  chat: ChatBubbleLeftRightIcon,
+  contacts: UsersIcon,
+  'eye-off': EyeSlashIcon,
+  document: DocumentIcon,
+  paperclip: PaperClipIcon,
+  mic: MicrophoneIcon,
+  play: PlayIcon,
+  stop: StopIcon,
+  sparkles: SparklesIcon
 }
 
 interface IconProps extends React.SVGProps<SVGSVGElement> {

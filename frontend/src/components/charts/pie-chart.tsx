@@ -60,7 +60,7 @@ export function PieChart({ data, valueLabel = 'Devices' }: { data: PieChartData[
           <button key={item.name} type="button"
             onMouseEnter={() => setActiveIndex(index)} onMouseLeave={() => setActiveIndex(null)}
             onFocus={() => setActiveIndex(index)} onBlur={() => setActiveIndex(null)}
-            className="flex min-h-9 items-center justify-between gap-3 rounded px-2 text-left text-xs font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
+            className="flex min-h-10 items-center justify-between gap-3 rounded px-2 sm:min-h-9 text-start text-xs font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground">
             <span className="flex min-w-0 items-center gap-2"><span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: item.color }} /><span className="truncate">{item.name}</span></span>
             <span className="font-mono text-foreground">{item.value}</span>
           </button>

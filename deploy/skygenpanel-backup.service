@@ -1,0 +1,27 @@
+[Unit]
+Description=TR69 Controle backup (database, attachments, key fingerprint)
+After=network.target skygenpanel.service
+
+[Service]
+Type=oneshot
+# root, and not the service user: the backup reads backend/.env, which is
+# 0600 root:root, and writes outside the one ReadWritePaths the panel service
+# is allowed. It never opens a listening socket and never runs unattended
+# input, so the surface is one script, once a day.
+User=root
+WorkingDirectory=/opt/skygenpanel/backend
+ExecStart=/usr/local/bin/skygenpanel-backup run
+# The same hardening as the panel unit, plus the destination. ProtectSystem=full
+# rather than strict: the dump tools want /tmp and the destination, and both are
+# named below.
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+UMask=0077
+ReadWritePaths=/var/backups/skygenpanel

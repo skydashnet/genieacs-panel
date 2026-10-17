@@ -1,0 +1,59 @@
+# A edição SaaS num host só: a imagem do painel e um Postgres ao lado.
+#
+# É o arranjo de um deploy pequeno ou de homologação. Num deploy de verdade o
+# Postgres é gerenciado (RDS, Cloud SQL, Neon…) e `DATABASE_URL` aponta para
+# ele; aí o serviço `db` sai daqui e o resto fica igual.
+#
+#   cp deploy/saas.env.example deploy/saas.env   # e preencha
+#   docker compose -f deploy/docker-compose.saas.yml up -d --build
+#
+# O que fica na frente disto é um proxy com TLS que encaminha
+# `*.painel.exemplo.com` e `painel.exemplo.com` para :5890 e
+# `*.portal.exemplo.com` para :5891. Ver docs/saas-operations.md.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-skygp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-skygp}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-skygp} -d ${POSTGRES_DB:-skygp}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  panel:
+    build:
+      context: ..
+    restart: unless-stopped
+    env_file:
+      - saas.env
+    environment:
+      EDITION: saas
+      APP_HOST: 0.0.0.0
+      PORTAL_HOST: 0.0.0.0
+      # O proxy na frente é o único salto confiável: é o que dá a cada
+      # provedor o seu balde de rate limit e marca os cookies do portal como
+      # Secure.
+      TRUST_PROXY: "1"
+      DATABASE_URL: postgres://${POSTGRES_USER:-skygp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-skygp}
+      LOG_FORMAT: json
+    ports:
+      - "127.0.0.1:5890:5890"
+      - "127.0.0.1:5891:5891"
+    volumes:
+      # Anexos do WhatsApp e mais nada: a configuração de banco vem de
+      # DATABASE_URL, e o SQLite nunca é usado nesta edição.
+      - paneldata:/var/lib/skygenpanel
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  paneldata:

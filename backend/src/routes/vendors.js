@@ -1,28 +1,28 @@
 import express from 'express';
 import VendorController from '../controllers/vendorController.js';
-import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.get('/wifi-security-configs', authenticateToken, VendorController.getAllWifiSecurityConfigs);
-router.get('/wifi-security-configs/by-product-class/:productClass', authenticateToken, VendorController.getWifiSecurityConfigByProductClass);
-router.get('/wifi-security-configs/:id', authenticateToken, VendorController.getWifiSecurityConfigById);
+router.get('/wifi-security-configs', authenticateToken, requirePermission('catalogue.read'), VendorController.getAllWifiSecurityConfigs);
+router.get('/wifi-security-configs/by-product-class/:productClass', authenticateToken, requirePermission('catalogue.read'), VendorController.getWifiSecurityConfigByProductClass);
+router.get('/wifi-security-configs/:id', authenticateToken, requirePermission('catalogue.read'), VendorController.getWifiSecurityConfigById);
 
-router.get('/:vendorId/wifi-security', authenticateToken, VendorController.getWifiSecurityMappings);
+router.post('/wifi-security-configs', authenticateToken, requirePermission('catalogue.write'), VendorController.createWifiSecurityConfig);
 
-router.post('/wifi-security-configs', authenticateToken, requireRole(['admin']), VendorController.createWifiSecurityConfig);
-router.post('/:vendorId/wifi-security', authenticateToken, requireRole(['admin']), VendorController.createWifiSecurityMapping);
+router.put('/wifi-security-configs/:id', authenticateToken, requirePermission('catalogue.write'), VendorController.updateWifiSecurityConfig);
 
-router.put('/wifi-security/:id', authenticateToken, requireRole(['admin']), VendorController.updateWifiSecurityMapping);
-router.put('/wifi-security-configs/:id', authenticateToken, requireRole(['admin']), VendorController.updateWifiSecurityConfig);
+router.post('/wifi-security-configs/:id/reset', authenticateToken, requirePermission('catalogue.write'), VendorController.resetWifiSecurityConfig);
 
-router.delete('/wifi-security/:id', authenticateToken, requireRole(['admin']), VendorController.deleteWifiSecurityMapping);
-router.delete('/wifi-security-configs/:id', authenticateToken, requireRole(['admin']), VendorController.deleteWifiSecurityConfig);
+router.delete('/wifi-security-configs/:id', authenticateToken, requirePermission('catalogue.write'), VendorController.deleteWifiSecurityConfig);
 
-router.get('/', authenticateToken, VendorController.getAllVendors);
-router.get('/:id', authenticateToken, VendorController.getVendorById);
-router.post('/', authenticateToken, requireRole(['admin']), VendorController.createVendor);
-router.put('/:id', authenticateToken, requireRole(['admin']), VendorController.updateVendor);
-router.delete('/:id', authenticateToken, requireRole(['admin']), VendorController.deleteVendor);
+router.get('/', authenticateToken, requirePermission('catalogue.read'), VendorController.getAllVendors);
+router.get('/:id', authenticateToken, requirePermission('catalogue.read'), VendorController.getVendorById);
+router.post('/', authenticateToken, requirePermission('catalogue.write'), VendorController.createVendor);
+// Volta um perfil ao que está no catálogo padrão da plataforma. A cópia do
+// provedor é dele e pode ter sido ajustada; isto desfaz o ajuste, e só dele.
+router.post('/:id/reset', authenticateToken, requirePermission('catalogue.write'), VendorController.resetVendor);
+router.put('/:id', authenticateToken, requirePermission('catalogue.write'), VendorController.updateVendor);
+router.delete('/:id', authenticateToken, requirePermission('catalogue.write'), VendorController.deleteVendor);
 
 export default router;

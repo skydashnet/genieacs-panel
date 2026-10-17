@@ -1,0 +1,24 @@
+# Mantém atualizados os pins por SHA/digest: as actions do CI, a imagem base do
+# Dockerfile e as dependências npm dos dois pacotes. Semanal, para o volume de
+# PRs caber numa revisão de rotina.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

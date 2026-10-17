@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# skygenpanel — management CLI for the SkyGenPanel service.
+# skygenpanel — management CLI for the TR69 Controle service.
 #
 set -euo pipefail
 
@@ -9,6 +9,7 @@ SERVICE_NAME="skygenpanel"
 ENV_FILE="${INSTALL_DIR}/backend/.env"
 REPO_BRANCH="${SKYGP_BRANCH:-main}"
 CLI_PATH="${SKYGP_CLI_PATH:-/usr/local/bin/skygenpanel}"
+BACKUP_CLI_PATH="${SKYGP_BACKUP_CLI_PATH:-/usr/local/bin/skygenpanel-backup}"
 NODE_MAJOR_MIN=22
 NODE_MINOR_MIN=22
 
@@ -75,6 +76,13 @@ ensure_env_defaults() {
     printf 'PORTAL_JWT_SECRET=%s\n' \
       "$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')" >> "$ENV_FILE"
   fi
+  if ! grep -qE '^TRUST_PROXY=' "$ENV_FILE"; then
+    if grep -qE '^APP_HOST=127\.0\.0\.1$' "$ENV_FILE"; then
+      printf 'TRUST_PROXY=1\n' >> "$ENV_FILE"
+    else
+      printf 'TRUST_PROXY=0\n' >> "$ENV_FILE"
+    fi
+  fi
 }
 
 set_env() {
@@ -124,6 +132,20 @@ cmd_update() {
   install -m 0755 "$INSTALL_DIR/deploy/skygenpanel" "$cli_temp"
   mv -f -- "$cli_temp" "$CLI_PATH"
   trap - EXIT
+  # The backup script and its units travel with the CLI, and for the same
+  # reason: `git reset --hard` above restores every tracked file in the
+  # checkout, so anything installed OUTSIDE it — /usr/local/bin, /etc/systemd —
+  # keeps whatever version it had until something copies the new one. A backup
+  # script frozen at the version of the day it was installed is exactly the kind
+  # of thing nobody notices until the restore.
+  if [ -f "$INSTALL_DIR/deploy/skygenpanel-backup" ]; then
+    install -m 0755 "$INSTALL_DIR/deploy/skygenpanel-backup" "$BACKUP_CLI_PATH"
+    install -m 0644 "$INSTALL_DIR/deploy/skygenpanel-backup.service" /etc/systemd/system/
+    install -m 0644 "$INSTALL_DIR/deploy/skygenpanel-backup.timer" /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable --now skygenpanel-backup.timer >/dev/null 2>&1 \
+      || warn "Could not enable the backup timer."
+  fi
   log "Updating backend dependencies"
   ( cd "$INSTALL_DIR/backend" && npm ci --omit=dev )
   log "Rebuilding frontend"
@@ -140,9 +162,13 @@ cmd_expose() {
   need_root
   validate_install_dir
   set_env APP_HOST "0.0.0.0"
+  # A directly reachable listener must not believe forwarded headers: a client
+  # could otherwise forge its source address and escape every rate limit.
+  set_env TRUST_PROXY "0"
   local port portal; port="$(app_port)"; portal="$(portal_port)"
   log "Panel will bind to 0.0.0.0:${port} (reachable from the network)."
   log "Customer portal will bind to 0.0.0.0:${portal}."
+  log "Proxy headers are now untrusted (TRUST_PROXY=0)."
   warn "Anyone on your network can now reach the panel. Ensure a strong admin password and a firewall."
   systemctl restart "$SERVICE_NAME"
   log "Done."
@@ -152,7 +178,11 @@ cmd_unexpose() {
   need_root
   validate_install_dir
   set_env APP_HOST "127.0.0.1"
+  # Back to loopback-only, so the reverse proxy or tunnel in front is again the
+  # single trusted hop that carries the real client address.
+  set_env TRUST_PROXY "1"
   log "Panel restricted to localhost (127.0.0.1)."
+  log "Proxy headers from the local reverse proxy are trusted again (TRUST_PROXY=1)."
   systemctl restart "$SERVICE_NAME"
   log "Done."
 }
@@ -166,7 +196,7 @@ cmd_version() {
   [ -f "$INSTALL_DIR/package.json" ] || die "Package manifest not found: $INSTALL_DIR/package.json"
   version="$(node -p "require('${INSTALL_DIR}/package.json').version")"
   commit="$(git -C "$INSTALL_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
-  printf 'SkyGenPanel v%s (%s)\n' "$version" "$commit"
+  printf 'TR69 Controle v%s (%s)\n' "$version" "$commit"
 }
 cmd_logs() {
   local lines="${1:-100}"
@@ -177,8 +207,11 @@ cmd_logs() {
 cmd_reset_password() {
   need_root
   validate_install_dir
-  local user="${1:-}" pass="${2:-}"
-  [ -n "$user" ] || die "Usage: skygenpanel reset-password <username> [newPassword]"
+  local user="${1:-}" pass="${RESET_PASSWORD:-}"
+  [ -n "$user" ] || die "Usage: skygenpanel reset-password <username>  (password prompted, or from RESET_PASSWORD)"
+  # Senha como argumento aparece em `ps` e no histórico do shell: recusa e
+  # aponta o caminho certo em vez de aceitar em silêncio o uso antigo.
+  [ -z "${2:-}" ] || die "Refusing a password given as an argument (visible in ps and shell history). Omit it to be prompted, or set RESET_PASSWORD."
   if [ -z "$pass" ]; then
     read -r -s -p "New password: " pass
     printf '\n'
@@ -187,9 +220,46 @@ cmd_reset_password() {
   ( cd "$INSTALL_DIR/backend" && RESET_PASSWORD="$pass" node scripts/reset-password.js "$user" )
 }
 
+# Para quem perdeu o celular e os códigos de recuperação e que a tela da equipe
+# não pode destravar (o último dono, quem trabalha em vários provedores, quem
+# opera a plataforma). O nome não é segredo, então vai por argumento.
+cmd_reset_mfa() {
+  need_root
+  validate_install_dir
+  local user="${1:-}"
+  [ -n "$user" ] || die "Usage: skygenpanel reset-mfa <username>"
+  ( cd "$INSTALL_DIR/backend" && node scripts/reset-mfa.js "$user" )
+}
+
+# A chave entra por VARIÁVEL DE AMBIENTE, nunca por argumento: argv aparece em
+# `ps` para qualquer usuário da máquina e fica no histórico do shell. É a mesma
+# regra de `reset-password` acima, e aqui pesa mais — o segredo é a chave mestra
+# que abre senha de portal, senha de WiFi e todo token de integração.
+cmd_rotate_key() {
+  need_root
+  validate_install_dir
+  local modo="${1:-}"
+  case "$modo" in
+    ''|--dry-run) ;;
+    *) die "Usage: skygenpanel rotate-key [--dry-run]" ;;
+  esac
+  ( cd "$INSTALL_DIR/backend" && node scripts/rotate-secret-key.js $modo )
+}
+
+# Delegated rather than reimplemented: the timer runs the same script with the
+# same arguments, so an operator who types this by hand and the machine that
+# runs it at 03:17 are doing exactly the same thing. Two copies of "how a backup
+# is taken" would be two answers on the day they disagree.
+cmd_backup() {
+  local verbo="${1:-run}"
+  [ -x "$BACKUP_CLI_PATH" ] \
+    || die "Backup script not installed at $BACKUP_CLI_PATH. Run 'skygenpanel update'."
+  "$BACKUP_CLI_PATH" "$verbo"
+}
+
 usage() {
   cat <<EOF
-skygenpanel — manage the SkyGenPanel service
+skygenpanel — manage the TR69 Controle service
 
 Usage: skygenpanel <command> [args]
 
@@ -201,7 +271,10 @@ Commands:
   status                      Show service status
   version                     Show installed version and Git revision
   logs [N]                    Follow the last N log lines (default 100)
-  reset-password <u> [p]      Reset password (prompts securely when omitted)
+  reset-password <u>          Reset password (prompts securely, or RESET_PASSWORD)
+  reset-mfa <u>               Turn off two-step login for someone who lost it
+  backup [verify]             Take a backup now, or report the newest one
+  rotate-key [--dry-run]      Rewrite stored secrets with the live SECRET_BOX_KEY
   help                        Show this help
 EOF
 }
@@ -217,6 +290,9 @@ case "${1:-help}" in
   version|-v|--version) cmd_version ;;
   logs)            cmd_logs "${2:-100}" ;;
   reset-password)  cmd_reset_password "${2:-}" "${3:-}" ;;
+  reset-mfa)       cmd_reset_mfa "${2:-}" ;;
+  backup)          cmd_backup "${2:-run}" ;;
+  rotate-key)      cmd_rotate_key "${2:-}" ;;
   help|-h|--help)  usage ;;
   *)               warn "Unknown command: $1"; usage; exit 1 ;;
 esac

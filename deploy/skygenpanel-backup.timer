@@ -1,0 +1,18 @@
+[Unit]
+Description=Daily TR69 Controle backup
+
+[Timer]
+# 03:17 and not 03:00: thirty installs writing to the same NFS share at the
+# same second is a thundering herd that looks like a disk fault. The randomized
+# delay spreads it further.
+OnCalendar=*-*-* 03:17:00
+RandomizedDelaySec=900
+
+# The reason this is a timer and not a cron line. A machine that is off at
+# 03:17 — a panel on an ISP's own hardware, rebooted for maintenance — runs the
+# backup when it comes back instead of skipping the day in silence. A skipped
+# cron leaves no trace anywhere; this leaves a run in the journal.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

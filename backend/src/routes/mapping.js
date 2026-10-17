@@ -1,31 +1,44 @@
 import express from 'express';
 import MappingController from '../controllers/mappingController.js';
-import { authenticateToken, requireRole } from '../middleware/auth.js';
+import { authenticateToken, requirePermission } from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.get('/nodes', authenticateToken, MappingController.getAllNodes);
+router.get('/client-location', authenticateToken, requirePermission('map.read'), MappingController.clientLocation);
 
-router.get('/nodes/:nodeId', authenticateToken, MappingController.getNodeByNodeId);
+router.get('/unmapped', authenticateToken, requirePermission('map.read'), MappingController.unmappedDevices);
+router.get('/bulk-placement', authenticateToken, requirePermission('map.write'), MappingController.bulkPlacement);
 
-router.post('/nodes', authenticateToken, requireRole(['admin']), MappingController.createNode);
+router.get('/outages', authenticateToken, requirePermission('map.read'), MappingController.outageHistory);
 
-router.put('/nodes/:nodeId', authenticateToken, requireRole(['admin']), MappingController.updateNode);
+router.get('/status', authenticateToken, requirePermission('map.read'), MappingController.liveStatus);
 
-router.delete('/nodes/:nodeId', authenticateToken, requireRole(['admin']), MappingController.deleteNode);
+router.get('/geocode', authenticateToken, requirePermission('map.read'), MappingController.searchAddress);
 
-router.get('/edges', authenticateToken, MappingController.getAllEdges);
+router.get('/nodes', authenticateToken, requirePermission('map.read'), MappingController.getAllNodes);
 
-router.get('/edges/:edgeId', authenticateToken, MappingController.getEdgeByEdgeId);
+router.get('/nodes/:nodeId', authenticateToken, requirePermission('map.read'), MappingController.getNodeByNodeId);
 
-router.post('/edges', authenticateToken, requireRole(['admin']), MappingController.createEdge);
+router.post('/nodes', authenticateToken, requirePermission('map.write'), MappingController.createNode);
 
-router.put('/edges/:edgeId', authenticateToken, requireRole(['admin']), MappingController.updateEdge);
+router.put('/nodes/:nodeId', authenticateToken, requirePermission('map.write'), MappingController.updateNode);
 
-router.delete('/edges/:edgeId', authenticateToken, requireRole(['admin']), MappingController.deleteEdge);
+router.delete('/nodes/:nodeId', authenticateToken, requirePermission('map.write'), MappingController.deleteNode);
 
-router.post('/sync', authenticateToken, requireRole(['admin']), MappingController.syncMappingData);
+router.get('/edges', authenticateToken, requirePermission('map.read'), MappingController.getAllEdges);
 
-router.delete('/reset', authenticateToken, requireRole(['admin']), MappingController.resetMappingData);
+router.get('/edges/:edgeId', authenticateToken, requirePermission('map.read'), MappingController.getEdgeByEdgeId);
+
+router.post('/edges', authenticateToken, requirePermission('map.write'), MappingController.createEdge);
+
+router.put('/edges/:edgeId', authenticateToken, requirePermission('map.write'), MappingController.updateEdge);
+
+router.delete('/edges/:edgeId', authenticateToken, requirePermission('map.write'), MappingController.deleteEdge);
+
+router.post('/import', authenticateToken, requirePermission('map.write'), MappingController.importMappingData);
+
+router.post('/sync', authenticateToken, requirePermission('map.write'), MappingController.syncMappingData);
+
+router.delete('/reset', authenticateToken, requirePermission('map.write'), MappingController.resetMappingData);
 
 export default router;

@@ -1,4 +1,4 @@
-# SkyGenPanel Frontend
+# TR69 Controle Frontend
 
 Frontend Vite + React Router yang dibangun sebagai SPA statis dan disajikan oleh backend pada origin yang sama.
 

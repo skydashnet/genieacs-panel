@@ -1,165 +1,74 @@
 import { getDb } from './database.js';
+import { migrations } from './migrations.js';
+import { runUnscoped } from './tenantContext.js';
 
+export const MIGRATIONS_TABLE = 'schema_migrations';
+
+/**
+ * Creates the bookkeeping table. Returns true when this call created it, which
+ * is how `ensureSchema` tells a brand-new database (or an installation that
+ * predates the runner) from one it has already migrated.
+ */
+async function ensureMigrationsTable(db) {
+  if (await db.schema.hasTable(MIGRATIONS_TABLE)) return false;
+  try {
+    await db.schema.createTable(MIGRATIONS_TABLE, (t) => {
+      t.string('id', 128).primary();
+      t.timestamp('applied_at').defaultTo(db.fn.now());
+    });
+    return true;
+  } catch (error) {
+    // Another process may have created it between the check and the create.
+    if (!(await db.schema.hasTable(MIGRATIONS_TABLE))) throw error;
+    return false;
+  }
+}
+
+async function appliedIds(db) {
+  const rows = await db(MIGRATIONS_TABLE).select('id');
+  return new Set(rows.map((row) => row.id));
+}
+
+async function record(db, id) {
+  await db(MIGRATIONS_TABLE).insert({ id, applied_at: db.fn.now() });
+}
+
+/**
+ * Brings the database up to date, in order, recording every step it applies.
+ *
+ * Safe to call on every boot: steps that are already recorded are skipped, and
+ * the ones that do run are idempotent anyway.
+ *
+ * An installation created before this runner existed has no `schema_migrations`
+ * table but does have application tables. That case is baselined: each step is
+ * asked whether its objects are already present, and if so it is recorded as
+ * applied instead of being executed. Steps whose objects are missing (an old
+ * database that never had `sgp_links`, say) still run, so a partial upgrade is
+ * finished rather than skipped.
+ */
 export async function ensureSchema(db = getDb()) {
-  if (!(await db.schema.hasTable('users'))) {
-    await db.schema.createTable('users', (t) => {
-      t.increments('id').primary();
-      t.string('username', 64).notNullable().unique();
-      t.string('password', 255).notNullable();
-      t.string('role', 32).notNullable().defaultTo('user');
-      t.integer('token_version').notNullable().defaultTo(0);
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  } else if (!(await db.schema.hasColumn('users', 'token_version'))) {
-    await db.schema.alterTable('users', (t) => {
-      t.integer('token_version').notNullable().defaultTo(0);
-    });
-  }
+  return runUnscoped('the migration runner', () => migrate(db));
+}
 
-  if (!(await db.schema.hasTable('settings'))) {
-    await db.schema.createTable('settings', (t) => {
-      t.string('key', 128).primary();
-      t.text('value');
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
+/**
+ * Declared unscoped rather than left contextless because a backfill's whole job
+ * is to touch rows that belong to a provider that does not exist yet: the step
+ * that creates the first `tenants` row reads `settings` to name it, and the
+ * SQLite rebuilds copy whole scoped tables into shadow tables. Every one of
+ * those is a query the SQL sentinel would otherwise refuse, and rightly — it is
+ * only the declaration here that tells it the crossing is deliberate.
+ */
+async function migrate(db) {
+  const isNewLedger = await ensureMigrationsTable(db);
+  const baseline = isNewLedger && (await db.schema.hasTable('users'));
+  const applied = await appliedIds(db);
 
-  if (!(await db.schema.hasTable('app_state'))) {
-    await db.schema.createTable('app_state', (t) => {
-      t.string('key', 128).primary();
-      t.text('value');
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('vendors'))) {
-    await db.schema.createTable('vendors', (t) => {
-      t.increments('id').primary();
-      t.string('name', 128).notNullable();
-      t.text('manufacturer_patterns');
-      t.text('product_patterns');
-      t.string('parameter_prefix', 255);
-      t.string('service_list_path', 255);
-      t.string('lan_binding_path', 255);
-      t.string('vlan_id_path', 255);
-      t.string('wifi_password_path', 255);
-      t.string('http_wan_enable_path', 255);
-      t.string('firewall_level_path', 255);
-      t.integer('priority').notNullable().defaultTo(10);
-      t.boolean('enabled').notNullable().defaultTo(true);
-      t.text('description');
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('wifi_security_mappings'))) {
-    await db.schema.createTable('wifi_security_mappings', (t) => {
-      t.increments('id').primary();
-      t.integer('vendor_id').notNullable().references('id').inTable('vendors').onDelete('CASCADE');
-      t.string('raw_security_value', 128).notNullable();
-      t.string('normalized_security', 128).notNullable();
-      t.text('description');
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('wifi_security_config'))) {
-    await db.schema.createTable('wifi_security_config', (t) => {
-      t.increments('id').primary();
-      t.string('product_class', 128).notNullable();
-      t.string('security_types', 255);
-      t.string('password_param_path', 255);
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('mapping_nodes'))) {
-    await db.schema.createTable('mapping_nodes', (t) => {
-      t.increments('id').primary();
-      t.string('node_id', 128).notNullable().unique();
-      t.string('type', 32).notNullable();
-      t.string('name', 255).notNullable();
-      t.decimal('latitude', 10, 7).notNullable();
-      t.decimal('longitude', 10, 7).notNullable();
-      t.integer('capacity');
-      t.string('splitter', 64);
-      t.string('pppoe', 255);
-      t.text('notes');
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('mapping_edges'))) {
-    await db.schema.createTable('mapping_edges', (t) => {
-      t.increments('id').primary();
-      t.string('edge_id', 128).notNullable().unique();
-      t.string('source', 128).notNullable().references('node_id').inTable('mapping_nodes').onDelete('CASCADE');
-      t.string('target', 128).notNullable().references('node_id').inTable('mapping_nodes').onDelete('CASCADE');
-      t.string('fiber_type', 32);
-      t.decimal('distance', 10, 2);
-      t.text('waypoints');
-      t.text('notes');
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('map_settings'))) {
-    await db.schema.createTable('map_settings', (t) => {
-      t.integer('id').primary();
-      t.string('center_lat', 32).notNullable();
-      t.string('center_lng', 32).notNullable();
-      t.string('max_zoom_in', 8).notNullable();
-      t.string('max_zoom_out', 8).notNullable();
-      t.string('default_zoom', 8).notNullable();
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('customer_accounts'))) {
-    await db.schema.createTable('customer_accounts', (t) => {
-      t.increments('id').primary();
-      t.string('customer_id', 32).notNullable().unique();
-      t.string('device_id', 255).notNullable().unique();
-      t.string('identity_hash', 64).notNullable().unique();
-      t.string('software_id', 255).notNullable();
-      t.string('pppoe_username', 255).notNullable();
-      t.boolean('active').notNullable().defaultTo(true);
-      t.timestamp('last_seen_at').defaultTo(db.fn.now());
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('device_profiles'))) {
-    await db.schema.createTable('device_profiles', (t) => {
-      t.increments('id').primary();
-      t.string('device_id', 255).notNullable().unique();
-      t.date('installation_date');
-      t.string('installation_tag', 64);
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-  }
-
-  if (!(await db.schema.hasTable('customer_wifi_credentials'))) {
-    await db.schema.createTable('customer_wifi_credentials', (t) => {
-      t.increments('id').primary();
-      t.integer('account_id').unsigned().notNullable()
-        .references('id').inTable('customer_accounts').onDelete('CASCADE');
-      t.integer('wifi_index').notNullable();
-      t.string('ssid', 32).notNullable();
-      t.text('password_ciphertext');
-      t.string('password_iv', 32);
-      t.string('password_tag', 32);
-      t.timestamp('created_at').defaultTo(db.fn.now());
-      t.timestamp('updated_at').defaultTo(db.fn.now());
-      t.unique(['account_id', 'wifi_index']);
-    });
+  for (const migration of migrations) {
+    if (applied.has(migration.id)) continue;
+    const alreadyPresent = baseline && migration.isApplied
+      ? await migration.isApplied(db)
+      : false;
+    if (!alreadyPresent) await migration.up(db);
+    await record(db, migration.id);
   }
 }

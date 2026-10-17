@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Conectar WhatsApp – Tavares Fibra</title>
+<style>
+  :root { --bg:#f4f6f5; --card:#fff; --ink:#1b2a25; --muted:#5b6b65; --brand:#173f35; --fb:#1877f2; --ok:#0a7a46; --err:#b42318; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  main { max-width:640px; margin:40px auto; padding:0 16px; }
+  .card { background:var(--card); border-radius:12px; padding:28px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  h1 { font-size:22px; margin:0 0 6px; color:var(--brand); }
+  p { color:var(--muted); line-height:1.5; }
+  ol { color:var(--muted); line-height:1.6; padding-left:20px; }
+  button { background:var(--fb); border:0; border-radius:6px; color:#fff; cursor:pointer; font-size:16px; font-weight:600; height:44px; padding:0 24px; margin-top:8px; }
+  button:disabled { opacity:.5; cursor:wait; }
+  #status { margin-top:20px; font-weight:600; }
+  .ok { color:var(--ok); } .err { color:var(--err); }
+  table { width:100%; border-collapse:collapse; margin-top:16px; font-size:14px; }
+  td { padding:8px; border-bottom:1px solid #e5e9e7; vertical-align:top; word-break:break-all; }
+  td:first-child { color:var(--muted); width:38%; word-break:normal; }
+  code { background:#eef2f0; padding:2px 6px; border-radius:4px; }
+  pre { background:#0f1f1a; color:#d7e6df; padding:12px; border-radius:8px; font-size:12px; overflow:auto; max-height:240px; }
+  footer { font-size:12px; color:var(--muted); margin-top:16px; text-align:center; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Conectar WhatsApp Business à API (Coexistência)</h1>
+    <p>Este cadastro conecta o número que já está no app <strong>WhatsApp Business</strong> à API oficial, sem desinstalar o app do celular.</p>
+    <ol>
+      <li>Deixe o celular com o WhatsApp Business aberto e atualizado (versão 2.24.17 ou superior).</li>
+      <li>Clique no botão abaixo e entre com a conta do Facebook administradora.</li>
+      <li>Escolha <strong>conectar o app WhatsApp Business existente</strong> e informe o número.</li>
+      <li>No celular, toque em <strong>Conectar</strong> na mensagem oficial, depois em <strong>Confirmar</strong> (compartilhar histórico) e cole o código mostrado.</li>
+    </ol>
+    <button id="btn" type="button">Conectar com o Facebook</button>
+    <div id="status"></div>
+    <table id="result" hidden></table>
+    <details id="raw" hidden><summary>Dados brutos</summary><pre id="rawpre"></pre></details>
+  </div>
+  <footer>Tavares Telecomunicações · Tavares Fibra</footer>
+</main>
+
+<!-- A CSP do painel só libera inline em `style`; o script é um arquivo externo
+     (ver a rota `/whatsapp-signup.html` em `backend/src/app.js`). -->
+<script async defer crossorigin="anonymous" src="https://connect.facebook.net/pt_BR/sdk.js"></script>
+<script defer src="/whatsapp-signup.js"></script>
+</body>
+</html>

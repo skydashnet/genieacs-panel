@@ -1,6 +1,373 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+  @media (width >= --theme(--breakpoint-sm)) {
+    max-width: none;
+  }
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+}
+
+@theme {
+  /* Monitor largo (≈1840 px+). Com o menu lateral, a tabela completa do
+     inventário só cabe daqui para cima. Em rem como os outros: a v4 ordena
+     as media queries por unidade. */
+  --breakpoint-3xl: 115rem;
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  /*
+    Alturas de linha absolutas, como na v3. A v4 passou a usar razões
+    (`text-sm` = 1.4286), e um filho com fonte menor herda a razão em vez dos
+    20px: o cabeçalho das tabelas (`text-[0.68rem]` dentro de `text-sm`)
+    encolhia 4px.
+  */
+  --text-xs--line-height: 1rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl--line-height: 1.75rem;
+  --text-2xl--line-height: 2rem;
+  --text-3xl--line-height: 2.25rem;
+  --text-4xl--line-height: 2.5rem;
+  --text-5xl--line-height: 1;
+  --text-6xl--line-height: 1;
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+
+  /* A v4 tirou do preflight a mãozinha dos botões; o painel sempre a teve. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+@utility page-shell {
+  /* No celular o `main` da casca já desconta a barra fixa (pt-16), para que as
+     faixas de personificação e de assinatura apareçam abaixo dela. */
+  @apply px-4 pb-24 pt-4 sm:px-6 lg:px-8 lg:py-8;
+}
+
+@utility page-frame {
+  @apply mx-auto w-full max-w-[1520px];
+}
+
+@utility page-frame-narrow {
+  @apply mx-auto w-full max-w-5xl;
+}
+
+@utility page-header {
+  @apply mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between;
+}
+
+@utility page-kicker {
+  @apply mb-1.5 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-[hsl(var(--primary))] dark:text-[hsl(var(--primary))];
+}
+
+@utility page-title {
+  @apply text-2xl font-bold leading-tight text-foreground sm:text-[1.75rem];
+}
+
+@utility page-description {
+  @apply mt-1 max-w-2xl text-sm leading-6 text-muted-foreground;
+}
+
+@utility section-heading {
+  @apply text-base font-semibold text-foreground;
+}
+
+@utility section-description {
+  @apply mt-1 text-sm leading-5 text-muted-foreground;
+}
+
+@utility modern-card {
+  @apply rounded-(--radius) border border-border bg-card text-card-foreground;
+  box-shadow: 0 1px 0 hsl(var(--foreground) / 0.03);
+}
+
+@utility surface-subtle {
+  background: hsl(var(--surface-subtle));
+}
+
+@utility modern-button {
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors duration-150 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45;
+  @apply bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80;
+}
+
+@utility modern-button-secondary {
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors duration-150 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45;
+  @apply border border-border bg-card text-foreground hover:bg-secondary active:bg-secondary/80;
+}
+
+@utility modern-button-danger {
+  @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors duration-150 focus:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45;
+  @apply bg-destructive text-destructive-foreground hover:bg-destructive/90;
+}
+
+@utility icon-button {
+  @apply inline-flex size-11 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-secondary hover:text-foreground focus:outline-hidden;
+}
+
+@utility modern-input {
+  @apply min-h-11 w-full min-w-0 rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/80 transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-hidden focus:ring-2 focus:ring-primary/15 disabled:bg-muted disabled:text-muted-foreground;
+
+  &textarea {
+    @apply min-h-24 resize-y;
+  }
+}
+
+@utility field-label {
+  @apply mb-1.5 block text-sm font-semibold text-foreground;
+}
+
+@utility field-hint {
+  @apply mt-1.5 text-xs leading-5 text-muted-foreground;
+}
+
+@utility modern-badge {
+  @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold leading-none;
+  @apply bg-secondary text-secondary-foreground;
+}
+
+@utility modern-badge-success {
+  @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold leading-none;
+  color: hsl(var(--status-success));
+  background: hsl(var(--status-success) / 0.11);
+}
+
+@utility modern-badge-warning {
+  @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold leading-none;
+  color: hsl(var(--status-warning));
+  background: hsl(var(--status-warning) / 0.12);
+}
+
+@utility modern-badge-error {
+  @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold leading-none;
+  color: hsl(var(--status-danger));
+  background: hsl(var(--status-danger) / 0.11);
+}
+
+@utility modern-badge-info {
+  @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold leading-none;
+  color: hsl(var(--status-info));
+  background: hsl(var(--status-info) / 0.11);
+}
+
+@utility status-dot {
+  @apply inline-block size-2 shrink-0 rounded-full bg-current;
+}
+
+@utility modern-table {
+  @apply w-full border-separate border-spacing-0 text-sm;
+
+  & th {
+    @apply sticky top-0 z-10 border-b border-border bg-[hsl(var(--surface-subtle))] px-3 py-2.5 text-left text-[0.68rem] font-bold uppercase tracking-[0.12em] text-muted-foreground;
+  }
+
+  & td {
+    @apply border-b border-border/70 px-3 py-2.5 align-middle text-foreground;
+  }
+
+  /* Abaixo de lg (tablet e celular deitado) as linhas ficam mais baixas. */
+  @media (min-width: 1024px) {
+    & th {
+      @apply px-4 py-3;
+    }
+
+    & td {
+      @apply px-4 py-3.5;
+    }
+  }
+
+  & tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  & tbody tr {
+    @apply transition-colors hover:bg-[hsl(var(--surface-subtle))];
+  }
+}
+
+@utility tab-rail {
+  /* Rola de lado quando as abas não cabem (no celular), sem a barra cinza à
+     vista: o sublinhado da aba ativa e a aba cortada na borda já dizem que há
+     mais para o lado. */
+  @apply flex gap-1 overflow-x-auto border-b border-border;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Com mouse a rolagem de lado sem barra não se descobre: num notebook as
+     últimas abas das Configurações e do WhatsApp simplesmente sumiam. Daqui
+     para cima as abas quebram em outra linha. */
+  @media (width >= 64rem) {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
+
+@utility tab-button {
+  @apply relative min-h-11 shrink-0 px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus:outline-hidden;
+
+  &[data-active='true'] {
+    @apply text-foreground;
+  }
+
+  &[data-active='true']::after {
+    content: '';
+    @apply absolute inset-x-3 bottom-0 h-0.5 bg-[hsl(var(--accent))];
+  }
+}
+
+@utility empty-state {
+  @apply flex min-h-48 flex-col items-center justify-center px-5 py-10 text-center;
+}
+
+@utility empty-state-icon {
+  @apply mb-4 flex size-11 items-center justify-center rounded-md bg-secondary text-muted-foreground;
+}
+
+@utility empty-state-title {
+  @apply text-base font-semibold text-foreground;
+}
+
+@utility empty-state-copy {
+  @apply mt-1 max-w-md text-sm leading-6 text-muted-foreground;
+}
+
+@utility data-value {
+  @apply font-mono font-semibold tabular-nums text-foreground;
+}
+
+@utility metric-label {
+  @apply text-[0.68rem] font-bold uppercase tracking-[0.13em] text-muted-foreground;
+}
+
+@utility metric-value {
+  @apply mt-2 font-mono text-3xl font-semibold tracking-tight text-foreground;
+}
+
+@utility modal-backdrop {
+  /* Diálogos: o fundo e o painel que cabem na tela do celular — o painel rola
+     por dentro em vez de passar da altura da tela. */
+  @apply fixed inset-0 z-2100 flex items-end justify-center bg-black/60 p-3 sm:items-center sm:p-4;
+}
+
+@utility modal-panel {
+  @apply w-full max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain sm:max-h-[calc(100dvh-2rem)];
+}
+
+@utility mobile-data-card {
+  @apply rounded-(--radius) border border-border bg-card p-4;
+}
+
+@utility auth-panel {
+  @apply w-full max-w-md border border-border bg-card p-6 sm:p-8;
+  border-radius: var(--radius);
+  box-shadow: 0 18px 48px hsl(var(--foreground) / 0.08);
+}
+
+@utility alert-error {
+  @apply rounded-md border px-4 py-3 text-sm wrap-anywhere;
+  border-color: hsl(var(--status-danger) / 0.28);
+  color: hsl(var(--status-danger));
+  background: hsl(var(--status-danger) / 0.07);
+}
+
+@utility alert-success {
+  @apply rounded-md border px-4 py-3 text-sm wrap-anywhere;
+  border-color: hsl(var(--status-success) / 0.28);
+  color: hsl(var(--status-success));
+  background: hsl(var(--status-success) / 0.07);
+}
+
+@utility alert-warning {
+  @apply rounded-md border px-4 py-3 text-sm wrap-anywhere;
+  border-color: hsl(var(--status-warning) / 0.28);
+  color: hsl(var(--status-warning));
+  background: hsl(var(--status-warning) / 0.07);
+}
+
+@utility alert-info {
+  @apply rounded-md border px-4 py-3 text-sm wrap-anywhere;
+  border-color: hsl(var(--status-info) / 0.28);
+  color: hsl(var(--status-info));
+  background: hsl(var(--status-info) / 0.07);
+}
 
 @layer base {
   :root {
@@ -30,6 +397,18 @@
     --status-warning: 35 92% 40%;
     --status-danger: 2 63% 43%;
     --status-info: 205 62% 38%;
+    /* A cor de cada número do WhatsApp (`lib/wa-account-color.ts`). Sem
+       vermelho, verde nem amarelo: essas são as de estado, logo acima — nem
+       verde-azulado, perto demais do `--primary` das respostas. Tom de
+       texto — o fundo do balão e do chip é esta mesma cor com alfa baixo. */
+    --wa-blue: 221 70% 45%;
+    --wa-violet: 262 52% 50%;
+    --wa-pink: 330 62% 45%;
+    --wa-fuchsia: 292 58% 42%;
+    --wa-orange: 21 82% 44%;
+    --wa-cyan: 192 80% 33%;
+    --wa-indigo: 239 45% 46%;
+    --wa-lime: 84 70% 29%;
     --radius: 0.625rem;
     color-scheme: light;
   }
@@ -61,6 +440,14 @@
     --status-warning: 38 89% 54%;
     --status-danger: 2 64% 58%;
     --status-info: 202 72% 61%;
+    --wa-blue: 217 85% 67%;
+    --wa-violet: 262 72% 73%;
+    --wa-pink: 330 72% 69%;
+    --wa-fuchsia: 292 65% 71%;
+    --wa-orange: 24 88% 62%;
+    --wa-cyan: 190 70% 56%;
+    --wa-indigo: 235 70% 73%;
+    --wa-lime: 82 55% 52%;
     color-scheme: dark;
   }
 
@@ -71,6 +458,8 @@
   html {
     min-width: 320px;
     background: hsl(var(--background));
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
@@ -79,6 +468,9 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    /* viewport-fit=cover: com o celular deitado, o notch fica na lateral. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   h1,
@@ -122,217 +514,6 @@
   }
 }
 
-@layer components {
-  .page-shell {
-    @apply px-4 pb-24 pt-20 sm:px-6 lg:px-8 lg:py-8;
-  }
-
-  .page-frame {
-    @apply mx-auto w-full max-w-[1520px];
-  }
-
-  .page-frame-narrow {
-    @apply mx-auto w-full max-w-5xl;
-  }
-
-  .page-header {
-    @apply mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between;
-  }
-
-  .page-kicker {
-    @apply mb-1.5 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-[hsl(var(--primary))] dark:text-[hsl(var(--primary))];
-  }
-
-  .page-title {
-    @apply text-2xl font-bold leading-tight text-foreground sm:text-[1.75rem];
-  }
-
-  .page-description {
-    @apply mt-1 max-w-2xl text-sm leading-6 text-muted-foreground;
-  }
-
-  .section-heading {
-    @apply text-base font-semibold text-foreground;
-  }
-
-  .section-description {
-    @apply mt-1 text-sm leading-5 text-muted-foreground;
-  }
-
-  .modern-card {
-    @apply rounded-[var(--radius)] border border-border bg-card text-card-foreground;
-    box-shadow: 0 1px 0 hsl(var(--foreground) / 0.03);
-  }
-
-  .surface-subtle {
-    background: hsl(var(--surface-subtle));
-  }
-
-  .modern-button,
-  .modern-button-secondary,
-  .modern-button-danger {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-45;
-  }
-
-  .modern-button {
-    @apply bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80;
-  }
-
-  .modern-button-secondary {
-    @apply border border-border bg-card text-foreground hover:bg-secondary active:bg-secondary/80;
-  }
-
-  .modern-button-danger {
-    @apply bg-destructive text-destructive-foreground hover:bg-destructive/90;
-  }
-
-  .icon-button {
-    @apply inline-flex size-11 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border hover:bg-secondary hover:text-foreground focus:outline-none;
-  }
-
-  .modern-input {
-    @apply min-h-11 w-full rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/80 transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/15 disabled:bg-muted disabled:text-muted-foreground;
-  }
-
-  textarea.modern-input {
-    @apply min-h-24 resize-y;
-  }
-
-  .field-label {
-    @apply mb-1.5 block text-sm font-semibold text-foreground;
-  }
-
-  .field-hint {
-    @apply mt-1.5 text-xs leading-5 text-muted-foreground;
-  }
-
-  .modern-badge,
-  .modern-badge-success,
-  .modern-badge-warning,
-  .modern-badge-error,
-  .modern-badge-info {
-    @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-semibold leading-none;
-  }
-
-  .modern-badge {
-    @apply bg-secondary text-secondary-foreground;
-  }
-
-  .modern-badge-success {
-    color: hsl(var(--status-success));
-    background: hsl(var(--status-success) / 0.11);
-  }
-
-  .modern-badge-warning {
-    color: hsl(var(--status-warning));
-    background: hsl(var(--status-warning) / 0.12);
-  }
-
-  .modern-badge-error {
-    color: hsl(var(--status-danger));
-    background: hsl(var(--status-danger) / 0.11);
-  }
-
-  .modern-badge-info {
-    color: hsl(var(--status-info));
-    background: hsl(var(--status-info) / 0.11);
-  }
-
-  .status-dot {
-    @apply inline-block size-2 shrink-0 rounded-full bg-current;
-  }
-
-  .modern-table {
-    @apply w-full border-separate border-spacing-0 text-sm;
-  }
-
-  .modern-table th {
-    @apply sticky top-0 z-10 border-b border-border bg-[hsl(var(--surface-subtle))] px-4 py-3 text-left text-[0.68rem] font-bold uppercase tracking-[0.12em] text-muted-foreground;
-  }
-
-  .modern-table td {
-    @apply border-b border-border/70 px-4 py-3.5 align-middle text-foreground;
-  }
-
-  .modern-table tbody tr:last-child td {
-    @apply border-b-0;
-  }
-
-  .modern-table tbody tr {
-    @apply transition-colors hover:bg-[hsl(var(--surface-subtle))];
-  }
-
-  .tab-rail {
-    @apply flex gap-1 overflow-x-auto border-b border-border;
-    scrollbar-width: thin;
-  }
-
-  .tab-button {
-    @apply relative min-h-11 shrink-0 px-3 py-2 text-sm font-semibold text-muted-foreground transition-colors hover:text-foreground focus:outline-none;
-  }
-
-  .tab-button[data-active="true"] {
-    @apply text-foreground;
-  }
-
-  .tab-button[data-active="true"]::after {
-    content: "";
-    @apply absolute inset-x-3 bottom-0 h-0.5 bg-[hsl(var(--accent))];
-  }
-
-  .empty-state {
-    @apply flex min-h-48 flex-col items-center justify-center px-5 py-10 text-center;
-  }
-
-  .empty-state-icon {
-    @apply mb-4 flex size-11 items-center justify-center rounded-md bg-secondary text-muted-foreground;
-  }
-
-  .empty-state-title {
-    @apply text-base font-semibold text-foreground;
-  }
-
-  .empty-state-copy {
-    @apply mt-1 max-w-md text-sm leading-6 text-muted-foreground;
-  }
-
-  .data-value {
-    @apply font-mono font-semibold tabular-nums text-foreground;
-  }
-
-  .metric-label {
-    @apply text-[0.68rem] font-bold uppercase tracking-[0.13em] text-muted-foreground;
-  }
-
-  .metric-value {
-    @apply mt-2 font-mono text-3xl font-semibold tracking-tight text-foreground;
-  }
-
-  .mobile-data-card {
-    @apply rounded-[var(--radius)] border border-border bg-card p-4;
-  }
-
-  .auth-panel {
-    @apply w-full max-w-md border border-border bg-card p-6 sm:p-8;
-    border-radius: var(--radius);
-    box-shadow: 0 18px 48px hsl(var(--foreground) / 0.08);
-  }
-
-  .alert-error {
-    @apply rounded-md border px-4 py-3 text-sm;
-    border-color: hsl(var(--status-danger) / 0.28);
-    color: hsl(var(--status-danger));
-    background: hsl(var(--status-danger) / 0.07);
-  }
-
-  .alert-success {
-    @apply rounded-md border px-4 py-3 text-sm;
-    border-color: hsl(var(--status-success) / 0.28);
-    color: hsl(var(--status-success));
-    background: hsl(var(--status-success) / 0.07);
-  }
-}
-
 @media (max-width: 767px) {
   .desktop-table {
     display: none;
@@ -345,6 +526,16 @@
   }
 }
 
+/* O Safari do iPhone/iPad dá zoom em campo com fonte menor que 16px ao focar.
+   Só em tela de toque: no desktop os campos continuam com o tamanho da classe. */
+@media (max-width: 1023px) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -354,4 +545,26 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/*
+ * O número do WhatsApp de cada conversa, como uma variável só.
+ *
+ * Fora de `@layer` de propósito: o nome da classe sai de um mapa em
+ * `lib/wa-account-color.ts`, e regra dentro de camada que o Tailwind não acha
+ * escrita no código é descartada no build. Quem pinta lê `--wa-account`, com
+ * classes fixas — a cor nunca entra montada numa string de classe.
+ */
+.wa-account-blue { --wa-account: var(--wa-blue); }
+.wa-account-violet { --wa-account: var(--wa-violet); }
+.wa-account-pink { --wa-account: var(--wa-pink); }
+.wa-account-fuchsia { --wa-account: var(--wa-fuchsia); }
+.wa-account-orange { --wa-account: var(--wa-orange); }
+.wa-account-cyan { --wa-account: var(--wa-cyan); }
+.wa-account-indigo { --wa-account: var(--wa-indigo); }
+.wa-account-lime { --wa-account: var(--wa-lime); }
+
+/* Tema escuro dos mapas: escurece só os tiles OSM (ver lib/map-tiles.ts). */
+.map-tiles-dark {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9);
 }

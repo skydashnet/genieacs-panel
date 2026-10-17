@@ -6,9 +6,14 @@ yarn.lock
 .env
 .env.local
 .env.production
+# deploy/saas.env and any other *.env hold live secrets; only the examples are tracked.
+*.env
+!*.env.example
 
 # Logs
 logs/
+# Relatórios do `npm run e2e:asaas-sandbox` (ids de cobrança do sandbox, horários).
+backend/reports/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -42,3 +47,10 @@ coverage/
 
 # Misc
 **/exported_all_db
+
+# Agent worktrees
+# Transient checkouts of this repository that the Claude Code harness creates
+# when it runs an agent in isolation. They are whole copies of the tree and are
+# removed when the agent finishes; committing one would add the repository to
+# itself. Anything else under .claude/ (settings, skills) stays tracked.
+.claude/worktrees/

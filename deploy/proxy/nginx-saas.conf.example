@@ -1,0 +1,396 @@
+#
+# O proxy que a edição SaaS exige e que o compose não fornece.
+#
+#   docker-compose.saas.yml publica 127.0.0.1:5890 (painel) e 127.0.0.1:5891
+#   (portal do assinante) e diz, no cabeçalho dele: "o que fica na frente disto é
+#   um proxy com TLS". Este arquivo é esse proxy, escrito uma vez para não ser
+#   reinventado a cada deploy.
+#
+# QUANDO ELE SERVE
+#
+#   Este arquivo pressupõe CERTIFICADO CURINGA: os blocos `*.painel…` e
+#   `*.portal…` apontam para um certificado que cobre todos os provedores de uma
+#   vez. Onde não há curinga — DNS sem API, e portanto sem desafio DNS-01 que
+#   renove sozinho —, instalar este arquivo derruba o `nginx -t` INTEIRO, e não
+#   só o bloco: um `ssl_certificate` apontando para arquivo que não existe é erro
+#   de configuração, e o nginx recusa o arquivo todo.
+#
+#   Ali o arranjo é outro: `deploy/novo-provedor.sh <slug>` emite um certificado
+#   por provedor, por HTTP-01, e instala o bloco dele a partir de
+#   `nginx-tenant.conf.template`. Ver docs/saas-operations.md §1.
+#
+# COMO USAR
+#
+#   sed -e 's/painel\.exemplo\.com/painel.SEUDOMINIO/g' \
+#       -e 's/portal\.exemplo\.com/portal.SEUDOMINIO/g' \
+#       deploy/proxy/nginx-saas.conf.example \
+#     | sudo tee /etc/nginx/sites-available/skygenpanel.conf
+#   sudo ln -sf /etc/nginx/sites-available/skygenpanel.conf /etc/nginx/sites-enabled/
+#   sudo nginx -t && sudo systemctl reload nginx
+#
+# O QUE NÃO PODE MUDAR
+#
+#   `proxy_set_header Host $host` é o arquivo inteiro. É o `Host` que diz ao
+#   painel QUAL PROVEDOR está falando: `alfa.painel…` é o painel do `alfa`. Um
+#   proxy que reescreve esse cabeçalho — `proxy_set_header Host
+#   127.0.0.1:5890`, que é o exemplo mais copiado da internet — entrega todo
+#   mundo no mesmo lugar, e o resolvedor responde 404 para todos.
+#
+# HTTP/2
+#
+#   `listen … ssl http2` é a forma que funciona nas DUAS gerações: o nginx do
+#   Ubuntu LTS (1.18, 1.24) não conhece a diretiva `http2 on;`, que é de 1.25.1
+#   em diante, e recusa o arquivo inteiro com "unknown directive". Nas versões
+#   novas esta forma só avisa que está depreciada — um aviso é mais barato que um
+#   `nginx -t` vermelho no dia da migração.
+#
+# IPv6
+#
+#   As linhas `listen [::]…` assumem que o servidor tem IPv6. Onde ele não
+#   existe, o nginx sobe com "socket() [::]:80 failed (97: Address family not
+#   supported by protocol)" — apague essas sete linhas e o resto segue igual.
+#
+# CERTIFICADO
+#
+#   Um curinga NÃO cobre o apex: `*.painel.exemplo.com` não casa com
+#   `painel.exemplo.com`. Os dois nomes (mais o `www.`, se for usado) têm que
+#   estar no MESMO certificado, e curinga só sai por desafio DNS:
+#
+#     certbot certonly --dns-<provedor> \
+#       --dns-<provedor>-credentials /etc/letsencrypt/dns.ini \
+#       -d painel.exemplo.com -d '*.painel.exemplo.com' -d www.painel.exemplo.com
+#     certbot certonly --dns-<provedor> \
+#       --dns-<provedor>-credentials /etc/letsencrypt/dns.ini \
+#       -d portal.exemplo.com -d '*.portal.exemplo.com'
+#
+#   Ver docs/saas-operations.md §1 para o resto da ordem (DNS, variáveis,
+#   restart) e para o que muda num deploy que já servia um host só.
+#
+
+# --- Host desconhecido não entra -------------------------------------------
+#
+# Sem isto o nginx manda para o primeiro `server` o que não casar com nenhum
+# nome, e o painel de algum provedor passaria a atender por um endereço que
+# ninguém configurou. 444 fecha a conexão sem responder, que é o certo para uma
+# varredura de IP.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name _;
+
+    # Um certificado qualquer serve: o handshake acontece antes de o nginx poder
+    # recusar pelo nome, e recusar depois é o que este bloco faz.
+    ssl_certificate     /etc/letsencrypt/live/painel.exemplo.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/painel.exemplo.com/privkey.pem;
+
+    return 444;
+}
+
+# --- 80 para 443 ------------------------------------------------------------
+#
+# O `location` do ACME fica para trás de propósito: o certificado curinga sai
+# por DNS-01 e não precisa dele, mas uma renovação de emergência por HTTP-01 de
+# um nome isolado precisa, e descobrir isso no dia é caro.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name painel.exemplo.com www.painel.exemplo.com *.painel.exemplo.com
+                portal.exemplo.com *.portal.exemplo.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# --- A porta de entrada da plataforma, que é onde o CONSOLE mora -------------
+#
+# O apex e o `www.` dele não servem o painel de provedor nenhum. O que responde
+# ali é o cadastro (`GET /api/tenant/public`, `POST /api/auth/signup`) e, na
+# edição SaaS, o console inteiro — `/api/platform/*` e o punhado de rotas de
+# sessão que ele usa. O contrário também vale: `/api/platform/*` é 404 no host
+# de um provedor, por construção.
+#
+# Quem faz esse recorte é o painel, não o proxy — por isso o bloco é igual ao
+# dos provedores.
+#
+# Domínio de marketing servindo a mesma página (PLATFORM_EXTRA_HOSTS=exemplo.com):
+# copie este bloco com `server_name exemplo.com www.exemplo.com;`, o certificado
+# desse nome, e acrescente os dois ao `server_name` do bloco da porta 80 acima.
+# O `Host` tem que chegar intacto ao painel (`proxy_set_header Host $host`).
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name painel.exemplo.com www.painel.exemplo.com;
+
+    ssl_certificate     /etc/letsencrypt/live/painel.exemplo.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/painel.exemplo.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # O painel quase não recebe upload: o maior corpo JSON que ele aceita é 1 MB
+    # (`express.json`), e a mídia do WhatsApp ele busca, não recebe. A exceção
+    # é o envio de firmware, com `location` e teto próprios logo abaixo.
+    client_max_body_size 2m;
+
+    # --- O agente do GenieACS (WebSocket) ---------------------------------
+    #
+    # A conexão que o agente instalado na rede do provedor abre PARA o painel:
+    # um WebSocket que fica aberto por horas. Precisa de bloco próprio, e ANTES
+    # do `location /` só para ser lido primeiro — o `=` já ganha de qualquer
+    # prefixo. O motivo é a linha `proxy_set_header Connection ""` do bloco
+    # abaixo: ela existe para o keepalive com o painel, e apaga o
+    # `Connection: upgrade` do pedido. O nginx também não repassa `Upgrade`
+    # sozinho (é cabeçalho de salto). Sem este bloco o painel recebe um GET
+    # comum, o agente nunca conecta, e o log dele diz só "conexão recusada".
+    #
+    # Os tempos: o painel manda ping a cada 30 s, então o `read_timeout` nunca
+    # chega a contar numa conexão viva; 3600 s é para que ele não seja o motivo
+    # de uma queda. `proxy_buffering off` porque cada quadro é uma resposta que
+    # alguém está esperando na tela.
+    location = /api/genieacs-agent/connect {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    # --- Importação de contatos ---------------------------------------------
+    #
+    # Uma planilha de contatos ou a agenda exportada do Gmail passa de 1 MB. O
+    # painel já manda o arquivo comprimido (gzip); este teto é para o navegador
+    # que não comprime — o painel aceita até 5 MB descomprimidos. O tempo é o de
+    # criar alguns milhares de clientes de uma vez.
+    location = /api/contacts/import {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 6m;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    # --- Envio de firmware ao GenieACS ---------------------------------------
+    #
+    # A única rota do painel que recebe arquivo grande: o firmware que o
+    # provedor envia (Configurações) e o que o console reenvia como de um
+    # provedor. O painel aceita até `FIRMWARE_MAX_MB` (64 por padrão); o teto
+    # aqui é o mesmo — subir um sem descer o outro faz o nginx recusar com uma
+    # página dele, que a tela não sabe ler. Os tempos são maiores porque o
+    # painel só responde depois de repassar o arquivo inteiro ao GenieACS (até
+    # 120 s); `proxy_request_buffering off` manda os bytes ao painel enquanto
+    # chegam, em vez de guardá-los em disco primeiro.
+    location = /api/devices/firmware/files {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64m;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location ~ ^/api/platform/tenants/[0-9]+/genieacs/firmware/reassign$ {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64m;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:5890;
+
+        # A linha que faz tudo funcionar — ver o cabeçalho do arquivo.
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # `TRUST_PROXY=1` no painel confia em UM salto: este. É o que dá a cada
+        # provedor o seu balde de rate limit e marca o cookie do portal como
+        # Secure.
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_read_timeout 120s;
+    }
+}
+
+# --- O painel de cada provedor ----------------------------------------------
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name *.painel.exemplo.com;
+
+    ssl_certificate     /etc/letsencrypt/live/painel.exemplo.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/painel.exemplo.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    client_max_body_size 2m;
+
+    # O agente do GenieACS: o mesmo bloco do ápice, e pelo mesmo motivo — o
+    # `Connection ""` do `location /` abaixo apagaria o upgrade do WebSocket.
+    location = /api/genieacs-agent/connect {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+
+    # --- Importação de contatos ---------------------------------------------
+    #
+    # Uma planilha de contatos ou a agenda exportada do Gmail passa de 1 MB. O
+    # painel já manda o arquivo comprimido (gzip); este teto é para o navegador
+    # que não comprime — o painel aceita até 5 MB descomprimidos. O tempo é o de
+    # criar alguns milhares de clientes de uma vez.
+    location = /api/contacts/import {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 6m;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    # --- Envio de firmware ao GenieACS ---------------------------------------
+    #
+    # A única rota do painel que recebe arquivo grande: o firmware que o
+    # provedor envia (Configurações) e o que o console reenvia como de um
+    # provedor. O painel aceita até `FIRMWARE_MAX_MB` (64 por padrão); o teto
+    # aqui é o mesmo — subir um sem descer o outro faz o nginx recusar com uma
+    # página dele, que a tela não sabe ler. Os tempos são maiores porque o
+    # painel só responde depois de repassar o arquivo inteiro ao GenieACS (até
+    # 120 s); `proxy_request_buffering off` manda os bytes ao painel enquanto
+    # chegam, em vez de guardá-los em disco primeiro.
+    location = /api/devices/firmware/files {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64m;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location ~ ^/api/platform/tenants/[0-9]+/genieacs/firmware/reassign$ {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        client_max_body_size 64m;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:5890;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_read_timeout 120s;
+    }
+}
+
+# --- O portal do assinante de cada provedor ---------------------------------
+#
+# Outra porta (5891) e outra aplicação. O apex `portal.exemplo.com` não serve
+# nada, e por isso não tem bloco: cai no `default_server` acima.
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name *.portal.exemplo.com;
+
+    ssl_certificate     /etc/letsencrypt/live/portal.exemplo.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/portal.exemplo.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # O portal aceita 16 KB de corpo. O limite generoso aqui é só para a
+    # mensagem de erro vir do painel, e não uma página do nginx.
+    client_max_body_size 1m;
+
+    location / {
+        proxy_pass http://127.0.0.1:5891;
+
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_read_timeout 120s;
+    }
+}

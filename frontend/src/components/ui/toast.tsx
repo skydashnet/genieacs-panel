@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from './icon'
+import { useTranslation } from '@/contexts/language-context'
 
 type ToastType = 'success' | 'error' | 'info' | 'warning'
 const MAX_VISIBLE_TOASTS = 4
@@ -37,24 +38,25 @@ function genId() {
 
 const typeStyles: Record<ToastType, { base: string; icon: string }> = {
   success: {
-    base: 'border-[hsl(var(--status-success)/.3)] bg-[hsl(var(--status-success)/.08)] text-[hsl(var(--status-success))]',
+    base: 'border-[hsl(var(--status-success)/.3)] bg-card bg-[linear-gradient(hsl(var(--status-success)/.08),hsl(var(--status-success)/.08))] text-[hsl(var(--status-success))]',
     icon: 'check'
   },
   error: {
-    base: 'border-[hsl(var(--status-danger)/.3)] bg-[hsl(var(--status-danger)/.08)] text-[hsl(var(--status-danger))]',
+    base: 'border-[hsl(var(--status-danger)/.3)] bg-card bg-[linear-gradient(hsl(var(--status-danger)/.08),hsl(var(--status-danger)/.08))] text-[hsl(var(--status-danger))]',
     icon: 'x'
   },
   info: {
-    base: 'border-[hsl(var(--status-info)/.3)] bg-[hsl(var(--status-info)/.08)] text-[hsl(var(--status-info))]',
+    base: 'border-[hsl(var(--status-info)/.3)] bg-card bg-[linear-gradient(hsl(var(--status-info)/.08),hsl(var(--status-info)/.08))] text-[hsl(var(--status-info))]',
     icon: 'info'
   },
   warning: {
-    base: 'border-[hsl(var(--status-warning)/.3)] bg-[hsl(var(--status-warning)/.08)] text-[hsl(var(--status-warning))]',
+    base: 'border-[hsl(var(--status-warning)/.3)] bg-card bg-[linear-gradient(hsl(var(--status-warning)/.08),hsl(var(--status-warning)/.08))] text-[hsl(var(--status-warning))]',
     icon: 'warning'
   }
 }
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const { t: translate } = useTranslation()
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const toastsRef = useRef<ToastItem[]>([])
   const timersRef = useRef<Record<string, any>>({})
@@ -159,7 +161,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       {/* Toast Container */ }
-      <div className="pointer-events-none fixed left-4 right-4 top-20 z-[2200] flex flex-col gap-2 sm:left-auto sm:right-5 sm:top-5 sm:w-[24rem]">
+      <div className="pointer-events-none fixed inset-s-4 inset-e-4 top-20 z-2200 flex flex-col gap-2 sm:inset-s-auto sm:inset-e-5 sm:w-[24rem]">
         {toasts.map((t) => (
           <div
             key={t.id}
@@ -169,7 +171,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             aria-atomic="true"
           >
             <Icon name={typeStyles[t.type].icon} size={19} className="mt-0.5 shrink-0" />
-            <div className="flex-1">
+            <div className="min-w-0 flex-1 wrap-anywhere">
               {t.title ? (
                 <div className="font-semibold mb-0.5">{t.title}</div>
               ) : null}
@@ -177,8 +179,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             </div>
             <button
               onClick={() => dismiss(t.id)}
-              className="flex size-8 shrink-0 items-center justify-center rounded text-current opacity-70 transition hover:bg-black/5 hover:opacity-100"
-              aria-label="Dismiss notification"
+              className="-my-1 -me-2 flex size-10 shrink-0 items-center justify-center rounded text-current opacity-70 transition hover:bg-black/5 hover:opacity-100 lg:m-0 lg:size-8"
+              aria-label={translate('toast.dismiss')}
             >
               <Icon name="x" size={16} />
             </button>

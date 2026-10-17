@@ -1,6 +1,6 @@
 {
   "name": "skygenpanel",
-  "version": "1.13.1",
+  "version": "1.18.0",
   "private": true,
   "description": "GenieACS management panel with an isolated customer self-service portal.",
   "scripts": {
@@ -12,8 +12,10 @@
     "check:backend": "cd backend && npm run check",
     "lint": "cd frontend && npm run lint",
     "typecheck": "cd frontend && npm run typecheck",
-    "verify": "npm run check:backend && npm run lint && npm run typecheck && npm run build",
-    "release:prepare": "node scripts/prepare-release.mjs"
+    "verify": "npm run check:backend && npm run test:backend && npm run test:frontend && npm run lint && npm run typecheck && npm run build",
+    "release:prepare": "node scripts/prepare-release.mjs",
+    "test:backend": "cd backend && npm test",
+    "test:frontend": "cd frontend && npm test"
   },
   "engines": {
     "node": ">=22.22.0"

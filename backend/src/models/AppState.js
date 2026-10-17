@@ -1,15 +1,15 @@
-import { getDb } from '../config/database.js';
+import { tdb, tinsert } from '../config/database.js';
 
 class AppState {
   static async get(key) {
-    const row = await getDb()('app_state').where({ key }).first();
+    const row = await tdb('app_state').where({ key }).first();
     return row?.value ?? null;
   }
 
   static async upsert(key, value) {
-    await getDb()('app_state')
-      .insert({ key, value, updated_at: new Date() })
-      .onConflict('key')
+    // Composite conflict target — see the note in models/Setting.js.
+    await tinsert('app_state', { key, value, updated_at: new Date() })
+      .onConflict(['tenant_id', 'key'])
       .merge({ value, updated_at: new Date() });
   }
 }

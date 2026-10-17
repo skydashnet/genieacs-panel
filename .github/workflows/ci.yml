@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm run install:all
+
+      - name: Backend syntax check
+        run: npm run check:backend
+
+      # The TAP stream goes to a file as well as to the log, and `pipefail` is
+      # what keeps `tee` from swallowing a non-zero exit. The digest below is
+      # what anyone actually reads: a failing job prints thousands of lines of
+      # passing subtests, and the three that name the broken test are somewhere
+      # in the middle of them.
+      - name: Backend tests
+        shell: bash
+        run: set -o pipefail && npm run test:backend 2>&1 | tee /tmp/backend-sqlite.tap
+
+      - name: Which tests failed
+        if: failure()
+        run: node scripts/tap-failures.mjs /tmp/backend-sqlite.tap
+
+      - name: Keep the TAP stream
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tap-sqlite
+          path: /tmp/backend-sqlite.tap
+          retention-days: 7
+
+      # Vitest already prints only the failing tests, so this one needs no
+      # digest: what the backend's TAP stream buries, this reporter never
+      # writes down in the first place.
+      - name: Frontend tests
+        run: npm run test:frontend
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+  dialects:
+    name: Backend on ${{ matrix.dialect }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dialect: [postgres, mysql]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: skygp
+          POSTGRES_PASSWORD: skygp
+          POSTGRES_DB: skygp_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U skygp -d skygp_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: skygp
+          MYSQL_DATABASE: skygp_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pskygp"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # The suite runs on SQLite in the `verify` job. Repeating it against the
+      # servers is what catches dialect bugs SQLite is too forgiving to
+      # surface: an insert whose generated id only comes back on some clients,
+      # a foreign key between a signed and an unsigned column, a timestamp
+      # outside MySQL's range.
+      - name: Backend tests
+        working-directory: backend
+        shell: bash
+        env:
+          TEST_DB_CLIENT: ${{ matrix.dialect == 'postgres' && 'pg' || 'mysql2' }}
+          TEST_DB_HOST: 127.0.0.1
+          TEST_DB_PORT: ${{ matrix.dialect == 'postgres' && '5432' || '3306' }}
+          TEST_DB_USER: ${{ matrix.dialect == 'postgres' && 'skygp' || 'root' }}
+          TEST_DB_PASSWORD: skygp
+          TEST_DB_NAME: skygp_test
+        run: set -o pipefail && npm test 2>&1 | tee /tmp/backend-${{ matrix.dialect }}.tap
+
+      # These two jobs are where the intermittent failures land, and where the
+      # log is worst: the service containers dump their own logs after the
+      # tests, so the TAP output is buried twice over. Keeping the stream as an
+      # artifact is what makes a flake that reproduces once in ten runs
+      # diagnosable at all -- it cannot be re-run into existence on demand.
+      - name: Which tests failed
+        if: failure()
+        run: node scripts/tap-failures.mjs /tmp/backend-${{ matrix.dialect }}.tap
+
+      - name: Keep the TAP stream
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tap-${{ matrix.dialect }}
+          path: /tmp/backend-${{ matrix.dialect }}.tap
+          retention-days: 7
+
+  image:
+    name: Container image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # The image is what the SaaS edition runs from, and nothing else in
+      # this workflow builds it. Built and booted, never pushed: a registry
+      # is a deployment decision, and this job only proves the Dockerfile
+      # still produces a process that answers its own health check.
+      - name: Build
+        run: docker build --tag skygenpanel:ci .
+
+      - name: Boot and probe
+        run: |
+          docker run --detach --name panel --publish 127.0.0.1:5890:5890 \
+            --env EDITION=saas \
+            --env JWT_SECRET="$(openssl rand -hex 48)" \
+            --env PORTAL_JWT_SECRET="$(openssl rand -hex 48)" \
+            --env SECRET_BOX_KEY="$(openssl rand -hex 48)" \
+            skygenpanel:ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error http://127.0.0.1:5890/api/health; then
+              echo; exit 0
+            fi
+            sleep 2
+          done
+          echo "The panel never answered /api/health"
+          docker logs panel
+          exit 1
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22'
+
+      - name: Audit production dependencies
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+
+      # O mesmo corte para o frontend: o que vai para o bundle servido ao
+      # navegador. Ferramentas de build ficam de fora (`--omit=dev`), como no
+      # backend.
+      - name: Audit frontend production dependencies
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high

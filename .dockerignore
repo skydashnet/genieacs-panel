@@ -1,0 +1,33 @@
+.git
+.github
+node_modules
+*/node_modules
+backend/data
+backend/test
+backend/coverage
+frontend/dist
+docs/screenshots
+deploy
+# O instalador do agente é conteúdo que o painel SERVE, não ferramenta de
+# deploy: o Dockerfile o copia para /app/deploy/, e sem esta exceção a rota
+# responderia 404 na imagem.
+!deploy/install-agent.sh
+scripts
+*.md
+!README.md
+# Os manuais embutidos no painel (aba Ajuda e "Como funciona"): o build do
+# frontend os importa. A exceção é explícita para que nenhum padrão de `.md`
+# acima (ou um futuro `docs`) os tire do contexto e quebre o build.
+!docs/manual-cobranca.md
+!docs/guia-provedor-cobranca.md
+# Patterns here match from the context root, so `.env` alone left
+# `backend/.env` -- the file the backend actually loads -- to be copied into
+# the image by `COPY backend/ ./`, with every secret in it.
+**/.env
+**/*.env
+**/.env.*
+!**/.env.example
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.sqlite-*

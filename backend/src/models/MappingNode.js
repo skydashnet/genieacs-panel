@@ -1,26 +1,25 @@
-import { getDb } from '../config/database.js';
+import { getDb, tdb, tinsertReturningId } from '../config/database.js';
 
 class MappingNode {
   static async getAll() {
-    return getDb()('mapping_nodes').orderBy('created_at', 'desc');
+    return tdb('mapping_nodes').orderBy('created_at', 'desc');
   }
 
   static async getByNodeId(nodeId) {
-    const row = await getDb()('mapping_nodes').where({ node_id: nodeId }).first();
+    const row = await tdb('mapping_nodes').where({ node_id: nodeId }).first();
     return row || null;
   }
 
   static async create(nodeData) {
     const { node_id, type, name, latitude, longitude, capacity, splitter, pppoe, notes } = nodeData;
-    const [id] = await getDb()('mapping_nodes').insert({
+    return tinsertReturningId('mapping_nodes', {
       node_id, type, name, latitude, longitude, capacity, splitter, pppoe, notes
     });
-    return id;
   }
 
   static async update(nodeId, nodeData) {
     const { type, name, latitude, longitude, capacity, splitter, pppoe, notes } = nodeData;
-    const count = await getDb()('mapping_nodes').where({ node_id: nodeId }).update({
+    const count = await tdb('mapping_nodes').where({ node_id: nodeId }).update({
       type, name, latitude, longitude, capacity, splitter, pppoe, notes,
       updated_at: getDb().fn.now()
     });
@@ -28,12 +27,13 @@ class MappingNode {
   }
 
   static async delete(nodeId) {
-    const count = await getDb()('mapping_nodes').where({ node_id: nodeId }).del();
+    const count = await tdb('mapping_nodes').where({ node_id: nodeId }).del();
     return count > 0;
   }
 
+  /** Every node of the provider in scope, and no one else's. */
   static async deleteAll() {
-    return getDb()('mapping_nodes').del();
+    return tdb('mapping_nodes').del();
   }
 }
 

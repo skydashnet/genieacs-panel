@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# SkyGenPanel installer — single-service GenieACS panel (UI + API on one port).
+# TR69 Controle installer — single-service GenieACS panel (UI + API on one port).
 # Usage:  curl -fsSL https://raw.githubusercontent.com/skydashnet/genieacs-panel/main/deploy/install.sh | sudo bash
 #
 set -euo pipefail
@@ -14,6 +14,10 @@ SERVICE_USER="${SKYGP_USER:-skygenpanel}"
 APP_PORT="${SKYGP_PORT:-5890}"
 PORTAL_PORT="${SKYGP_PORTAL_PORT:-5891}"
 CLI_PATH="/usr/local/bin/skygenpanel"
+BACKUP_CLI_PATH="/usr/local/bin/skygenpanel-backup"
+# Outside INSTALL_DIR and outside DATA_DIR, for the same reason those two must
+# be disjoint: a backup that lives inside what it copies grows on top of itself.
+BACKUP_DIR="${SKYGP_BACKUP_DIR:-/var/backups/skygenpanel}"
 NODE_MAJOR_MIN=22
 NODE_MINOR_MIN=22
 NODE_RELEASE_LINE=22
@@ -255,13 +259,26 @@ if [ ! -f "$ENV_FILE" ]; then
   log "Generating $ENV_FILE with random session secrets"
   JWT_SECRET="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
   PORTAL_JWT_SECRET="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
+  SECRET_BOX_KEY="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
   cat > "$ENV_FILE" <<EOF
 APP_PORT=${APP_PORT}
 PORTAL_PORT=${PORTAL_PORT}
 APP_HOST=127.0.0.1
 APP_ENV=production
+# Both listeners bind to loopback, so the only way in is a reverse proxy or
+# Cloudflare Tunnel on this host. Trusting that single hop is what gives every
+# customer their own rate-limit bucket and marks portal cookies Secure.
+# 'skygenpanel expose' turns this off, because a directly reachable listener
+# must not believe a client-supplied X-Forwarded-For.
+TRUST_PROXY=1
 JWT_SECRET=${JWT_SECRET}
 PORTAL_JWT_SECRET=${PORTAL_JWT_SECRET}
+# Encrypts the secrets an operator can read back. Kept separate from
+# JWT_SECRET so session secrets can be rotated without making that data
+# unreadable.
+SECRET_BOX_KEY=${SECRET_BOX_KEY}
+# This installer produces a single-provider install.
+EDITION=selfhosted
 JWT_EXPIRES_IN=1h
 REFRESH_TOKEN_EXPIRES_IN=7d
 CORS_ORIGINS=http://localhost:${APP_PORT}
@@ -276,6 +293,21 @@ else
   if ! grep -qE '^PORTAL_JWT_SECRET=' "$ENV_FILE"; then
     PORTAL_JWT_SECRET="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
     printf 'PORTAL_JWT_SECRET=%s\n' "$PORTAL_JWT_SECRET" >> "$ENV_FILE"
+  fi
+  if ! grep -qE '^SECRET_BOX_KEY=' "$ENV_FILE"; then
+    # Safe to add to a running install: what is already stored stays readable
+    # through JWT_SECRET, and only new writes use this key.
+    SECRET_BOX_KEY="$(node -e 'console.log(require("crypto").randomBytes(48).toString("hex"))')"
+    printf 'SECRET_BOX_KEY=%s\n' "$SECRET_BOX_KEY" >> "$ENV_FILE"
+  fi
+  if ! grep -qE '^TRUST_PROXY=' "$ENV_FILE"; then
+    # Only assume a proxy when the panel is still loopback-only; an exposed
+    # listener would let clients forge their own source address.
+    if grep -qE '^APP_HOST=127\.0\.0\.1$' "$ENV_FILE"; then
+      printf 'TRUST_PROXY=1\n' >> "$ENV_FILE"
+    else
+      printf 'TRUST_PROXY=0\n' >> "$ENV_FILE"
+    fi
   fi
 fi
 
@@ -297,7 +329,7 @@ chmod 600 "$ENV_FILE"
 log "Installing systemd unit /etc/systemd/system/${SERVICE_NAME}.service"
 cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
 [Unit]
-Description=SkyGenPanel (GenieACS management panel)
+Description=TR69 Controle (GenieACS management panel)
 After=network.target
 
 [Service]
@@ -328,9 +360,23 @@ EOF
 log "Installing CLI at ${CLI_PATH}"
 install -m 0755 "$INSTALL_DIR/deploy/skygenpanel" "$CLI_PATH"
 
+# --- backup -----------------------------------------------------------------
+# A timer and not a cron line, and installed here rather than left to the
+# runbook: a backup nobody scheduled is a backup that exists only in a document.
+# The destination is deliberately outside both INSTALL_DIR and DATA_DIR — see
+# the refusal in the script itself.
+log "Installing backup timer (daily, ${BACKUP_DIR})"
+install -m 0755 "$INSTALL_DIR/deploy/skygenpanel-backup" "$BACKUP_CLI_PATH"
+install -m 0644 "$INSTALL_DIR/deploy/skygenpanel-backup.service" /etc/systemd/system/
+install -m 0644 "$INSTALL_DIR/deploy/skygenpanel-backup.timer" /etc/systemd/system/
+mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
+
 # --- start ------------------------------------------------------------------
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME" >/dev/null 2>&1 || true
+systemctl enable --now skygenpanel-backup.timer >/dev/null 2>&1 \
+  || warn "Could not enable the backup timer; run 'systemctl enable --now skygenpanel-backup.timer'."
 systemctl restart "$SERVICE_NAME"
 
 ready=false
